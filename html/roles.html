@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <title>Rollenverwaltung - DHF-Planer</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        /* (Styles für Header, Main, Card, Tabelle, Modal, etc. - wie bisher) */
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; margin: 0; background: #f1f5f9; color: #333; }
+        header { background: #fff; padding: 15px 30px; border-bottom: 1px solid #ddd; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+        header h1 { margin: 0; color: #0056b3; font-size: 24px; }
+        header nav { display: flex; gap: 20px; }
+        header nav a { text-decoration: none; color: #333; font-weight: 500; font-size: 16px; padding: 10px; border-radius: 5px; }
+        header nav a.active, header nav a:hover { background-color: #f0f5fa; color: #0056b3; }
+        #user-info { display: flex; align-items: center; gap: 15px; }
+        #logout-btn { background: #e74c3c; color: white; padding: 10px 15px; border: none; border-radius: 5px; cursor: pointer; font-size: 15px; }
+        main { padding: 30px; max-width: 1200px; margin: auto; }
+        .card { background: #fff; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); overflow: hidden; }
+        .card-header { padding: 20px; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: center; }
+        .card-header h2 { margin: 0; }
+        table { width: 100%; border-collapse: collapse; }
+        th, td { text-align: left; padding: 15px 20px; border-bottom: 1px solid #eee; }
+        th { background: #fcfcfc; color: #555; font-size: 13px; text-transform: uppercase; }
+        tr:last-child td { border-bottom: 0; }
+        .actions button { padding: 8px 12px; margin-right: 5px; border: none; border-radius: 5px; cursor: pointer; }
+        .btn-edit { background: #3498db; color: white; }
+        .btn-delete { background: #e74c3c; color: white; }
+        .btn-primary { background: #007bff; color: white; padding: 10px 15px; border: none; border-radius: 5px; cursor: pointer; font-size: 15px; }
+        .modal { display: none; position: fixed; z-index: 100; left: 0; top: 0; width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.4); }
+        .modal-content { background-color: #fefefe; margin: 15% auto; padding: 25px; border: 1px solid #888; width: 80%; max-width: 500px; border-radius: 8px; }
+        .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+        .modal-header h2 { margin: 0; }
+        .close { color: #aaa; font-size: 28px; font-weight: bold; cursor: pointer; }
+        .modal-body div { margin-bottom: 15px; }
+        .modal-body label { display: block; margin-bottom: 5px; }
+        .modal-body input, .modal-body textarea { width: 95%; padding: 10px; border: 1px solid #ccc; border-radius: 4px; }
+
+        /* --- SUB-NAV STYLING (Identisch zu users.html) --- */
+        .sub-nav {
+            background-color: #fff;
+            padding: 0 30px;
+            border-bottom: 1px solid #ddd;
+            margin-bottom: 30px;
+        }
+        .sub-nav a {
+            display: inline-block;
+            padding: 15px 20px;
+            text-decoration: none;
+            color: #555;
+            font-weight: 500;
+            border-bottom: 3px solid transparent;
+        }
+        .sub-nav a.active, .sub-nav a:hover {
+            color: #0056b3;
+            border-bottom-color: #0056b3;
+        }
+    </style>
+</head>
+<body>
+
+    <header>
+        <h1>DHF-Planer</h1>
+        <nav>
+            <a href="dashboard.html">Dashboard</a>
+            <a href="users.html" class="active">Benutzerverwaltung</a>
+            <a href="schichtplan.html">Schichtplan</a>
+        </nav>
+        <div id="user-info">
+            <span id="welcome-user"></span>
+            <button id="logout-btn">Abmelden</button>
+        </div>
+    </header>
+
+    <div class="sub-nav">
+        <a href="users.html">Benutzer</a>
+        <a href="roles.html" class="active">Rollen</a>
+    </div>
+
+    <main>
+        <div class="card">
+            <div class="card-header">
+                <h2>Rollen</h2> <button class="btn-primary" id="add-role-btn">Neue Rolle erstellen</button>
+            </div>
+            <table>
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Name</th>
+                        <th>Beschreibung</th>
+                        <th>Aktionen</th>
+                    </tr>
+                </thead>
+                <tbody id="role-table-body">
+                    </tbody>
+            </table>
+        </div>
+    </main>
+
+    <div id="role-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="modal-title">Rolle bearbeiten</h2>
+                <span class="close">&times;</span>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="role-id">
+                <div>
+                    <label for="role-name">Rollenname:</label>
+                    <input type="text" id="role-name" placeholder="z.B. 'Manager'">
+                </div>
+                <div>
+                    <label for="role-description">Beschreibung:</label>
+                    <textarea id="role-description" rows="3" placeholder="Was darf diese Rolle?"></textarea>
+                </div>
+                <button class="btn-primary" id="save-role-btn">Speichern</button>
+                <div id="modal-status" style="margin-top: 10px; color: red;"></div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- Globales Setup (unverändert) ---
+        const API_URL = 'http://46.224.63.203:5000'; // Ersetzen Sie dies ggf. durch Ihre Domain
+        let user;
+
+        async function logout() {
+            try { await apiFetch('/api/logout', 'POST'); }
+            catch (e) { console.error(e); }
+            finally {
+                localStorage.removeItem('dhf_user');
+                window.location.href = 'index.html?logout=true';
+            }
+        }
+
+        try {
+            user = JSON.parse(localStorage.getItem('dhf_user'));
+            if (!user || !user.vorname) { throw new Error("Kein User"); }
+            document.getElementById('welcome-user').textContent = `Willkommen, ${user.vorname}!`;
+        } catch (e) {
+            logout();
+        }
+
+        document.getElementById('logout-btn').onclick = logout;
+
+        // --- Globale API-Funktion (unverändert) ---
+        async function apiFetch(endpoint, method = 'GET', body = null) {
+            const options = {
+                method,
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include'
+            };
+            if (body) { options.body = JSON.stringify(body); }
+            const response = await fetch(API_URL + endpoint, options);
+            if (response.status === 401 || response.status === 403) {
+                logout();
+                throw new Error('Sitzung ungültig oder fehlende Rechte.');
+            }
+            const contentType = response.headers.get("content-type");
+            let data;
+            if (contentType && contentType.indexOf("application/json") !== -1) {
+                data = await response.json();
+            } else {
+                data = { message: await response.text() };
+            }
+            if (!response.ok) {
+                throw new Error(data.message || 'API-Fehler');
+            }
+            return data;
+        }
+
+        // --- Elemente & Modal-Logik ---
+        const roleTableBody = document.getElementById('role-table-body');
+        const modal = document.getElementById('role-modal');
+        const modalTitle = document.getElementById('modal-title');
+        const modalStatus = document.getElementById('modal-status');
+        const addRoleBtn = document.getElementById('add-role-btn');
+        const saveRoleBtn = document.getElementById('save-role-btn');
+        const closeModalBtn = document.querySelector('.close');
+
+        const roleIdField = document.getElementById('role-id');
+        const roleNameField = document.getElementById('role-name');
+        const roleDescField = document.getElementById('role-description');
+
+        function openModal() { modal.style.display = 'block'; modalStatus.textContent = ''; }
+        function closeModal() { modal.style.display = 'none'; }
+        closeModalBtn.onclick = closeModal;
+        window.onclick = (event) => { if (event.target == modal) closeModal(); }
+
+        // --- Hauptlogik (CRUD für Rollen) ---
+        async function loadRoles() {
+            try {
+                const roles = await apiFetch('/api/roles');
+                roleTableBody.innerHTML = '';
+                roles.forEach(role => {
+                    const row = document.createElement('tr');
+
+                    // (Dieser Schutz-Code ist der, den Sie in einer vorherigen Iteration bestätigt haben)
+                    const isProtected = (role.name === 'admin');
+                    const buttons = isProtected ?
+                        '<span style="color: #777;">Basis-Rolle (Admin)</span>' :
+                        `<button class="btn-edit" onclick="openEditModal(${role.id}, '${role.name}', '${role.description || ''}')">Bearbeiten</button>
+                         <button class="btn-delete" onclick="deleteRole(${role.id})">Löschen</button>`;
+
+                    row.innerHTML = `
+                        <td>${role.id}</td>
+                        <td>${role.name}</td>
+                        <td>${role.description || ''}</td>
+                        <td class="actions">${buttons}</td>
+                    `;
+                    roleTableBody.appendChild(row);
+                });
+            } catch (error) {
+                alert('Fehler beim Laden der Rollen: ' + error.message);
+            }
+        }
+
+        // Modal für "Neue Rolle"
+        addRoleBtn.onclick = () => {
+            modalTitle.textContent = 'Neue Rolle erstellen';
+            roleIdField.value = '';
+            roleNameField.value = '';
+            roleDescField.value = '';
+            openModal();
+        };
+
+        // Modal für "Bearbeiten"
+        function openEditModal(id, name, description) {
+            modalTitle.textContent = 'Rolle bearbeiten';
+            roleIdField.value = id;
+            roleNameField.value = name;
+            roleDescField.value = description || '';
+            openModal();
+        }
+
+        // Speichern (Neue Rolle oder Update)
+        saveRoleBtn.onclick = async () => {
+            const id = roleIdField.value;
+            const payload = {
+                name: roleNameField.value,
+                description: roleDescField.value
+            };
+
+            if (!payload.name) {
+                modalStatus.textContent = "Rollenname ist erforderlich.";
+                return;
+            }
+
+            try {
+                if (id) { // UPDATE
+                    await apiFetch(`/api/roles/${id}`, 'PUT', payload);
+                } else { // CREATE
+                    await apiFetch('/api/roles', 'POST', payload);
+                }
+                closeModal();
+                loadRoles();
+            } catch (error) {
+                modalStatus.textContent = 'Fehler: ' + error.message;
+            }
+        };
+
+        // Löschen
+        async function deleteRole(id) {
+            if (confirm('Sind Sie sicher, dass Sie diese Rolle löschen möchten?\n\n(Dies ist nur möglich, wenn kein Benutzer diese Rolle mehr verwendet.)')) {
+                try {
+                    await apiFetch(`/api/roles/${id}`, 'DELETE');
+                    loadRoles();
+                } catch (error) {
+                    alert('Löschen fehlgeschlagen: ' + error.message);
+                }
+            }
+        }
+
+        // --- Initialisierung ---
+        loadRoles();
+
+    </script>
+</body>
+</html>

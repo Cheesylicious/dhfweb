@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <title>Einstellungen - DHF-Planer</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.0/Sortable.min.js"></script>
+
+    <style>
+        /* (Standard-Header, Nav, Main, Card... wie bisher) */
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; margin: 0; background: #f1f5f9; color: #333; }
+        header { background: #fff; padding: 15px 30px; border-bottom: 1px solid #ddd; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+        header h1 { margin: 0; color: #0056b3; font-size: 24px; }
+        header nav { display: flex; gap: 20px; }
+        header nav a { text-decoration: none; color: #333; font-weight: 500; font-size: 16px; padding: 10px; border-radius: 5px; }
+        header nav a.active, header nav a:hover { background-color: #f0f5fa; color: #0056b3; }
+        #user-info { display: flex; align-items: center; gap: 15px; }
+        #logout-btn { background: #e74c3c; color: white; padding: 10px 15px; border: none; border-radius: 5px; cursor: pointer; font-size: 15px; }
+        main { padding: 30px; max-width: 1200px; margin: auto; }
+        .card { background: #fff; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.05); overflow: hidden; }
+        .card-header { padding: 20px; border-bottom: 1px solid #eee; display: flex; justify-content: space-between; align-items: center; }
+        .card-header h2 { margin: 0; }
+        .card-footer { padding: 15px 25px; background: #f9f9f9; border-top: 1px solid #eee; text-align: right; }
+        .btn-primary { background: #007bff; color: white; padding: 10px 15px; border: none; border-radius: 5px; cursor: pointer; font-size: 15px; }
+
+        /* --- SUB-NAV STYLING --- */
+        .sub-nav {
+            background-color: #fff;
+            padding: 0 30px;
+            border-bottom: 1px solid #ddd;
+            margin-bottom: 30px;
+        }
+        .sub-nav a {
+            display: inline-block;
+            padding: 15px 20px;
+            text-decoration: none;
+            color: #555;
+            font-weight: 500;
+            border-bottom: 3px solid transparent;
+        }
+        .sub-nav a.active, .sub-nav a:hover {
+            color: #0056b3;
+            border-bottom-color: #0056b3;
+        }
+
+        /* --- STYLING FÜR DIESE SEITE --- */
+        #user-sort-list { list-style: none; padding: 0; margin: 0; }
+        .sortable-item {
+            display: flex; align-items: center; gap: 15px;
+            padding: 15px 20px; border-bottom: 1px solid #eee; background: #fff;
+        }
+        .sortable-item:last-child { border-bottom: none; }
+        .drag-handle { cursor: move; color: #aaa; font-size: 20px; padding: 5px; }
+        .user-name { flex-grow: 1; font-weight: 500; }
+        .user-role {
+            color: #555; background: #f0f0f0; padding: 3px 8px;
+            border-radius: 4px; font-size: 13px;
+        }
+        .visibility-toggle { cursor: pointer; font-size: 22px; color: #ccc; }
+        .visibility-toggle.visible { color: #007bff; }
+        .sortable-ghost { opacity: 0.4; background: #d6eaff; }
+    </style>
+</head>
+<body>
+
+    <header>
+        <h1>DHF-Planer</h1>
+        <nav>
+            <a href="dashboard.html">Dashboard</a>
+            <a href="users.html">Benutzerverwaltung</a>
+            <a href="schichtplan.html" class="active">Schichtplan</a>
+        </nav>
+        <div id="user-info">
+            <span id="welcome-user"></span>
+            <button id="logout-btn">Abmelden</button>
+        </div>
+    </header>
+
+    <div class="sub-nav">
+        <a href="schichtplan.html">Schichtplan</a>
+        <a href="einstellungen.html" class="active">Einstellungen</a>
+    </div>
+
+    <main>
+        <div class="card">
+            <div class="card-header">
+                <h2>Mitarbeiter Sortierung (Schichtplan)</h2>
+                <div id="status-message" style="color: green; font-weight: 500;"></div>
+            </div>
+
+            <ul id="user-sort-list">
+                </ul>
+
+            <div class="card-footer">
+                <button class="btn-primary" id="save-order-btn">Reihenfolge speichern</button>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        // --- Globales Setup ---
+        const API_URL = 'http://46.224.63.203:5000'; // (Ihre IP)
+        let user;
+        let sortableInstance = null;
+
+        // --- Basis-Funktionen (Logout, Auth-Check) ---
+        async function logout() {
+            try { await apiFetch('/api/logout', 'POST'); }
+            catch (e) { console.error(e); }
+            finally {
+                localStorage.removeItem('dhf_user');
+                window.location.href = 'index.html?logout=true';
+            }
+        }
+        try {
+            user = JSON.parse(localStorage.getItem('dhf_user'));
+            if (!user || !user.vorname) { throw new Error("Kein User"); }
+            document.getElementById('welcome-user').textContent = `Willkommen, ${user.vorname}!`;
+        } catch (e) {
+            logout();
+        }
+        document.getElementById('logout-btn').onclick = logout;
+
+        // --- Globale API-Funktion (unverändert) ---
+        async function apiFetch(endpoint, method = 'GET', body = null) {
+            const options = {
+                method,
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include'
+            };
+            if (body) { options.body = JSON.stringify(body); }
+            const response = await fetch(API_URL + endpoint, options);
+            if (response.status === 401 || response.status === 403) {
+                logout();
+                throw new Error('Sitzung ungültig oder fehlende Rechte.');
+            }
+            const contentType = response.headers.get("content-type");
+            let data;
+            if (contentType && contentType.indexOf("application/json") !== -1) {
+                data = await response.json();
+            } else {
+                data = { message: await response.text() };
+            }
+            if (!response.ok) {
+                throw new Error(data.message || 'API-Fehler');
+            }
+            return data;
+        }
+
+        // --- Seiten-Logik (unverändert) ---
+
+        const userList = document.getElementById('user-sort-list');
+        const saveBtn = document.getElementById('save-order-btn');
+        const statusMsg = document.getElementById('status-message');
+
+        async function loadUsers() {
+            try {
+                // /api/users ist automatisch nach 'shift_plan_sort_order' sortiert
+                const users = await apiFetch('/api/users');
+                userList.innerHTML = '';
+
+                users.forEach(u => {
+                    const li = document.createElement('li');
+                    li.className = 'sortable-item';
+                    li.dataset.userId = u.id;
+                    li.dataset.visible = u.shift_plan_visible;
+
+                    const roleName = u.role ? u.role.name : 'N/A';
+                    const visibilityClass = u.shift_plan_visible ? 'visible' : '';
+
+                    li.innerHTML = `
+                        <span class="drag-handle">☰</span>
+                        <span class="user-name">${u.vorname} ${u.name}</span>
+                        <span class="user-role">${roleName}</span>
+                        <span class="visibility-toggle ${visibilityClass}" title="Im Plan anzeigen/ausblenden">👁</span>
+                    `;
+                    userList.appendChild(li);
+                });
+
+                if (sortableInstance) sortableInstance.destroy();
+                sortableInstance = new Sortable(userList, {
+                    handle: '.drag-handle',
+                    animation: 150,
+                    ghostClass: 'sortable-ghost'
+                });
+
+            } catch (error) {
+                userList.innerHTML = `<li style="color: red; padding: 20px;">Fehler beim Laden der Benutzer: ${error.message}</li>`;
+            }
+        }
+
+        userList.addEventListener('click', function(e) {
+            if (e.target.classList.contains('visibility-toggle')) {
+                const li = e.target.closest('.sortable-item');
+                const isVisible = li.dataset.visible === 'true';
+                li.dataset.visible = !isVisible;
+                e.target.classList.toggle('visible', !isVisible);
+            }
+        });
+
+        saveBtn.onclick = async () => {
+            statusMsg.textContent = 'Speichere...';
+            statusMsg.style.color = '#555';
+
+            const listItems = userList.querySelectorAll('.sortable-item');
+            const payload = [];
+
+            listItems.forEach((li, index) => {
+                payload.push({
+                    id: parseInt(li.dataset.userId),
+                    visible: li.dataset.visible === 'true',
+                    order: index
+                });
+            });
+
+            try {
+                await apiFetch('/api/users/display_settings', 'PUT', payload);
+                statusMsg.textContent = 'Erfolgreich gespeichert!';
+                statusMsg.style.color = 'green';
+                setTimeout(() => statusMsg.textContent = '', 2000);
+            } catch (error) {
+                statusMsg.textContent = 'Fehler: ' + error.message;
+                statusMsg.style.color = 'red';
+            }
+        };
+
+        // --- Initialisierung ---
+        loadUsers();
+
+    </script>
+</body>
+</html>
