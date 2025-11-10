@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <title>DHF-Planer - Admin Dashboard</title>
+    <style>
+        body { font-family: sans-serif; padding: 20px; background: #f9f9f9; }
+        h1, h2, h3, h4 { color: #3498db; }
+        button { background: #3498db; color: white; border: none; padding: 10px 15px; cursor: pointer; font-size: 16px; border-radius: 5px; margin-right: 10px; }
+        button:hover { background: #2980b9; }
+
+        /* Spezielle Button-Farben */
+        button.create-btn { background: #2ecc71; }
+        button.create-btn:hover { background: #27ae60; }
+        button.approve-btn { background: #e67e22; }
+        button.approve-btn:hover { background: #d35400; }
+        button.edit-btn { background: #f1c40f; }
+        button.edit-btn:hover { background: #f39c12; }
+        button.delete-btn { background: #e74c3c; }
+        button.delete-btn:hover { background: #c0392b; }
+
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; background: #fff; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+        th, td { border: 1px solid #ddd; padding: 10px; text-align: left; }
+        th { background-color: #3498db; color: white; }
+        tr:nth-child(even) { background-color: #f2f2f2; }
+
+        #user-management-container { display: none; margin-top: 20px; }
+
+        /* Styling für Formulare (Erstellen & Bearbeiten) */
+        .form-container {
+            background: #ecf0f1; padding: 20px; border-radius: 8px;
+            margin-top: 20px; display: none;
+        }
+        .form-container div { margin-bottom: 10px; }
+        .form-container label { display: inline-block; width: 100px; }
+        .form-container input, .form-container select { padding: 8px; width: 250px; }
+
+        #status-bar { margin-top: 20px; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <h1>Willkommen, Admin!</h1>
+    <a href="/">Abmelden</a>
+    <hr>
+
+    <h2>Admin-Bereich</h2>
+    <button onclick="toggleUserManagement()">Benutzerverwaltung</button>
+    <div id="status-bar"></div>
+
+    <div id="user-management-container">
+        <h3>Benutzerliste</h3>
+        <button class="create-btn" onclick="toggleCreateUserForm()">+ Neuen Benutzer erstellen</button>
+
+        <div id="create-user-form" class="form-container">
+            <h4>Neuen Benutzer erstellen</h4>
+            <div><label for="new-vorname">Vorname:</label><input type="text" id="new-vorname"></div>
+            <div><label for="new-name">Nachname:</label><input type="text" id="new-name"></div>
+            <div><label for="new-passwort">Passwort:</label><input type="password" id="new-passwort"></div>
+            <div><label for="new-role">Rolle:</label>
+                <select id="new-role">
+                    <option value="Mitarbeiter">Mitarbeiter</option>
+                    <option value="Guest">Guest</option>
+                    <option value="Admin">Admin</option>
+                </select>
+            </div>
+            <button class="create-btn" onclick="createUser()">Erstellen</button>
+        </div>
+
+        <div id="edit-user-form" class="form-container">
+            <h4>Benutzer bearbeiten</h4>
+            <input type="hidden" id="edit-user-id"> <div><label for="edit-vorname">Vorname:</label><input type="text" id="edit-vorname"></div>
+            <div><label for="edit-name">Nachname:</label><input type="text" id="edit-name"></div>
+            <div><label for="edit-role">Rolle:</label>
+                <select id="edit-role">
+                    <option value="Mitarbeiter">Mitarbeiter</option>
+                    <option value="Guest">Guest</option>
+                    <option value="Admin">Admin</option>
+                </select>
+            </div>
+            <button class="create-btn" onclick="saveUserChanges()">Änderungen speichern</button>
+            <button onclick="closeEditModal()">Abbrechen</button>
+        </div>
+
+        <table id="user-table" style="margin-top: 20px;">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Username</th>
+                    <th>Name</th>
+                    <th>Rolle</th>
+                    <th>Status</th>
+                    <th>Aktionen</th>
+                </tr>
+            </thead>
+            <tbody></tbody>
+        </table>
+    </div>
+
+
+    <script>
+        const API_URL = 'http://46.224.63.203:5000';
+        const statusBar = document.getElementById('status-bar');
+
+        // --- Umschaltfunktionen ---
+        function toggleUserManagement() {
+            const container = document.getElementById('user-management-container');
+            if (container.style.display === 'none') {
+                container.style.display = 'block';
+                loadUsers(); // Nur laden, wenn eingeblendet
+            } else {
+                container.style.display = 'none';
+            }
+        }
+
+        function toggleCreateUserForm() {
+            closeEditModal(); // Edit-Fenster schließen, falls offen
+            const form = document.getElementById('create-user-form');
+            form.style.display = (form.style.display === 'none') ? 'block' : 'none';
+        }
+
+        // --- API-Funktion: Benutzer laden ---
+        async function loadUsers() {
+            const tableBody = document.querySelector("#user-table tbody");
+            statusBar.textContent = 'Lade Benutzer...';
+            tableBody.innerHTML = '';
+
+            try {
+                const response = await fetch(API_URL + '/api/users');
+                const users = await response.json();
+                if (!response.ok) throw new Error(users.message || 'Serverfehler');
+                if (users.length === 0) {
+                    statusBar.textContent = "Keine Benutzer in der Datenbank gefunden.";
+                    return;
+                }
+
+                users.forEach(user => {
+                    const statusText = user.is_approved ? '✅ Freigeschaltet' : '❌ Gesperrt';
+
+                    // Aktionen-Buttons
+                    let actions = '';
+                    if (!user.is_approved) {
+                        actions += `<button class="approve-btn" onclick="approveUser(${user.id})">Freischalten</button>`;
+                    }
+                    // NEU: 'user' als JSON-String übergeben
+                    actions += `<button class="edit-btn" onclick='openEditModal(${JSON.stringify(user)})'>Bearbeiten</button>`;
+                    actions += `<button class="delete-btn" onclick="deleteUser(${user.id}, \"${user.vorname} ${user.name}\")">Löschen</button>`;
+
+                    const row = `
+                        <tr>
+                            <td>${user.id}</td>
+                            <td>${user.username || 'N/A'}</td>
+                            <td>${user.vorname} ${user.name}</td>
+                            <td>${user.role}</td>
+                            <td>${statusText}</td>
+                            <td style="min-width: 250px;">${actions}</td>
+                        </tr>
+                    `;
+                    tableBody.innerHTML += row;
+                });
+
+                statusBar.textContent = `Benutzerliste geladen (${users.length} Einträge).`;
+                statusBar.style.color = 'black';
+
+            } catch (err) {
+                statusBar.textContent = 'Fehler beim Laden der Benutzer: ' + (err.message || 'Failed to fetch');
+                statusBar.style.color = 'red';
+            }
+        }
+
+        // --- API-Funktion: Neuen Benutzer erstellen (unverändert) ---
+        async function createUser() {
+            statusBar.textContent = 'Erstelle Benutzer...';
+            const data = {
+                vorname: document.getElementById('new-vorname').value,
+                name: document.getElementById('new-name').value,
+                passwort: document.getElementById('new-passwort').value,
+                role: document.getElementById('new-role').value
+            };
+            try {
+                const response = await fetch(API_URL + '/api/admin/create_user', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(data)
+                });
+                const result = await response.json();
+                if (response.ok) {
+                    statusBar.textContent = result.message;
+                    statusBar.style.color = 'green';
+                    document.getElementById('new-vorname').value = '';
+                    document.getElementById('new-name').value = '';
+                    document.getElementById('new-passwort').value = '';
+                    toggleCreateUserForm(); // Formular einklappen
+                    loadUsers(); // Liste neu laden
+                } else {
+                    statusBar.textContent = 'Fehler: ' + result.message;
+                    statusBar.style.color = 'red';
+                }
+            } catch (err) {
+                statusBar.textContent = 'Server-Fehler: ' + err.message;
+                statusBar.style.color = 'red';
+            }
+        }
+
+        // --- API-Funktion: Benutzer freischalten (unverändert) ---
+        async function approveUser(userId) {
+            if (!confirm(`Wollen Sie den Benutzer mit ID ${userId} wirklich freischalten?`)) return;
+            statusBar.textContent = `Schalte Benutzer ${userId} frei...`;
+            try {
+                const response = await fetch(API_URL + '/api/admin/approve', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ user_id: userId })
+                });
+                const result = await response.json();
+                if (response.ok) {
+                    statusBar.textContent = result.message;
+                    statusBar.style.color = 'green';
+                    loadUsers(); // Liste neu laden
+                } else {
+                    statusBar.textContent = 'Fehler: ' + result.message;
+                    statusBar.style.color = 'red';
+                }
+            } catch (err) {
+                statusBar.textContent = 'Server-Fehler: ' + err.message;
+                statusBar.style.color = 'red';
+            }
+        }
+
+        // ======================================================================
+        // --- NEUE FUNKTIONEN: Bearbeiten und Löschen ---
+        // ======================================================================
+
+        function openEditModal(user) {
+            // Formular füllen
+            document.getElementById('edit-user-id').value = user.id;
+            document.getElementById('edit-vorname').value = user.vorname;
+            document.getElementById('edit-name').value = user.name;
+            document.getElementById('edit-role').value = user.role;
+
+            // Formulare korrekt ein/ausblenden
+            document.getElementById('create-user-form').style.display = 'none';
+            document.getElementById('edit-user-form').style.display = 'block';
+        }
+
+        function closeEditModal() {
+             document.getElementById('edit-user-form').style.display = 'none';
+        }
+
+        async function saveUserChanges() {
+            const userId = document.getElementById('edit-user-id').value;
+            statusBar.textContent = `Speichere Änderungen für Benutzer ${userId}...`;
+
+            // Nur die Felder, die 'update_user_details' erwartet
+            const details = {
+                vorname: document.getElementById('edit-vorname').value,
+                name: document.getElementById('edit-name').value,
+                role: document.getElementById('edit-role').value
+                // HINWEIS: Passwort-Änderung ist komplexer und wird hier ausgelassen
+            };
+
+            try {
+                const response = await fetch(`${API_URL}/api/admin/update_user/${userId}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(details)
+                });
+                const result = await response.json();
+                if (response.ok) {
+                    statusBar.textContent = result.message;
+                    statusBar.style.color = 'green';
+                    closeEditModal();
+                    loadUsers(); // Liste neu laden
+                } else {
+                    statusBar.textContent = 'Fehler: ' + result.message;
+                    statusBar.style.color = 'red';
+                }
+            } catch (err) {
+                statusBar.textContent = 'Server-Fehler: ' + err.message;
+                statusBar.style.color = 'red';
+            }
+        }
+
+        async function deleteUser(userId, userName) {
+            if (!confirm(`Wollen Sie den Benutzer "${userName}" (ID ${userId}) wirklich DAUERHAFT löschen?`)) return;
+
+            statusBar.textContent = `Lösche Benutzer ${userId}...`;
+
+            try {
+                const response = await fetch(`${API_URL}/api/admin/delete_user/${userId}`, {
+                    method: 'DELETE'
+                });
+                const result = await response.json();
+
+                if (response.ok) {
+                    statusBar.textContent = result.message;
+                    statusBar.style.color = 'green';
+                    loadUsers(); // Liste neu laden
+                } else {
+                    statusBar.textContent = 'Fehler: ' + result.message;
+                    statusBar.style.color = 'red';
+                }
+            } catch (err) {
+                statusBar.textContent = 'Server-Fehler: ' + err.message;
+                statusBar.style.color = 'red';
+            }
+        }
+
+    </script>
+
+</body>
+</html>

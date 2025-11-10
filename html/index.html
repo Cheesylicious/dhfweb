@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-F-8">
+    <title>DHF-Planer Login</title>
+    <style>
+        body { font-family: sans-serif; display: grid; place-items: center; min-height: 100vh; background: #f4f4f4; }
+        #login-box { background: #fff; border: 1px solid #ccc; padding: 25px; border-radius: 8px; box-shadow: 0 2px 5px rgba(0,0,0,0.1); }
+        div { margin-bottom: 15px; }
+        label { display: block; margin-bottom: 5px; }
+        input { width: 300px; padding: 8px; }
+        button { width: 100%; padding: 10px; background: #3498db; color: white; border: none; cursor: pointer; }
+        #register-btn { background: #555; margin-top: 10px; }
+        #status { margin-top: 15px; text-align: center; }
+    </style>
+</head>
+<body>
+    <div id="login-box">
+        <h2>DHF-Planer Login / Registrierung</h2>
+        <div>
+            <label for="vorname">Vorname:</label>
+            <input type="text" id="vorname" value="Super">
+        </div>
+        <div>
+            <label for="name">Nachname:</label>
+            <input type="text" id="name" value="Admin">
+        </div>
+        <div>
+            <label for="passwort">Passwort:</label>
+            <input type="password" id="passwort" value="TemporaryAccess123">
+        </div>
+        <button onclick="login()">Anmelden</button>
+        <button id="register-btn" onclick="register()">Als SuperAdmin Registrieren</button>
+        <div id="status"></div>
+    </div>
+
+    <script>
+        const API_URL = 'http://46.224.63.203:5000'; // Backend-URL
+        const statusEl = document.getElementById('status');
+
+        function getAuthData() {
+            return {
+                vorname: document.getElementById('vorname').value,
+                name: document.getElementById('name').value,
+                passwort: document.getElementById('passwort').value
+            };
+        }
+
+        async function login() {
+            const authData = getAuthData();
+            statusEl.textContent = 'Melde an...';
+
+            try {
+                const response = await fetch(API_URL + '/api/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(authData)
+                });
+                const data = await response.json();
+
+                if (response.ok) {
+                    // --- KORREKTUR HIER ---
+                    // Statt Text anzuzeigen, leiten wir auf die neue Seite weiter.
+                    statusEl.textContent = 'Erfolg! Leite weiter...';
+                    window.location.href = 'admin.html'; // <-- DAS IST DIE ÄNDERUNG
+                    // --- ENDE KORREKTUR ---
+                } else {
+                    statusEl.textContent = 'Fehler: ' + data.message;
+                    statusEl.style.color = 'red';
+                }
+            } catch (err) {
+                statusEl.textContent = 'Server-Fehler: ' + err.message;
+                statusEl.style.color = 'red';
+            }
+        }
+
+        // (Die register() Funktion bleibt unverändert)
+        async function register() {
+            const authData = getAuthData();
+            statusEl.textContent = 'Registriere...';
+
+            try {
+                const response = await fetch(API_URL + '/api/register', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(authData)
+                });
+                const data = await response.json();
+                if (response.ok) {
+                    statusEl.textContent = data.message;
+                    statusEl.style.color = 'blue';
+                } else {
+                    statusEl.textContent = 'Fehler: ' + data.message;
+                    statusEl.style.color = 'red';
+                }
+            } catch (err) {
+                statusEl.textContent = 'Server-Fehler: ' + err.message;
+                statusEl.style.color = 'red';
+            }
+        }
+    </script>
+</body>
+</html>
