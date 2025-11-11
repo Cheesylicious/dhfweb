@@ -1,0 +1,167 @@
+import os
+from flask import Flask, jsonify
+from flask_cors import CORS
+from .config import config
+from .extensions import db, bcrypt, login_manager
+
+
+def create_app(config_name='default'):
+    """
+    Application Factory: Erstellt und konfiguriert die Flask-App.
+    """
+    app = Flask(__name__)
+
+    # 1. Konfiguration laden
+    app.config.from_object(config[config_name])
+    config[config_name].init_app(app)
+
+    # 2. Extensions (db, bcrypt, etc.) an die App binden
+    db.init_app(app)
+    bcrypt.init_app(app)
+    login_manager.init_app(app)
+
+    # 3. CORS initialisieren (wie im Original)
+    CORS(app, supports_credentials=True, origins=["http://46.224.63.203", "http://ihre-domain.de"])
+
+    # --- KORREKTUR: User Loader Registrierung ---
+    # Dies MUSS hier passieren, NACHDEM login_manager initialisiert wurde
+    # und BEVOR die Blueprints importiert werden, die User verwenden.
+    from .models import User
+    @login_manager.user_loader
+    def load_user(user_id):
+        return db.session.get(User, int(user_id))
+
+    # --- ENDE KORREKTUR ---
+
+    # 4. Blueprints (Routen-Sammlungen) registrieren
+    # (Diese Importe bleiben HIER, um zirkuläre Abhängigkeiten zu vermeiden)
+    from .routes_auth import auth_bp
+    app.register_blueprint(auth_bp)
+
+    from .routes_admin import admin_bp
+    app.register_blueprint(admin_bp)
+
+    from .routes_shifts import shifts_bp
+    app.register_blueprint(shifts_bp)
+
+    from .routes_events import events_bp
+    app.register_blueprint(events_bp)
+
+    # 5. Startup-Logik (Defaults erstellen)
+    with app.app_context():
+        db.create_all()
+        create_default_roles(db)
+        create_default_shifttypes(db)
+        create_default_holidays(db)
+
+    return app
+
+
+# --- Startup-Funktionen (bleiben unverändert) ---
+
+def create_default_roles(db_instance):
+    """
+    Erstellt die Standard-Rollen 'admin' und 'user', falls sie nicht existieren.
+    """
+    from .models import Role  # Importiert Model *innerhalb* der Funktion
+
+    admin_role = Role.query.filter_by(name='admin').first()
+    if not admin_role:
+        admin_role = Role(name='admin', description='Systemadministrator')
+        db_instance.session.add(admin_role)
+
+    user_role = Role.query.filter_by(name='user').first()
+    if not user_role:
+        user_role = Role(name='user', description='Standardbenutzer')
+        db_instance.session.add(user_role)
+
+    try:
+        db_instance.session.commit()
+    except Exception as e:
+        db_instance.session.rollback()
+        print(f"Fehler beim Erstellen der Standard-Rollen: {e}")
+
+
+def create_default_shifttypes(db_instance):
+    """
+    Erstellt die Standard-Schichtarten (T, N, 6, FREI, U, X).
+    """
+    from .models import ShiftType  # Importiert Model *innerhalb* der Funktion
+
+    default_types = [
+        {'name': 'Tag (T)', 'abbreviation': 'T.', 'color': '#AED6F1',
+         'hours': 8.0, 'hours_spillover': 0.0, 'is_work_shift': True},
+        {'name': 'Nacht (N)', 'abbreviation': 'N.', 'color': '#5D6D7E',
+         'hours': 2.0, 'hours_spillover': 6.0, 'is_work_shift': True},
+        {'name': 'Kurz (6)', 'abbreviation': '6', 'color': '#A9DFBF',
+         'hours': 6.0, 'hours_spillover': 0.0, 'is_work_shift': True},
+        {'name': 'Frei (Geplant)', 'abbreviation': 'FREI', 'color': '#FFFFFF',
+         'hours': 0.0, 'hours_spillover': 0.0, 'is_work_shift': False},
+        {'name': 'Urlaub', 'abbreviation': 'U', 'color': '#FAD7A0',
+         'hours': 0.0, 'hours_spillover': 0.0, 'is_work_shift': False},
+        {'name': 'Wunschfrei (X)', 'abbreviation': 'X', 'color': '#D2B4DE',
+         'hours': 0.0, 'hours_spillover': 0.0, 'is_work_shift': False},
+    ]
+
+    try:
+        for st_data in default_types:
+            existing = ShiftType.query.filter_by(abbreviation=st_data['abbreviation']).first()
+            if not existing:
+                new_type = ShiftType(**st_data)
+                db_instance.session.add(new_type)
+            else:
+                # (Optional) Aktualisiere bestehende, falls sie noch keinen Spillover haben
+                # (Diese Prüfung ist wichtig für bestehende Installationen)
+                if not hasattr(existing, 'hours_spillover') or (
+                        existing.hours_spillover == 0.0 and st_data['hours_spillover'] > 0.0):
+                    if st_data['abbreviation'] == 'N.':  # Nur die Nachtschicht aktualisieren
+                        existing.hours = st_data['hours']
+                        existing.hours_spillover = st_data['hours_spillover']
+
+        db_instance.session.commit()
+    except Exception as e:
+        db_instance.session.rollback()
+        print(f"Fehler beim Erstellen der Standard-Schichtarten: {e}")
+
+
+def create_default_holidays(db_instance):
+    """
+    Erstellt die Standard-Feiertage für MV (als Vorlagen ohne Datum).
+    """
+    from .models import SpecialDate
+
+    # Gesetzliche Feiertage Mecklenburg-Vorpommern
+    mv_holidays = [
+        "Neujahr",
+        "Internationaler Frauentag",
+        "Karfreitag",
+        "Ostermontag",
+        "Tag der Arbeit",
+        "Christi Himmelfahrt",
+        "Pfingstmontag",
+        "Tag der Deutschen Einheit",
+        "Reformationstag",
+        "Erster Weihnachtsfeiertag",
+        "Zweiter Weihnachtsfeiertag"
+    ]
+
+    try:
+        for holiday_name in mv_holidays:
+            # Prüft, ob ein Feiertag mit diesem NAMEN bereits existiert
+            existing = SpecialDate.query.filter_by(
+                type='holiday',
+                name=holiday_name
+            ).first()
+
+            if not existing:
+                new_holiday = SpecialDate(
+                    name=holiday_name,
+                    date=None,  # Datum wird vom Admin manuell gesetzt
+                    type='holiday'
+                )
+                db_instance.session.add(new_holiday)
+
+        db_instance.session.commit()
+    except Exception as e:
+        db_instance.session.rollback()
+        print(f"Fehler beim Erstellen der Standard-Feiertage: {e}")
