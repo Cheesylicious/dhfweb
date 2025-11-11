@@ -65,12 +65,21 @@ class ShiftType(db.Model):
     hours = db.Column(db.Float, default=0.0)
     is_work_shift = db.Column(db.Boolean, default=False)
     hours_spillover = db.Column(db.Float, default=0.0)
+    # --- NEU: Start- und Endzeit für Konfliktprüfung ---
+    start_time = db.Column(db.String(5), nullable=True)  # Format 'HH:MM'
+    end_time = db.Column(db.String(5), nullable=True)  # Format 'HH:MM'
+
+    # --- ENDE NEU ---
 
     def to_dict(self):
         return {"id": self.id, "name": self.name, "abbreviation": self.abbreviation,
                 "color": self.color, "hours": self.hours,
                 "is_work_shift": self.is_work_shift,
-                "hours_spillover": self.hours_spillover
+                "hours_spillover": self.hours_spillover,
+                # --- NEU: Rückgabe der Zeiten ---
+                "start_time": self.start_time,
+                "end_time": self.end_time
+                # --- ENDE NEU ---
                 }
 
 
@@ -115,3 +124,20 @@ class SpecialDate(db.Model):
             "date": self.safe_date_iso(self.date),
             "type": self.type
         }
+
+
+# --- NEUES MODELL: Globale Einstellungen (Farben etc.) ---
+class GlobalSetting(db.Model):
+    """
+    Speichert globale Schlüssel-Wert-Paare für Einstellungen (z.B. Farben).
+    """
+    id = db.Column(db.Integer, primary_key=True)
+    key = db.Column(db.String(100), unique=True, nullable=False)
+    value = db.Column(db.String(255), nullable=True)
+
+    def to_dict(self):
+        return {
+            "key": self.key,
+            "value": self.value
+        }
+# --- ENDE NEUES MODELL ---

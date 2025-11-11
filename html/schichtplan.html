@@ -58,6 +58,8 @@
             padding: 30px;
             max-width: 100%;
             box-sizing: border-box;
+            position: relative; /* <<< NEU: Aktiviert den Stacking Context für main */
+            z-index: 1; /* <<< NEU: Hält den main-Inhalt bewusst niedrig */
         }
 
         /* Card (ZURÜCK ZU WEISS - WIE VOM USER GEWÜNSCHT) */
@@ -81,6 +83,8 @@
             margin-top: -1px;
             display: flex;
             align-items: center;
+            position: relative; /* <<< NEU: Wichtig für z-index */
+            z-index: 100000; /* <<< KORRIGIERT: Extrem hoher Z-Index für Sub-Nav */
         }
         .sub-nav a {
             display: inline-block; padding: 15px 20px; text-decoration: none;
@@ -93,7 +97,11 @@
         }
 
         /* Dropdown-Menü (KORRIGIERT) */
-        .dropdown { position: relative; display: inline-block; }
+        .dropdown {
+            position: relative;
+            display: inline-block;
+            z-index: 100001; /* Stellt sicher, dass der Container dominiert */
+        }
         .dropdown .dropbtn {
             font-family: 'Poppins', sans-serif;
             text-decoration: none; color: #bdc3c7; font-weight: 500; font-size: 16px;
@@ -110,9 +118,10 @@
             border: 1px solid rgba(255, 255, 255, 0.1);
             min-width: 200px;
             box-shadow: 0px 8px 16px 0px rgba(0,0,0,0.2);
-            z-index: 100;
+            z-index: 100002; /* <<< KORRIGIERT: Maximaler Z-Index */
             border-radius: 5px;
-            margin-top: -1px;
+            margin-top: 0px;
+            left: 0;
         }
         .dropdown-content a {
             color: #bdc3c7; /* (Heller Text) */
@@ -170,9 +179,22 @@
 
         .grid-header {
             background: #fcfcfc; /* (Zurück zu Hell) */
-            font-weight: 600; position: sticky; top: 0; z-index: 10;
+            font-weight: 600; position: sticky; top: 0; z-index: 1; /* <<< KORRIGIERT: Auf 1 reduziert */
         }
-        .grid-header.weekend { background-color: #fff8f8; }
+
+        /* Standard-Wochenende Farbe */
+        .grid-header.weekend { background-color: var(--weekend-bg-color, #fff8f8); color: var(--weekend-text-color, #333); }
+        .grid-cell.weekend { background-color: var(--weekend-bg-color, #fff8f8); color: var(--weekend-text-color, #333); }
+
+        /* --- NEU: Dynamische Hintergrundfarben für Termine --- */
+        .day-color-holiday { background-color: var(--holiday-bg-color, #ffddaa) !important; color: var(--text-color, #333); }
+        .day-color-training { background-color: var(--training-bg-color, #daffdb) !important; color: var(--text-color, #333); }
+        .day-color-shooting { background-color: var(--shooting-bg-color, #ffb0b0) !important; color: var(--text-color, #333); }
+        .grid-header.day-color-holiday { color: var(--text-color, #333); }
+        .grid-header.day-color-training { color: var(--text-color, #333); }
+        .grid-header.day-color-shooting { color: var(--text-color, #333); }
+        /* --- ENDE NEU --- */
+
 
         .grid-user-name {
             font-weight: 600; text-align: left;
@@ -192,7 +214,13 @@
             background-color: #d6eaff !important;
             box-shadow: inset 0 0 0 2px #007bff;
         }
-        .grid-cell.weekend { background-color: #fff8f8; }
+
+        /* --- NEU: Konflikt-Stil --- */
+        .grid-cell.violation {
+            box-shadow: inset 0 0 0 3px #e74c3c !important; /* Roter Rand */
+            border: 1px solid #e74c3c !important;
+        }
+        /* --- ENDE NEU --- */
 
         .plan-legende {
             padding: 20px; display: flex; flex-wrap: wrap; gap: 15px;
@@ -267,7 +295,7 @@
                 <a href="schichtarten.html">Schichtarten</a>
                 <a href="shortcuts.html">Shortcuts</a>
                 <a href="feiertage.html">Feiertage & Sondertermine</a>
-            </div>
+                <a href="farbeeinstellungen.html">Farbeinstellungen</a> </div>
         </div>
     </div>
 
@@ -392,6 +420,7 @@
         // --- Globales Setup (unverändert) ---
         const API_URL = 'http://46.224.63.203:5000';
         const SHORTCUT_STORAGE_KEY = 'dhf_shortcuts';
+        const COLOR_STORAGE_KEY = 'dhf_color_settings';
         let user;
         let currentDate = new Date();
         let currentYear = currentDate.getFullYear();
@@ -400,11 +429,22 @@
         let allShiftTypes = {};
         let currentShifts = {};
         let currentTotals = {};
+        let currentViolations = new Set();
+        let currentSpecialDates = {};
+        let colorSettings = {};
         let hoveredCellContext = null;
 
         // --- NEU: shortcutMap wird dynamisch geladen ---
         let shortcutMap = {};
         const defaultShortcuts = { 'T.': 't', 'N.': 'n', '6': '6', 'FREI': 'f', 'X': 'x', 'U': 'u' };
+
+        const DEFAULT_COLORS = {
+            'weekend_bg_color': '#fff8f8',
+            'weekend_text_color': '#333333',
+            'holiday_bg_color': '#ffddaa',
+            'training_bg_color': '#daffdb',
+            'shooting_bg_color': '#ffb0b0'
+        };
 
 
         const gridContainer = document.getElementById('schichtplan-grid-container');
@@ -452,6 +492,37 @@
             return data;
         }
 
+        // --- NEU: Laden der Farbeinstellungen aus der DB (Wichtigste Änderung) ---
+        async function loadColorSettings() {
+             let fetchedColors = DEFAULT_COLORS;
+
+            // Lade Farben aus der Datenbank
+            try {
+                const data = await apiFetch('/api/settings', 'GET');
+                // Überschreibe Defaults nur, wenn Werte in der DB existieren
+                for(const key in DEFAULT_COLORS) {
+                    if (data[key] !== undefined && data[key] !== null) {
+                        fetchedColors[key] = data[key];
+                    } else {
+                         fetchedColors[key] = DEFAULT_COLORS[key];
+                    }
+                }
+                colorSettings = fetchedColors;
+            } catch (error) {
+                 console.error("Fehler beim Laden der globalen Einstellungen:", error.message);
+                 colorSettings = DEFAULT_COLORS;
+            }
+
+            // Setzt CSS-Variablen, um Farben global anwendbar zu machen
+            const root = document.documentElement.style;
+            for (const key in colorSettings) {
+                // Ersetze Unterstrich durch Bindestrich für CSS-Variablen (z.B. weekend_bg_color -> --weekend-bg-color)
+                root.setProperty(`--${key.replace(/_/g, '-')}`, colorSettings[key]);
+            }
+        }
+        // --- ENDE NEU: Laden der Farbeinstellungen aus der DB ---
+
+
         // --- MODAL-LOGIK (unverändert) ---
         function closeModal(modalEl) {
             modalEl.style.display = 'none';
@@ -469,24 +540,44 @@
             if (event.target == shiftModal) closeModal(shiftModal);
         }
 
-        // --- HAUPT-RENDER-LOGIK (unverändert) ---
+        // --- NEU: Laden aller Sondertermine ---
+        async function loadSpecialDates(year) {
+             try {
+                // Fügt das Jahr als Filter hinzu
+                const dates = await apiFetch(`/api/special_dates?year=${year}`);
+                currentSpecialDates = {};
+                dates.forEach(d => {
+                    if (d.date) {
+                        // Key: YYYY-MM-DD
+                        currentSpecialDates[d.date] = d.type;
+                    }
+                });
+            } catch (error) {
+                 console.error("Fehler beim Laden der Sondertermine:", error.message);
+            }
+        }
+        // --- ENDE NEU: Laden aller Sondertermine ---
+
+
+        // --- HAUPT-RENDER-LOGIK (Angepasst) ---
         async function renderGrid() {
             monthLabel.textContent = "Lade...";
             grid.innerHTML = '<div style="padding: 20px; text-align: center; color: #333;">Lade Daten...</div>'; // (Textfarbe angepasst)
             try {
+                // Lade Daten parallel
                 const shiftDataPromise = apiFetch(`/api/shifts?year=${currentYear}&month=${currentMonth}`);
                 const userDataPromise = apiFetch('/api/users');
-                // (Stellt sicher, dass Schichtarten geladen sind, bevor Shortcuts geladen werden)
                 const typeDataPromise = Object.keys(allShiftTypes).length > 0 ? Promise.resolve(Object.values(allShiftTypes)) : apiFetch('/api/shifttypes');
+                // Sondertermine werden pro Jahr geladen, nicht pro Monat
+                const specialDatesPromise = loadSpecialDates(currentYear);
 
-                const [shiftPayload, userData, typeData] = await Promise.all([shiftDataPromise, userDataPromise, typeDataPromise]);
+                const [shiftPayload, userData, typeData] = await Promise.all([shiftDataPromise, userDataPromise, typeDataPromise, specialDatesPromise]);
 
                 allUsers = userData;
                 if (Object.keys(allShiftTypes).length === 0) {
                     typeData.forEach(st => allShiftTypes[st.id] = st);
                 }
 
-                // (Shortcuts laden, NACHDEM allShiftTypes gefüllt ist)
                 loadShortcuts();
 
                 currentShifts = {};
@@ -495,6 +586,15 @@
                     currentShifts[key] = s;
                 });
                 currentTotals = shiftPayload.totals;
+
+                // Konflikte speichern
+                currentViolations.clear();
+                if (shiftPayload.violations) {
+                    shiftPayload.violations.forEach(v => {
+                        currentViolations.add(`${v[0]}-${v[1]}`);
+                    });
+                }
+
                 buildGridDOM();
             } catch (error) {
                 grid.innerHTML = `<div style="padding: 20px; text-align: center; color: red;">Fehler beim Laden des Plans: ${error.message}</div>`;
@@ -502,7 +602,6 @@
         }
 
         function buildGridDOM() {
-            // (Diese Funktion bleibt 1:1 unverändert)
             const daysInMonth = new Date(currentYear, currentMonth, 0).getDate();
             const monthName = new Date(currentYear, currentMonth - 1, 1).toLocaleString('de-DE', { month: 'long', year: 'numeric' });
             monthLabel.textContent = monthName;
@@ -511,34 +610,71 @@
             const weekdays = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'];
             grid.appendChild(document.createElement('div'));
             grid.appendChild(document.createElement('div'));
+
+            // --- HILFSFUNKTION ---
+            const renderDayHeader = (day, isWeekend, dateStr) => {
+                const eventType = currentSpecialDates[dateStr];
+
+                const headerCell = document.createElement('div');
+                let headerClasses = 'grid-header';
+                let cellColor = '';
+                let textColor = '#333';
+
+                if (eventType) {
+                    headerClasses += ` day-color-${eventType}`;
+                } else if (isWeekend) {
+                    cellColor = colorSettings.weekend_bg_color;
+                    textColor = colorSettings.weekend_text_color;
+                } else {
+                    cellColor = '#fcfcfc'; // Default normaler Tag
+                }
+
+                headerCell.className = headerClasses;
+                headerCell.style.backgroundColor = cellColor;
+                headerCell.style.color = textColor;
+                return headerCell;
+            };
+
+            // --- Erzeugung der Header-Zeilen 1 (Wochentage) ---
             for (let day = 1; day <= daysInMonth; day++) {
                 const d = new Date(currentYear, currentMonth - 1, day);
                 const dayName = weekdays[d.getDay()];
                 const isWeekend = d.getDay() === 0 || d.getDay() === 6;
-                const headerCell = document.createElement('div');
-                headerCell.className = 'grid-header' + (isWeekend ? ' weekend' : '');
+
+                const dateStr = `${currentYear}-${String(currentMonth).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+
+                const headerCell = renderDayHeader(day, isWeekend, dateStr);
                 headerCell.textContent = dayName;
                 grid.appendChild(headerCell);
             }
+
             grid.appendChild(document.createElement('div'));
             grid.appendChild(document.createElement('div'));
             const dogHeader = document.createElement('div');
             dogHeader.className = 'grid-header-dog';
             dogHeader.textContent = 'Diensthund';
             grid.appendChild(dogHeader);
+
+            // --- Erzeugung der Header-Zeilen 2 (Tage des Monats) ---
             for (let day = 1; day <= daysInMonth; day++) {
                 const d = new Date(currentYear, currentMonth - 1, day);
                 const isWeekend = d.getDay() === 0 || d.getDay() === 6;
-                const headerCell = document.createElement('div');
-                headerCell.className = 'grid-header' + (isWeekend ? ' weekend' : '');
+
+                const dateStr = `${currentYear}-${String(currentMonth).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+
+                const headerCell = renderDayHeader(day, isWeekend, dateStr);
                 headerCell.textContent = day;
                 grid.appendChild(headerCell);
             }
+
             const totalHeader = document.createElement('div');
             totalHeader.className = 'grid-header-total';
             totalHeader.textContent = 'Std.';
             grid.appendChild(totalHeader);
+
             const visibleUsers = allUsers.filter(user => user.shift_plan_visible === true);
+
+            // --- Erzeugung der Benutzer-Zellen ---
             visibleUsers.forEach(user => {
                 const nameCell = document.createElement('div');
                 nameCell.className = 'grid-user-name';
@@ -548,23 +684,63 @@
                 dogCell.className = 'grid-user-dog';
                 dogCell.textContent = user.diensthund || '---';
                 grid.appendChild(dogCell);
+
                 for (let day = 1; day <= daysInMonth; day++) {
                     const d = new Date(currentYear, currentMonth - 1, day);
                     const isWeekend = d.getDay() === 0 || d.getDay() === 6;
-                    const dateStr = d.toISOString().split('T')[0];
+
+                    // --- KORREKTUR: Timezone-Bug am Monatsanfang beheben ---
+                    const year = d.getFullYear();
+                    const month = String(d.getMonth() + 1).padStart(2, '0');
+                    const dayOfMonth = String(d.getDate()).padStart(2, '0');
+                    const dateStr = `${year}-${month}-${dayOfMonth}`;
+                    // --- ENDE KORREKTUR ---
+
                     const key = `${user.id}-${dateStr}`;
+                    const violationKey = `${user.id}-${day}`;
+                    const eventType = currentSpecialDates[dateStr];
+
                     const shift = currentShifts[key];
                     const shiftType = shift ? allShiftTypes[shift.shifttype_id] : null;
                     const cell = document.createElement('div');
-                    cell.className = 'grid-cell' + (isWeekend ? ' weekend' : '');
-                    cell.dataset.key = key;
-                    if(shiftType) {
-                        cell.textContent = shiftType.abbreviation;
-                        cell.style.backgroundColor = shiftType.color;
-                        if (shiftType.color === '#5D6D7E') cell.style.color = 'white';
-                    } else {
-                        cell.textContent = '---';
+
+                    let cellClasses = 'grid-cell';
+                    let cellColor = '';
+                    let textColor = '#333';
+
+                    if (currentViolations.has(violationKey)) {
+                         cellClasses += ' violation'; // Roter Rahmen hat Priorität
                     }
+
+                    if (shiftType) {
+                        // 1. Priorität: Schichtfarbe
+                        cell.textContent = shiftType.abbreviation;
+                        cellColor = shiftType.color;
+                        textColor = isColorDark(shiftType.color) ? 'white' : 'black';
+
+                    } else {
+                        // 2. Priorität: Sondertermin oder Wochenende
+                        cell.textContent = '---';
+
+                        if (eventType) {
+                             cellClasses += ` day-color-${eventType}`;
+                        } else if (isWeekend) {
+                            cellClasses += ' weekend';
+                            cellColor = colorSettings.weekend_bg_color;
+                            textColor = colorSettings.weekend_text_color;
+                        } else {
+                            // Normale Tage
+                            cellColor = 'transparent';
+                            textColor = '#333';
+                        }
+                    }
+
+                    cell.className = cellClasses;
+                    cell.style.backgroundColor = cellColor;
+                    cell.style.color = textColor;
+                    // Ende Farbzuweisung
+
+                    cell.dataset.key = key;
                     cell.onclick = () => {
                         openShiftModal(user.id, dateStr, `${user.vorname} ${user.name}`);
                     };
@@ -591,6 +767,20 @@
             });
         }
 
+        // --- NEU: Helligkeitsprüfung für Textfarbe (innovativ) ---
+        function isColorDark(hexColor) {
+            // Konvertiert RGB in Dezimal
+            const hex = hexColor.replace('#', '');
+            const r = parseInt(hex.substring(0, 2), 16);
+            const g = parseInt(hex.substring(2, 4), 16);
+            const b = parseInt(hex.substring(4, 6), 16);
+            // Berechne Luminanz
+            const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+            return luminance < 0.5;
+        }
+        // --- ENDE NEU: Helligkeitsprüfung ---
+
+
         // (populateStaticElements - unverändert)
         async function populateStaticElements() {
             if (Object.keys(allShiftTypes).length === 0) {
@@ -616,9 +806,8 @@
             });
         }
 
-        // --- DATEN SPEICHERN (unverändert) ---
+        // --- DATEN SPEICHERN (Angepasst) ---
         async function saveShift(shifttypeId, userId, dateStr) {
-            // (Diese Funktion ist bereits korrekt)
             if (!userId || !dateStr) return;
             const key = `${userId}-${dateStr}`;
             const cell = findCellByKey(key);
@@ -630,26 +819,35 @@
                     shifttype_id: shifttypeId
                 });
                 closeModal(shiftModal);
-                if (savedData.message && (savedData.message.includes("gelöscht") || savedData.message.includes("bereits Frei"))) {
+
+                // 1. Schicht-Daten im Frontend-Cache aktualisieren (Logik unverändert)
+                const shiftType = allShiftTypes[savedData.shifttype_id];
+                const shiftWasDeleted = savedData.message && (savedData.message.includes("gelöscht") || savedData.message.includes("bereits Frei"));
+
+                if (shiftWasDeleted) {
                     currentShifts[key] = null;
-                    if (cell) {
-                        cell.textContent = '---';
-                        cell.style.backgroundColor = '';
-                        cell.style.color = '';
-                    }
-                } else {
-                    const shiftType = allShiftTypes[savedData.shifttype_id];
+                } else if (shiftType) {
                     currentShifts[key] = savedData;
-                    if (cell) {
-                        cell.textContent = shiftType.abbreviation;
-                        cell.style.backgroundColor = shiftType.color;
-                        cell.style.color = (shiftType.color === '#5D6D7E') ? 'white' : '';
-                    }
                 }
+
+                // 2. Konflikt-Set komplett neu setzen
+                currentViolations.clear();
+                if (savedData.violations) {
+                    // Konvertiere Liste von [user_id, day] zu Set von "user_id-day"
+                    savedData.violations.forEach(v => {
+                        currentViolations.add(`${v[0]}-${v[1]}`);
+                    });
+                }
+
+                // 3. Grid neu zeichnen, um alle Konflikt-Ränder und Farben korrekt darzustellen
+                buildGridDOM();
+
+                // 4. Stunden aktualisieren (unverändert)
                 const totalCell = document.getElementById(`total-hours-${userId}`);
                 if (totalCell) {
                     totalCell.textContent = (savedData.new_total_hours || 0.0).toFixed(1);
                 }
+
             } catch (error) {
                 if (cell) cell.textContent = 'Fehler!';
                 alert(`Fehler beim Speichern: ${error.message}`);
@@ -668,11 +866,15 @@
         prevMonthBtn.onclick = () => {
             currentMonth--;
             if (currentMonth < 1) { currentMonth = 12; currentYear--; }
+            // Lade Farben und rendere
+            loadColorSettings();
             renderGrid();
         };
         nextMonthBtn.onclick = () => {
             currentMonth++;
             if (currentMonth > 12) { currentMonth = 1; currentYear++; }
+            // Lade Farben und rendere
+            loadColorSettings();
             renderGrid();
         };
 
@@ -724,9 +926,13 @@
 
         // --- Initialisierung ---
         async function initialize() {
+            // MUSS zuerst geladen werden, damit CSS-Variablen für das erste Rendern gesetzt sind
+            await loadColorSettings();
+
             // (populateStaticElements lädt die Schichtarten)
             await populateStaticElements();
-            // (renderGrid lädt Shortcuts und rendert)
+
+            // (renderGrid lädt Sondertermine, Shortcuts und rendert)
             await renderGrid();
         }
 

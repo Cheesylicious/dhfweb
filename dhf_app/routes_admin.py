@@ -1,5 +1,6 @@
 from flask import Blueprint, request, jsonify, current_app
-from .models import User, Role, ShiftType
+# Importe für Shift und GlobalSetting hinzugefügt (Regel 1)
+from .models import User, Role, ShiftType, Shift, GlobalSetting
 from .extensions import db, bcrypt  # <--- BCRYPT HINZUGEFÜGT
 from flask_login import login_required, current_user
 from functools import wraps
@@ -182,7 +183,11 @@ def create_shifttype():
         color=data.get('color', '#FFFFFF'),
         hours=data.get('hours', 0.0),
         is_work_shift=data.get('is_work_shift', False),
-        hours_spillover=data.get('hours_spillover', 0.0)
+        hours_spillover=data.get('hours_spillover', 0.0),
+        # --- NEU: Zeiten speichern ---
+        start_time=data.get('start_time'),
+        end_time=data.get('end_time')
+        # --- ENDE NEU ---
     )
     db.session.add(new_type)
     db.session.commit()
@@ -202,6 +207,10 @@ def update_shifttype(type_id):
     st.hours = data.get('hours', st.hours)
     st.is_work_shift = data.get('is_work_shift', st.is_work_shift)
     st.hours_spillover = data.get('hours_spillover', st.hours_spillover)
+    # --- NEU: Zeiten aktualisieren ---
+    st.start_time = data.get('start_time', st.start_time)
+    st.end_time = data.get('end_time', st.end_time)
+    # --- ENDE NEU ---
 
     db.session.commit()
     return jsonify(st.to_dict()), 200
@@ -218,3 +227,53 @@ def delete_shifttype(type_id):
     db.session.delete(st)
     db.session.commit()
     return jsonify({"message": "Schicht-Typ gelöscht"}), 200
+
+
+# --- NEUE ROUTEN: GLOBALE EINSTELLUNGEN ---
+
+@admin_bp.route('/settings', methods=['GET'])
+@admin_required
+def get_global_settings():
+    """
+    Ruft alle globalen Schlüssel-Wert-Paare (GlobalSetting) ab und gibt sie als Dictionary zurück.
+    """
+    settings = GlobalSetting.query.all()
+    # Konvertiert [GlobalSetting(key='k', value='v'), ...] zu {'k': 'v', ...}
+    settings_dict = {s.key: s.value for s in settings}
+    return jsonify(settings_dict), 200
+
+
+@admin_bp.route('/settings', methods=['PUT'])
+@admin_required
+def update_global_settings():
+    """
+    Nimmt ein Dictionary von Einstellungen entgegen und speichert/aktualisiert sie.
+    """
+    data = request.get_json()
+    if not isinstance(data, dict):
+        return jsonify({"message": "Ungültiges Datenformat. Erwartet ein Schlüssel-Wert-Dictionary."}), 400
+
+    updated_count = 0
+    try:
+        for key, value in data.items():
+            # Versucht, bestehende Einstellung zu finden
+            setting = GlobalSetting.query.filter_by(key=key).first()
+
+            if setting:
+                # Aktualisieren
+                setting.value = value
+                db.session.add(setting)
+            else:
+                # Neu erstellen
+                new_setting = GlobalSetting(key=key, value=value)
+                db.session.add(new_setting)
+
+            updated_count += 1
+
+        db.session.commit()
+        return jsonify({"message": f"{updated_count} Einstellungen erfolgreich gespeichert."}), 200
+
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Fehler beim Speichern der Global Settings: {str(e)}")
+        return jsonify({"message": f"Datenbankfehler: {str(e)}"}), 500

@@ -53,11 +53,12 @@ def create_app(config_name='default'):
         create_default_roles(db)
         create_default_shifttypes(db)
         create_default_holidays(db)
+        create_default_settings(db)  # <<< NEU: Globale Einstellungen erstellen
 
     return app
 
 
-# --- Startup-Funktionen (bleiben unverändert) ---
+# --- Startup-Funktionen ---
 
 def create_default_roles(db_instance):
     """
@@ -89,16 +90,25 @@ def create_default_shifttypes(db_instance):
     from .models import ShiftType  # Importiert Model *innerhalb* der Funktion
 
     default_types = [
+        # Startzeit / Endzeit sind für Konfliktprüfung wichtig (HH:MM)
         {'name': 'Tag (T)', 'abbreviation': 'T.', 'color': '#AED6F1',
-         'hours': 8.0, 'hours_spillover': 0.0, 'is_work_shift': True},
+         'hours': 8.0, 'hours_spillover': 0.0, 'is_work_shift': True,
+         'start_time': '06:00', 'end_time': '14:00'},
+
         {'name': 'Nacht (N)', 'abbreviation': 'N.', 'color': '#5D6D7E',
-         'hours': 2.0, 'hours_spillover': 6.0, 'is_work_shift': True},
+         'hours': 2.0, 'hours_spillover': 6.0, 'is_work_shift': True,
+         'start_time': '18:00', 'end_time': '06:00'},  # Übernachtschicht
+
         {'name': 'Kurz (6)', 'abbreviation': '6', 'color': '#A9DFBF',
-         'hours': 6.0, 'hours_spillover': 0.0, 'is_work_shift': True},
+         'hours': 6.0, 'hours_spillover': 0.0, 'is_work_shift': True,
+         'start_time': '10:00', 'end_time': '16:00'},
+
         {'name': 'Frei (Geplant)', 'abbreviation': 'FREI', 'color': '#FFFFFF',
          'hours': 0.0, 'hours_spillover': 0.0, 'is_work_shift': False},
+
         {'name': 'Urlaub', 'abbreviation': 'U', 'color': '#FAD7A0',
          'hours': 0.0, 'hours_spillover': 0.0, 'is_work_shift': False},
+
         {'name': 'Wunschfrei (X)', 'abbreviation': 'X', 'color': '#D2B4DE',
          'hours': 0.0, 'hours_spillover': 0.0, 'is_work_shift': False},
     ]
@@ -110,13 +120,10 @@ def create_default_shifttypes(db_instance):
                 new_type = ShiftType(**st_data)
                 db_instance.session.add(new_type)
             else:
-                # (Optional) Aktualisiere bestehende, falls sie noch keinen Spillover haben
-                # (Diese Prüfung ist wichtig für bestehende Installationen)
-                if not hasattr(existing, 'hours_spillover') or (
-                        existing.hours_spillover == 0.0 and st_data['hours_spillover'] > 0.0):
-                    if st_data['abbreviation'] == 'N.':  # Nur die Nachtschicht aktualisieren
-                        existing.hours = st_data['hours']
-                        existing.hours_spillover = st_data['hours_spillover']
+                # Aktualisiere auch die neuen Felder (Zeiten), falls sie fehlen
+                for key in ['hours', 'hours_spillover', 'start_time', 'end_time']:
+                    if key in st_data and (getattr(existing, key) is None or getattr(existing, key) == 0.0):
+                        setattr(existing, key, st_data[key])
 
         db_instance.session.commit()
     except Exception as e:
@@ -129,6 +136,7 @@ def create_default_holidays(db_instance):
     Erstellt die Standard-Feiertage für MV (als Vorlagen ohne Datum).
     """
     from .models import SpecialDate
+    # ... (Logik unverändert) ...
 
     # Gesetzliche Feiertage Mecklenburg-Vorpommern
     mv_holidays = [
@@ -165,3 +173,30 @@ def create_default_holidays(db_instance):
     except Exception as e:
         db_instance.session.rollback()
         print(f"Fehler beim Erstellen der Standard-Feiertage: {e}")
+
+
+def create_default_settings(db_instance):
+    """
+    Erstellt die Standard-Farbeinstellungen, falls sie nicht existieren.
+    """
+    from .models import GlobalSetting
+
+    default_settings = {
+        'weekend_bg_color': '#fff8f8',
+        'weekend_text_color': '#333333',
+        'holiday_bg_color': '#ffddaa',
+        'training_bg_color': '#daffdb',
+        'shooting_bg_color': '#ffb0b0'
+    }
+
+    try:
+        for key, default_value in default_settings.items():
+            existing = GlobalSetting.query.filter_by(key=key).first()
+            if not existing:
+                new_setting = GlobalSetting(key=key, value=default_value)
+                db_instance.session.add(new_setting)
+
+        db_instance.session.commit()
+    except Exception as e:
+        db_instance.session.rollback()
+        print(f"Fehler beim Erstellen der Standard-Einstellungen: {e}")

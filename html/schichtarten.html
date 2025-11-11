@@ -229,6 +229,9 @@
 
         .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
         .form-grid-hours { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px; }
+        /* --- NEU: Grid für Zeiten --- */
+        .form-grid-times { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+        /* --- ENDE NEU --- */
 
         .form-group { margin-bottom: 15px; }
 
@@ -378,7 +381,7 @@
                             <th>Farbe</th>
                             <th>Std. (Tag)</th>
                             <th>Std. (Übertrag)</th>
-                            <th>Zählt als Arbeitszeit</th>
+                            <th>Startzeit</th> <th>Endzeit</th> <th>Zählt als Arbeitszeit</th>
                             <th>Aktionen</th>
                         </tr>
                     </thead>
@@ -424,6 +427,16 @@
                     </div>
                 </div>
 
+                <div class="form-grid-times">
+                    <div class="form-group">
+                        <label for="type-start-time">Startzeit (HH:MM):</label>
+                        <input type="text" id="type-start-time" pattern="\d{2}:\d{2}" placeholder="06:00" title="Uhrzeit im Format HH:MM">
+                    </div>
+                    <div class="form-group">
+                        <label for="type-end-time">Endzeit (HH:MM):</label>
+                        <input type="text" id="type-end-time" pattern="\d{2}:\d{2}" placeholder="14:00" title="Uhrzeit im Format HH:MM (Endet nach 00:00: z.B. 06:00)">
+                    </div>
+                </div>
                 <div class="form-group" style="margin-top: 20px;">
                     <input type="checkbox" id="type-is-work-shift">
                     <label for="type-is-work-shift" style="display: inline-block;">Zählt als Arbeitszeit (für Stundensumme)</label>
@@ -586,6 +599,10 @@
         const typeHoursField = document.getElementById('type-hours');
         const typeHoursSpilloverField = document.getElementById('type-hours-spillover');
         const typeIsWorkShiftField = document.getElementById('type-is-work-shift');
+        // --- NEU: Zeit-Felder ---
+        const typeStartTimeField = document.getElementById('type-start-time');
+        const typeEndTimeField = document.getElementById('type-end-time');
+        // --- ENDE NEU ---
 
         function openModal() { modal.style.display = 'block'; modalStatus.textContent = ''; }
         function closeModal() { modal.style.display = 'none'; }
@@ -608,6 +625,10 @@
                     const hours = (st.hours || 0.0).toFixed(1);
                     const spillover = (st.hours_spillover || 0.0).toFixed(1);
                     // --- ENDE KORREKTUR ---
+                    // --- NEU: Anzeige der Zeiten ---
+                    const startTime = st.start_time || '---';
+                    const endTime = st.end_time || '---';
+                    // --- ENDE NEU ---
 
                     row.innerHTML = `
                         <td>${st.id}</td>
@@ -616,7 +637,7 @@
                         <td style="font-family: monospace;">${colorPreview}</td>
                         <td>${hours}</td>
                         <td>${spillover}</td>
-                        <td>${isWorkShiftText}</td>
+                        <td>${startTime}</td> <td>${endTime}</td>   <td>${isWorkShiftText}</td>
                         <td class="actions">
                             <button class="btn-edit" onclick='openEditModal(${stJsonString})'>Bearbeiten</button>
                             <button class="btn-delete" onclick="deleteShiftType(${st.id})">Löschen</button>
@@ -630,7 +651,7 @@
             }
         }
 
-        // Modal für "Neue Schichtart" (Unverändert)
+        // Modal für "Neue Schichtart" (Felder zurücksetzen)
         addTypeBtn.onclick = () => {
             modalTitle.textContent = 'Neue Schichtart erstellen';
             typeIdField.value = '';
@@ -640,6 +661,10 @@
             typeHoursField.value = '0.0';
             typeHoursSpilloverField.value = '0.0';
             typeIsWorkShiftField.checked = false;
+            // --- NEU: Zeit-Felder zurücksetzen ---
+            typeStartTimeField.value = '';
+            typeEndTimeField.value = '';
+            // --- ENDE NEU ---
             openModal();
         };
 
@@ -655,10 +680,14 @@
             typeHoursSpilloverField.value = st.hours_spillover || 0.0;
             // --- ENDE KORREKTUR ---
             typeIsWorkShiftField.checked = st.is_work_shift;
+            // --- NEU: Zeit-Felder setzen ---
+            typeStartTimeField.value = st.start_time || '';
+            typeEndTimeField.value = st.end_time || '';
+            // --- ENDE NEU ---
             openModal();
         }
 
-        // Speichern (Neue Schichtart oder Update) (Unverändert)
+        // Speichern (Neue Schichtart oder Update) (Angepasst)
         saveTypeBtn.onclick = async () => {
             const id = typeIdField.value;
             const payload = {
@@ -667,7 +696,11 @@
                 color: typeColorField.value,
                 hours: parseFloat(typeHoursField.value) || 0.0,
                 hours_spillover: parseFloat(typeHoursSpilloverField.value) || 0.0,
-                is_work_shift: typeIsWorkShiftField.checked
+                is_work_shift: typeIsWorkShiftField.checked,
+                // --- NEU: Zeiten hinzufügen ---
+                start_time: typeStartTimeField.value || null,
+                end_time: typeEndTimeField.value || null
+                // --- ENDE NEU ---
             };
 
             if (!payload.name || !payload.abbreviation) {
