@@ -1,0 +1,707 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <title>Schichtarten - DHF-Planer</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        /* Import einer modernen Schriftart */
+        @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap');
+
+        body {
+            font-family: 'Poppins', sans-serif;
+            margin: 0;
+            background: #1a1a1a;
+            color: #ffffff; /* Standard-Textfarbe auf Weiß */
+            overflow-x: hidden;
+        }
+
+        /* Das Canvas-Element für die Animation */
+        #particle-canvas {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: -1; /* Liegt hinter allem */
+        }
+
+        /* Header (Glas-Effekt) */
+        header {
+            background: rgba(255, 255, 255, 0.05);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+
+            padding: 15px 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        header h1 {
+            margin: 0;
+            color: #ffffff;
+            font-size: 24px;
+        }
+
+        header nav {
+            display: flex;
+            gap: 20px;
+            align-items: center;
+        }
+
+        header nav a {
+            text-decoration: none;
+            color: #bdc3c7;
+            font-weight: 500;
+            font-size: 16px;
+            padding: 10px;
+            border-radius: 5px;
+            transition: background-color 0.3s, color 0.3s;
+        }
+
+        header nav a.active, header nav a:hover {
+            background-color: rgba(255, 255, 255, 0.1);
+            color: #ffffff;
+        }
+
+        #user-info {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            color: #bdc3c7;
+        }
+
+        #logout-btn {
+            background: #e74c3c;
+            color: white;
+            padding: 10px 15px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 15px;
+            transition: background-color 0.3s;
+        }
+        #logout-btn:hover {
+            background: #c0392b;
+        }
+
+        main {
+            padding: 30px;
+            max-width: 1200px;
+            margin: auto;
+        }
+
+        /* Card (Glas-Effekt) */
+        .card {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            box-shadow: 0 4px 30px rgba(0, 0, 0, 0.2);
+            border-radius: 10px;
+            overflow: hidden;
+        }
+
+        /* Card Header (Glas-Effekt) */
+        .card-header {
+            padding: 20px 25px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .card-header h2 {
+            margin: 0;
+            color: #ffffff;
+            font-weight: 600;
+        }
+
+        /* Tabelle (Glas-Effekt) */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th, td {
+            text-align: left;
+            padding: 15px 20px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            color: #bdc3c7;
+        }
+
+        th {
+            background: rgba(255, 255, 255, 0.05);
+            color: #ffffff;
+            font-size: 13px;
+            text-transform: uppercase;
+            font-weight: 600;
+        }
+
+        tbody tr:nth-child(even) {
+            background-color: rgba(255, 255, 255, 0.03);
+        }
+
+        tr:last-child td {
+            border-bottom: 0;
+        }
+
+        .actions button {
+            padding: 8px 12px;
+            margin-right: 5px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: opacity 0.3s;
+        }
+        .actions button:hover {
+            opacity: 0.8;
+        }
+
+        /* Buttons (Farben bleiben gleich) */
+        .btn-edit { background: #3498db; color: white; }
+        .btn-delete { background: #e74c3c; color: white; }
+        .btn-primary { background: #007bff; color: white; padding: 10px 15px; border: none; border-radius: 5px; cursor: pointer; font-size: 15px; }
+        .btn-primary:hover { opacity: 0.8; }
+
+        /* Modal (Hintergrund-Overlay) */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 100;
+            left: 0; top: 0;
+            width: 100%; height: 100%;
+            overflow: auto;
+            background-color: rgba(0,0,0,0.6);
+        }
+
+        /* Modal-Inhalt (Glas-Effekt) */
+        .modal-content {
+            background: rgba(30, 30, 30, 0.8); /* Dunkleres Glas */
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+
+            margin: 10% auto;
+            padding: 0;
+            width: 80%;
+            max-width: 550px;
+            border-radius: 8px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 15px 25px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .modal-header h2 {
+            margin: 0;
+            color: #ffffff;
+            font-weight: 600;
+        }
+
+        .close {
+            color: #bdc3c7;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: color 0.3s;
+        }
+        .close:hover {
+            color: #ffffff;
+        }
+
+        .modal-body { padding: 25px; }
+
+        .modal-footer {
+            padding: 15px 25px;
+            background: rgba(0, 0, 0, 0.2);
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+            text-align: right;
+            border-radius: 0 0 8px 8px;
+        }
+
+        .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+        .form-grid-hours { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px; }
+
+        .form-group { margin-bottom: 15px; }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 300;
+            color: #bdc3c7;
+        }
+
+        /* Formular-Inputs (Glas-Effekt) */
+        .form-group input[type="text"], .form-group input[type="number"], .form-group input[type="color"] {
+            width: 100%;
+            padding: 10px;
+            box-sizing: border-box;
+            background: rgba(0, 0, 0, 0.2);
+            border: 1px solid #3498db;
+            border-radius: 5px;
+            color: #ffffff;
+            font-family: 'Poppins', sans-serif;
+            font-size: 14px;
+        }
+        .form-group input[type="color"] { padding: 5px; height: 40px; }
+        .form-group input[type="checkbox"] { width: auto; margin-right: 10px; }
+        .form-group input:disabled { background: rgba(0,0,0,0.1); color: #777; border-color: #555;}
+
+        /* Sub-Nav (Glas-Effekt) */
+        .sub-nav {
+            background: rgba(255, 255, 255, 0.05);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+
+            padding: 0 30px;
+            margin-bottom: 30px;
+            margin-top: -1px; /* (Schließt Lücke zum Header) */
+            display: flex;
+            align-items: center;
+        }
+
+        .sub-nav a {
+            display: inline-block;
+            padding: 15px 20px;
+            text-decoration: none;
+            color: #bdc3c7;
+            font-weight: 500;
+            border-bottom: 3px solid transparent;
+            transition: color 0.3s;
+        }
+
+        .sub-nav a.active, .sub-nav a:hover {
+            color: #ffffff;
+            border-bottom-color: #3498db;
+        }
+
+        /* --- Dropdown-Menü (Glas-Effekt) --- */
+        .dropdown { position: relative; display: inline-block; }
+        .dropdown .dropbtn {
+            font-family: 'Poppins', sans-serif;
+            text-decoration: none; color: #bdc3c7; font-weight: 500; font-size: 16px;
+            padding: 15px 20px;
+            background: none; border: none; cursor: pointer;
+            border-bottom: 3px solid transparent;
+            transition: color 0.3s;
+        }
+        .dropdown-content {
+            display: none;
+            position: absolute;
+            background: rgba(30, 30, 30, 0.9); /* Dunkles Glas für Dropdown */
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            min-width: 200px;
+            box-shadow: 0px 8px 16px 0px rgba(0,0,0,0.2);
+            z-index: 100;
+            border-radius: 5px;
+            margin-top: -1px;
+        }
+        .dropdown-content a {
+            color: #bdc3c7;
+            padding: 12px 16px;
+            text-decoration: none;
+            display: block;
+            font-size: 15px;
+            border-bottom: none;
+            transition: background-color 0.3s, color 0.3s;
+        }
+        .dropdown-content a:hover {
+            background-color: rgba(255, 255, 255, 0.05);
+            color: #ffffff;
+        }
+        .dropdown:hover .dropdown-content { display: block; }
+        .dropdown:hover .dropbtn, .dropbtn.active {
+            color: #ffffff;
+            border-bottom-color: #3498db;
+        }
+        .dropdown-content a.active {
+            background-color: rgba(52, 152, 219, 0.2); /* Blauer Akzent */
+            font-weight: 600;
+            color: #3498db;
+        }
+    </style>
+</head>
+<body>
+
+    <canvas id="particle-canvas"></canvas>
+
+    <header>
+        <h1>DHF-Planer</h1>
+        <nav>
+            <a href="dashboard.html">Dashboard</a>
+            <a href="users.html">Benutzerverwaltung</a>
+            <a href="schichtplan.html" class="active">Schichtplan</a>
+        </nav>
+        <div id="user-info">
+            <span id="welcome-user"></span>
+            <button id="logout-btn">Abmelden</button>
+        </div>
+    </header>
+
+    <div class="sub-nav">
+        <a href="schichtplan.html">Schichtplan</a>
+        <div class="dropdown">
+            <button class="dropbtn active">Einstellungen &raquo;</button>
+            <div class="dropdown-content">
+                <a href="einstellungen.html">Mitarbeiter Sortierung</a>
+                <a href="schichtarten.html" class="active">Schichtarten</a>
+                <a href="shortcuts.html">Shortcuts</a>
+            </div>
+        </div>
+    </div>
+
+    <main>
+        <div class="card">
+            <div class="card-header">
+                <h2>Schichtarten</h2>
+                <button class="btn-primary" id="add-type-btn">Neue Schichtart erstellen</button>
+            </div>
+            <div style="overflow-x: auto;">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Name</th>
+                            <th>Abkürzung</th>
+                            <th>Farbe</th>
+                            <th>Std. (Tag)</th>
+                            <th>Std. (Übertrag)</th>
+                            <th>Zählt als Arbeitszeit</th>
+                            <th>Aktionen</th>
+                        </tr>
+                    </thead>
+                    <tbody id="type-table-body">
+                        </tbody>
+                </table>
+            </div>
+        </div>
+    </main>
+
+    <div id="type-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="modal-title">Schichtart bearbeiten</h2>
+                <span class="close" id="close-type-modal">&times;</span>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="type-id">
+
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label for="type-name">Name:</label>
+                        <input type="text" id="type-name" placeholder="z.B. 'Tag (T)'">
+                    </div>
+                    <div class="form-group">
+                        <label for="type-abbreviation">Abkürzung (max 10 Zeichen):</label>
+                        <input type="text" id="type-abbreviation" placeholder="z.B. 'T.'">
+                    </div>
+                </div>
+
+                <div class="form-grid-hours">
+                    <div class="form-group">
+                        <label for="type-hours">Stunden (Tag):</label>
+                        <input type="number" id="type-hours" step="0.1" value="0.0" title="Stunden, die am selben Tag angerechnet werden.">
+                    </div>
+                    <div class="form-group">
+                        <label for="type-hours-spillover">Std. (Übertrag):</label>
+                        <input type="number" id="type-hours-spillover" step="0.1" value="0.0" title="Stunden, die am Folgetag (nach 00:00 Uhr) angerechnet werden.">
+                    </div>
+                    <div class="form-group">
+                        <label for="type-color">Farbe:</label>
+                        <input type="color" id="type-color" value="#FFFFFF">
+                    </div>
+                </div>
+
+                <div class="form-group" style="margin-top: 20px;">
+                    <input type="checkbox" id="type-is-work-shift">
+                    <label for="type-is-work-shift" style="display: inline-block;">Zählt als Arbeitszeit (für Stundensumme)</label>
+                </div>
+
+            </div>
+            <div class="modal-footer">
+                <div id="modal-status" style="text-align: left; color: #e74c3c; float: left;"></div> <button class="btn-primary" id="save-type-btn">Speichern</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- START: PARTIKEL-ANIMATION ---
+        const canvas = document.getElementById('particle-canvas');
+        const ctx = canvas.getContext('2d');
+        const nodeColor = '#3498db';
+        const lineColor = '#ecf0f1'; // (Angepasst für besseren Kontrast)
+        let particlesArray;
+
+        function setCanvasSize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        setCanvasSize();
+
+        class Particle {
+            constructor(x, y, directionX, directionY, size) {
+                this.x = x; this.y = y; this.directionX = directionX; this.directionY = directionY; this.size = size;
+            }
+            draw() {
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2, false);
+                ctx.fillStyle = nodeColor;
+                ctx.fill();
+            }
+            update() {
+                if (this.x > canvas.width || this.x < 0) { this.directionX = -this.directionX; }
+                if (this.y > canvas.height || this.y < 0) { this.directionY = -this.directionY; }
+                this.x += this.directionX; this.y += this.directionY;
+                this.draw();
+            }
+        }
+
+        function init() {
+            particlesArray = [];
+            let numberOfParticles = (canvas.height * canvas.width) / 9000;
+            if (numberOfParticles > 100) numberOfParticles = 100;
+
+            for (let i = 0; i < numberOfParticles; i++) {
+                let size = (Math.random() * 2) + 1;
+                let x = (Math.random() * ((canvas.width - size * 2) - (size * 2)) + size * 2);
+                let y = (Math.random() * ((canvas.height - size * 2) - (size * 2)) + size * 2);
+                let directionX = (Math.random() * 0.4) - 0.2;
+                let directionY = (Math.random() * 0.4) - 0.2;
+                particlesArray.push(new Particle(x, y, directionX, directionY, size));
+            }
+        }
+
+        function connect() {
+            let maxDistance = 150;
+            ctx.strokeStyle = lineColor;
+            for (let a = 0; a < particlesArray.length; a++) {
+                for (let b = a; b < particlesArray.length; b++) {
+                    let distance = ((particlesArray[a].x - particlesArray[b].x) * (particlesArray[a].x - particlesArray[b].x))
+                                 + ((particlesArray[a].y - particlesArray[b].y) * (particlesArray[a].y - particlesArray[b].y));
+                    if (distance < (maxDistance * maxDistance)) {
+                        let opacity = 1 - (distance / (maxDistance * maxDistance));
+                        ctx.globalAlpha = opacity;
+                        ctx.beginPath();
+                        ctx.moveTo(particlesArray[a].x, particlesArray[a].y);
+                        ctx.lineTo(particlesArray[b].x, particlesArray[b].y);
+                        ctx.stroke();
+                    }
+                }
+            }
+            ctx.globalAlpha = 1.0;
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            for (let i = 0; i < particlesArray.length; i++) {
+                particlesArray[i].update();
+            }
+            connect();
+        }
+
+        window.addEventListener('resize', () => {
+            setCanvasSize();
+            init();
+        });
+        init();
+        animate();
+        // --- ENDE: PARTIKEL-ANIMATION ---
+    </script>
+
+    <script>
+        // --- Globales Setup (unverändert) ---
+        const API_URL = 'http://46.224.63.203:5000';
+        let user;
+
+        async function logout() {
+            try { await apiFetch('/api/logout', 'POST'); }
+            catch (e) { console.error(e); }
+            finally {
+                localStorage.removeItem('dhf_user');
+                window.location.href = 'index.html?logout=true';
+            }
+        }
+
+        try {
+            user = JSON.parse(localStorage.getItem('dhf_user'));
+            if (!user || !user.vorname) { throw new Error("Kein User"); }
+            document.getElementById('welcome-user').textContent = `Willkommen, ${user.vorname}!`;
+        } catch (e) {
+            logout();
+        }
+        document.getElementById('logout-btn').onclick = logout;
+
+        // --- Globale API-Funktion (unverändert) ---
+        async function apiFetch(endpoint, method = 'GET', body = null) {
+            const options = {
+                method,
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include'
+            };
+            if (body) { options.body = JSON.stringify(body); }
+            const response = await fetch(API_URL + endpoint, options);
+            if (response.status === 401 || response.status === 403) {
+                logout();
+                throw new Error('Sitzung ungültig oder fehlende Rechte.');
+            }
+            const contentType = response.headers.get("content-type");
+            let data;
+            if (contentType && contentType.indexOf("application/json") !== -1) {
+                data = await response.json();
+            } else {
+                data = { message: await response.text() };
+            }
+            if (!response.ok) {
+                throw new Error(data.message || 'API-Fehler');
+            }
+            return data;
+        }
+
+        // --- Elemente & Modal-Logik (Angepasst) ---
+        const typeTableBody = document.getElementById('type-table-body');
+        const modal = document.getElementById('type-modal');
+        const modalTitle = document.getElementById('modal-title');
+        const modalStatus = document.getElementById('modal-status');
+        const addTypeBtn = document.getElementById('add-type-btn');
+        const saveTypeBtn = document.getElementById('save-type-btn');
+        const closeModalBtn = document.getElementById('close-type-modal');
+
+        const typeIdField = document.getElementById('type-id');
+        const typeNameField = document.getElementById('type-name');
+        const typeAbbreviationField = document.getElementById('type-abbreviation');
+        const typeColorField = document.getElementById('type-color');
+        const typeHoursField = document.getElementById('type-hours');
+        const typeHoursSpilloverField = document.getElementById('type-hours-spillover');
+        const typeIsWorkShiftField = document.getElementById('type-is-work-shift');
+
+        function openModal() { modal.style.display = 'block'; modalStatus.textContent = ''; }
+        function closeModal() { modal.style.display = 'none'; }
+        closeModalBtn.onclick = closeModal;
+        window.onclick = (event) => { if (event.target == modal) closeModal(); }
+
+        // --- Hauptlogik (CRUD für Schichtarten) ---
+        async function loadShiftTypes() {
+            try {
+                const types = await apiFetch('/api/shifttypes');
+                typeTableBody.innerHTML = '';
+                types.forEach(st => {
+                    const row = document.createElement('tr');
+                    const isWorkShiftText = st.is_work_shift ? 'Ja' : 'Nein';
+                    const colorPreview = `<div style="width: 20px; height: 20px; background-color: ${st.color}; border: 1px solid #555; display: inline-block; vertical-align: middle; margin-right: 5px;"></div> ${st.color}`;
+
+                    const stJsonString = JSON.stringify(st).replace(/'/g, "\\'");
+
+                    // --- KORREKTUR (Fallback auf 0.0) ---
+                    const hours = (st.hours || 0.0).toFixed(1);
+                    const spillover = (st.hours_spillover || 0.0).toFixed(1);
+                    // --- ENDE KORREKTUR ---
+
+                    row.innerHTML = `
+                        <td>${st.id}</td>
+                        <td>${st.name}</td>
+                        <td><b>${st.abbreviation}</b></td>
+                        <td style="font-family: monospace;">${colorPreview}</td>
+                        <td>${hours}</td>
+                        <td>${spillover}</td>
+                        <td>${isWorkShiftText}</td>
+                        <td class="actions">
+                            <button class="btn-edit" onclick='openEditModal(${stJsonString})'>Bearbeiten</button>
+                            <button class="btn-delete" onclick="deleteShiftType(${st.id})">Löschen</button>
+                        </td>
+                    `;
+                    typeTableBody.appendChild(row);
+                });
+            } catch (error) {
+                // Zeigt den Fehler jetzt im Alert an, statt die Seite zu zerschießen
+                alert('Fehler beim Laden der Schichtarten: ' + error.message);
+            }
+        }
+
+        // Modal für "Neue Schichtart" (Unverändert)
+        addTypeBtn.onclick = () => {
+            modalTitle.textContent = 'Neue Schichtart erstellen';
+            typeIdField.value = '';
+            typeNameField.value = '';
+            typeAbbreviationField.value = '';
+            typeColorField.value = '#FFFFFF';
+            typeHoursField.value = '0.0';
+            typeHoursSpilloverField.value = '0.0';
+            typeIsWorkShiftField.checked = false;
+            openModal();
+        };
+
+        // Modal für "Bearbeiten" (Angepasst mit Korrektur)
+        function openEditModal(st) {
+            modalTitle.textContent = 'Schichtart bearbeiten';
+            typeIdField.value = st.id;
+            typeNameField.value = st.name;
+            typeAbbreviationField.value = st.abbreviation;
+            typeColorField.value = st.color;
+            // --- KORREKTUR (Fallback auf 0.0) ---
+            typeHoursField.value = st.hours || 0.0;
+            typeHoursSpilloverField.value = st.hours_spillover || 0.0;
+            // --- ENDE KORREKTUR ---
+            typeIsWorkShiftField.checked = st.is_work_shift;
+            openModal();
+        }
+
+        // Speichern (Neue Schichtart oder Update) (Unverändert)
+        saveTypeBtn.onclick = async () => {
+            const id = typeIdField.value;
+            const payload = {
+                name: typeNameField.value,
+                abbreviation: typeAbbreviationField.value,
+                color: typeColorField.value,
+                hours: parseFloat(typeHoursField.value) || 0.0,
+                hours_spillover: parseFloat(typeHoursSpilloverField.value) || 0.0,
+                is_work_shift: typeIsWorkShiftField.checked
+            };
+
+            if (!payload.name || !payload.abbreviation) {
+                modalStatus.textContent = "Name und Abkürzung sind erforderlich.";
+                return;
+            }
+
+            try {
+                if (id) { // UPDATE
+                    await apiFetch(`/api/shifttypes/${id}`, 'PUT', payload);
+                } else { // CREATE
+                    await apiFetch('/api/shifttypes', 'POST', payload);
+                }
+                closeModal();
+                loadShiftTypes();
+            } catch (error) {
+                modalStatus.textContent = 'Fehler: ' + error.message;
+            }
+        };
+
+        // Löschen (Unverändert)
+        async function deleteShiftType(id) {
+            if (confirm('Sind Sie sicher, dass Sie diese Schichtart löschen möchten?\n\n(Dies ist nur möglich, wenn keine Schicht diese Art mehr verwendet.)')) {
+                try {
+                    await apiFetch(`/api/shifttypes/${id}`, 'DELETE');
+                    loadShiftTypes();
+                } catch (error) {
+                    alert('Löschen fehlgeschlagen: ' + error.message);
+                }
+            }
+        }
+
+        // --- Initialisierung ---
+        loadShiftTypes();
+
+    </script>
+</body>
+</html>

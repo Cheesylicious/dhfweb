@@ -1,0 +1,844 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <title>Benutzerverwaltung - DHF-Planer</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        /* Import einer modernen Schriftart */
+        @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap');
+
+        body {
+            font-family: 'Poppins', sans-serif;
+            margin: 0;
+            background: #1a1a1a;
+            color: #ffffff; /* Standard-Textfarbe auf Weiß */
+            overflow-x: hidden;
+        }
+
+        /* Das Canvas-Element für die Animation */
+        #particle-canvas {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: -1; /* Liegt hinter allem */
+        }
+
+        /* Header (Glas-Effekt) */
+        header {
+            background: rgba(255, 255, 255, 0.05);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+
+            padding: 15px 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        header h1 {
+            margin: 0;
+            color: #ffffff;
+            font-size: 24px;
+        }
+
+        header nav {
+            display: flex;
+            gap: 20px;
+        }
+
+        header nav a {
+            text-decoration: none;
+            color: #bdc3c7;
+            font-weight: 500;
+            font-size: 16px;
+            padding: 10px;
+            border-radius: 5px;
+            transition: background-color 0.3s, color 0.3s;
+        }
+
+        header nav a.active, header nav a:hover {
+            background-color: rgba(255, 255, 255, 0.1);
+            color: #ffffff;
+        }
+
+        #user-info {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            color: #bdc3c7;
+        }
+
+        #logout-btn {
+            background: #e74c3c;
+            color: white;
+            padding: 10px 15px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 15px;
+            transition: background-color 0.3s;
+        }
+        #logout-btn:hover {
+            background: #c0392b;
+        }
+
+        main {
+            padding: 30px;
+            max-width: 1200px;
+            margin: auto;
+        }
+
+        /* Card (Glas-Effekt) */
+        .card {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            box-shadow: 0 4px 30px rgba(0, 0, 0, 0.2);
+            border-radius: 10px;
+            overflow: hidden;
+        }
+
+        /* Card Header (Glas-Effekt) */
+        .card-header {
+            padding: 20px 25px; /* Etwas mehr padding */
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .card-header h2 {
+            margin: 0;
+            color: #ffffff;
+            font-weight: 600;
+        }
+
+        /* Tabelle (Glas-Effekt) */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th, td {
+            text-align: left;
+            padding: 15px 20px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            color: #bdc3c7;
+        }
+
+        th {
+            background: rgba(255, 255, 255, 0.05);
+            color: #ffffff;
+            font-size: 13px;
+            text-transform: uppercase;
+            font-weight: 600;
+        }
+
+        /* Zebra-Streifen für bessere Lesbarkeit */
+        tbody tr:nth-child(even) {
+            background-color: rgba(255, 255, 255, 0.03);
+        }
+
+        tbody tr {
+             color: #bdc3c7;
+        }
+
+        tbody tr td:first-child {
+            color: #ffffff; /* ID hervorheben */
+            font-weight: 600;
+        }
+
+        tr:last-child td {
+            border-bottom: 0;
+        }
+
+        .actions button {
+            padding: 8px 12px;
+            margin-right: 5px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: opacity 0.3s;
+        }
+        .actions button:hover {
+            opacity: 0.8;
+        }
+
+        /* Buttons (Farben bleiben gleich, funktionieren gut auf dunklem Grund) */
+        .btn-edit { background: #3498db; color: white; }
+        .btn-delete { background: #e74c3c; color: white; }
+        .btn-primary { background: #007bff; color: white; padding: 10px 15px; border: none; border-radius: 5px; cursor: pointer; font-size: 15px; }
+        .btn-secondary { background: #6c757d; color: white; padding: 10px 15px; border: none; border-radius: 5px; cursor: pointer; font-size: 15px; margin-left: 10px; }
+        .btn-primary:hover, .btn-secondary:hover { opacity: 0.8; }
+
+        /* Modal (Hintergrund-Overlay) */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 100;
+            left: 0; top: 0;
+            width: 100%; height: 100%;
+            overflow: auto;
+            background-color: rgba(0,0,0,0.6); /* Dunkleres Overlay */
+        }
+
+        /* Modal-Inhalt (Glas-Effekt) */
+        .modal-content {
+            background: rgba(30, 30, 30, 0.8); /* Dunkleres Glas für Popups */
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+
+            margin: 10% auto;
+            padding: 0;
+            width: 80%;
+            max-width: 600px;
+            border-radius: 8px;
+            box-shadow: 0 4px 30px rgba(0,0,0,0.4);
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 15px 25px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .modal-header h2 {
+            margin: 0;
+            color: #ffffff;
+            font-weight: 600;
+        }
+
+        .close {
+            color: #bdc3c7;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: color 0.3s;
+        }
+        .close:hover {
+            color: #ffffff;
+        }
+
+        .modal-body { padding: 25px; }
+
+        .modal-footer {
+            padding: 15px 25px;
+            background: rgba(0, 0, 0, 0.2);
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+            text-align: right;
+            border-radius: 0 0 8px 8px;
+        }
+
+        .modal-tabs {
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            background: rgba(0, 0, 0, 0.2);
+            padding-left: 25px;
+            border-radius: 8px 8px 0 0;
+        }
+
+        .modal-tabs button {
+            background: none;
+            border: none;
+            padding: 12px 18px;
+            cursor: pointer;
+            font-size: 15px;
+            font-weight: 500;
+            color: #bdc3c7;
+            border-bottom: 3px solid transparent;
+            margin-bottom: -1px;
+            transition: color 0.3s;
+        }
+        .modal-tabs button:hover {
+            color: #ffffff;
+        }
+        .modal-tabs button.active {
+            color: #ffffff;
+            border-bottom-color: #3498db;
+        }
+
+        .modal-tab-content { display: none; }
+        .modal-tab-content.active { display: block; }
+
+        .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+
+        .form-group { margin-bottom: 15px; }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 300;
+            color: #bdc3c7;
+        }
+
+        /* Formular-Inputs (Glas-Effekt) */
+        .form-group input, .form-group select {
+            width: 100%;
+            padding: 10px;
+            box-sizing: border-box;
+            background: rgba(0, 0, 0, 0.2);
+            border: 1px solid #3498db;
+            border-radius: 5px;
+            color: #ffffff;
+            font-family: 'Poppins', sans-serif;
+            font-size: 14px;
+        }
+        /* (Stellt sicher, dass Select-Pfeil sichtbar ist) */
+        .form-group select {
+             -webkit-appearance: none;
+             -moz-appearance: none;
+             appearance: none;
+             background-image: url('data:image/svg+xml;utf8,<svg fill="white" height="24" viewBox="0 0 24 24" width="24" xmlns="http://www.w3.org/2000/svg"><path d="M7 10l5 5 5-5z"/></svg>');
+             background-repeat: no-repeat;
+             background-position-x: 98%;
+             background-position-y: 50%;
+             padding-right: 30px; /* Platz für Pfeil */
+        }
+
+        .form-group input[type="checkbox"] { width: auto; margin-right: 10px; }
+        .form-group input:disabled { background: rgba(0,0,0,0.1); color: #777; border-color: #555;}
+
+        .hidden { display: none; }
+
+        /* Column Modal (Glas-Effekt) */
+        #column-modal .modal-content { max-width: 450px; }
+        #column-modal .modal-body { display: grid; grid-template-columns: 1fr 1fr; gap: 15px; }
+        #column-modal label {
+            display: block;
+            padding: 10px;
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 5px;
+            color: #bdc3c7;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        #column-modal label:hover {
+            background: rgba(0, 0, 0, 0.4);
+        }
+        #column-modal input { margin-right: 10px; }
+
+        /* Sub-Nav (Glas-Effekt) */
+        .sub-nav {
+            background: rgba(255, 255, 255, 0.05);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+
+            padding: 0 30px;
+            margin-bottom: 30px;
+            margin-top: -1px; /* (Schließt Lücke zum Header) */
+        }
+
+        .sub-nav a {
+            display: inline-block;
+            padding: 15px 20px;
+            text-decoration: none;
+            color: #bdc3c7;
+            font-weight: 500;
+            border-bottom: 3px solid transparent;
+            transition: color 0.3s;
+        }
+
+        .sub-nav a.active, .sub-nav a:hover {
+            color: #ffffff;
+            border-bottom-color: #3498db;
+        }
+    </style>
+</head>
+<body>
+
+    <canvas id="particle-canvas"></canvas>
+
+    <header>
+        <h1>DHF-Planer</h1>
+        <nav>
+            <a href="dashboard.html">Dashboard</a>
+            <a href="users.html" class="active">Benutzerverwaltung</a>
+            <a href="schichtplan.html">Schichtplan</a>
+        </nav>
+        <div id="user-info">
+            <span id="welcome-user"></span>
+            <button id="logout-btn">Abmelden</button>
+        </div>
+    </header>
+
+    <div class="sub-nav">
+        <a href="users.html" class="active">Benutzer</a>
+        <a href="roles.html">Rollen</a>
+    </div>
+
+    <main>
+        <div class="card">
+            <div class="card-header">
+                <h2>Benutzer</h2>
+                <div> <button class="btn-secondary" id="toggle-columns-btn">Spalten anpassen</button>
+                    <button class="btn-primary" id="add-user-btn">Neuen Benutzer erstellen</button>
+                </div>
+            </div>
+            <div style="overflow-x: auto;">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Vorname</th>
+                            <th>Nachname</th>
+                            <th>Rolle</th>
+                            <th class="col-telefon hidden">Telefon</th>
+                            <th class="col-eintrittsdatum hidden">Eintrittsdatum</th>
+                            <th class="col-aktiv_ab_datum hidden">Aktiv ab</th>
+                            <th class="col-urlaub_rest hidden">Urlaub Rest</th>
+                            <th class="col-diensthund hidden">Diensthund</th>
+                            <th class="col-zuletzt_online hidden">Zuletzt Online</th>
+                            <th>Aktionen</th>
+                        </tr>
+                    </thead>
+                    <tbody id="user-table-body">
+                        </tbody>
+                </table>
+            </div>
+        </div>
+    </main>
+
+    <div id="user-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="modal-title">Benutzer bearbeiten</h2>
+                <span class="close" id="close-user-modal">&times;</span>
+            </div>
+            <div class="modal-tabs">
+                <button class="tab-link active" onclick="openTab(event, 'tab-stammdaten')">Stammdaten</button>
+                <button class="tab-link" onclick="openTab(event, 'tab-details')">Details</button>
+                <button class="tab-link" onclick="openTab(event, 'tab-system')">System</button>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="user-id">
+                <div id="tab-stammdaten" class="modal-tab-content active">
+                    <div class="form-grid">
+                        <div class="form-group"><label for="user-vorname">Vorname:</label><input type="text" id="user-vorname"></div>
+                        <div class="form-group"><label for="user-name">Nachname:</label><input type="text" id="user-name"></div>
+                    </div>
+                    <div class="form-group"><label for="user-passwort">Neues Passwort (leer lassen für "keine Änderung"):</label><input type="password" id="user-passwort" placeholder="Neues Passwort"></div>
+                    <div class="form-group"><label for="user-role">Rolle:</label><select id="user-role"></select></div>
+                </div>
+                <div id="tab-details" class="modal-tab-content">
+                    <div class="form-grid">
+                        <div class="form-group"><label for="user-geburtstag">Geburtstag:</label><input type="date" id="user-geburtstag"></div>
+                        <div class="form-group"><label for="user-telefon">Telefon:</label><input type="tel" id="user-telefon"></div>
+                    </div>
+                    <div class="form-grid">
+                        <div class="form-group"><label for="user-eintrittsdatum">Eintrittsdatum:</label><input type="date" id="user-eintrittsdatum"></div>
+                        <div class="form-group"><label for="user-aktiv-ab">Aktiv ab Datum:</label><input type="date" id="user-aktiv-ab"></div>
+                    </div>
+                    <div class="form-grid">
+                        <div class="form-group"><label for="user-urlaub-gesamt">Urlaub Gesamt:</label><input type="number" id="user-urlaub-gesamt"></div>
+                        <div class="form-group"><label for="user-urlaub-rest">Urlaub Rest:</label><input type="number" id="user-urlaub-rest"></div>
+                    </div>
+                    <div class="form-grid">
+                        <div class="form-group"><label for="user-diensthund">Diensthund (Name):</label><input type="text" id="user-diensthund"></div>
+                        <div class="form-group" style="align-self: flex-end;"><input type="checkbox" id="user-tutorial"><label for="user-tutorial">Tutorial gesehen</label></div>
+                    </div>
+                </div>
+                <div id="tab-system" class="modal-tab-content">
+                    <div class="form-group"><label for="user-pass-geaendert">Passwort zuletzt geändert:</label><input type="text" id="user-pass-geaendert" disabled></div>
+                    <div class="form-group"><label for="user-zuletzt-online">Zuletzt Online:</label><input type="text" id="user-zuletzt-online" disabled></div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <div id="modal-status" style="text-align: left; color: red; float: left;"></div>
+                <button class="btn-primary" id="save-user-btn">Speichern</button>
+            </div>
+        </div>
+    </div>
+    <div id="column-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="column-modal-title">Spalten anpassen</h2>
+                <span class="close" id="close-column-modal">&times;</span>
+            </div>
+            <div class="modal-body">
+                <label><input type="checkbox" class="col-toggle-cb" data-col="col-telefon"> Telefon</label>
+                <label><input type="checkbox" class="col-toggle-cb" data-col="col-eintrittsdatum"> Eintrittsdatum</label>
+                <label><input type="checkbox" class="col-toggle-cb" data-col="col-aktiv_ab_datum"> Aktiv ab</label>
+                <label><input type="checkbox" class="col-toggle-cb" data-col="col-urlaub_rest"> Urlaub Rest</label>
+                <label><input type="checkbox" class="col-toggle-cb" data-col="col-diensthund"> Diensthund</label>
+                <label><input type="checkbox" class="col-toggle-cb" data-col="col-zuletzt_online"> Zuletzt Online</label>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-primary" id="save-column-toggle">Anwenden</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- START: PARTIKEL-ANIMATION ---
+        const canvas = document.getElementById('particle-canvas');
+        const ctx = canvas.getContext('2d');
+        const nodeColor = '#3498db';
+        const lineColor = '#ecf0f1'; // (Angepasst für besseren Kontrast)
+        let particlesArray;
+
+        function setCanvasSize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        setCanvasSize();
+
+        class Particle {
+            constructor(x, y, directionX, directionY, size) {
+                this.x = x; this.y = y; this.directionX = directionX; this.directionY = directionY; this.size = size;
+            }
+            draw() {
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2, false);
+                ctx.fillStyle = nodeColor;
+                ctx.fill();
+            }
+            update() {
+                if (this.x > canvas.width || this.x < 0) { this.directionX = -this.directionX; }
+                if (this.y > canvas.height || this.y < 0) { this.directionY = -this.directionY; }
+                this.x += this.directionX; this.y += this.directionY;
+                this.draw();
+            }
+        }
+
+        function init() {
+            particlesArray = [];
+            let numberOfParticles = (canvas.height * canvas.width) / 9000;
+            if (numberOfParticles > 100) numberOfParticles = 100;
+
+            for (let i = 0; i < numberOfParticles; i++) {
+                let size = (Math.random() * 2) + 1;
+                let x = (Math.random() * ((canvas.width - size * 2) - (size * 2)) + size * 2);
+                let y = (Math.random() * ((canvas.height - size * 2) - (size * 2)) + size * 2);
+                let directionX = (Math.random() * 0.4) - 0.2;
+                let directionY = (Math.random() * 0.4) - 0.2;
+                particlesArray.push(new Particle(x, y, directionX, directionY, size));
+            }
+        }
+
+        function connect() {
+            let maxDistance = 150;
+            ctx.strokeStyle = lineColor;
+            for (let a = 0; a < particlesArray.length; a++) {
+                for (let b = a; b < particlesArray.length; b++) {
+                    let distance = ((particlesArray[a].x - particlesArray[b].x) * (particlesArray[a].x - particlesArray[b].x))
+                                 + ((particlesArray[a].y - particlesArray[b].y) * (particlesArray[a].y - particlesArray[b].y));
+                    if (distance < (maxDistance * maxDistance)) {
+                        let opacity = 1 - (distance / (maxDistance * maxDistance));
+                        ctx.globalAlpha = opacity;
+                        ctx.beginPath();
+                        ctx.moveTo(particlesArray[a].x, particlesArray[a].y);
+                        ctx.lineTo(particlesArray[b].x, particlesArray[b].y);
+                        ctx.stroke();
+                    }
+                }
+            }
+            ctx.globalAlpha = 1.0;
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            for (let i = 0; i < particlesArray.length; i++) {
+                particlesArray[i].update();
+            }
+            connect();
+        }
+
+        window.addEventListener('resize', () => {
+            setCanvasSize();
+            init();
+        });
+        init();
+        animate();
+        // --- ENDE: PARTIKEL-ANIMATION ---
+    </script>
+
+    <script>
+        // (Das gesamte JavaScript bleibt exakt wie von Ihnen gesendet)
+        const API_URL = 'http://46.224.63.203:5000';
+        let user;
+        let allRoles = [];
+        async function logout() {
+            try { await apiFetch('/api/logout', 'POST'); }
+            catch (e) { console.error(e); }
+            finally {
+                localStorage.removeItem('dhf_user');
+                window.location.href = 'index.html?logout=true';
+            }
+        }
+        try {
+            user = JSON.parse(localStorage.getItem('dhf_user'));
+            if (!user || !user.vorname) { throw new Error("Kein User"); }
+            document.getElementById('welcome-user').textContent = `Willkommen, ${user.vorname}!`;
+        } catch (e) {
+            logout();
+        }
+        document.getElementById('logout-btn').onclick = logout;
+        async function apiFetch(endpoint, method = 'GET', body = null) {
+            const options = {
+                method,
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include'
+            };
+            if (body) { options.body = JSON.stringify(body); }
+            const response = await fetch(API_URL + endpoint, options);
+            if (response.status === 401 || response.status === 403) {
+                logout();
+                throw new Error('Sitzung ungültig oder fehlende Rechte.');
+            }
+            const contentType = response.headers.get("content-type");
+            let data;
+            if (contentType && contentType.indexOf("application/json") !== -1) {
+                data = await response.json();
+            } else {
+                data = { message: await response.text() };
+            }
+            if (!response.ok) {
+                throw new Error(data.message || 'API-Fehler');
+            }
+            return data;
+        }
+        const userTableBody = document.getElementById('user-table-body');
+        const modal = document.getElementById('user-modal');
+        const modalTitle = document.getElementById('modal-title');
+        const modalStatus = document.getElementById('modal-status');
+        const addUserBtn = document.getElementById('add-user-btn');
+        const saveUserBtn = document.getElementById('save-user-btn');
+        const closeModalBtn = document.getElementById('close-user-modal');
+        const userIdField = document.getElementById('user-id');
+        const vornameField = document.getElementById('user-vorname');
+        const nameField = document.getElementById('user-name');
+        const passwortField = document.getElementById('user-passwort');
+        const roleField = document.getElementById('user-role');
+        const geburtstagField = document.getElementById('user-geburtstag');
+        const telefonField = document.getElementById('user-telefon');
+        const eintrittsdatumField = document.getElementById('user-eintrittsdatum');
+        const aktivAbField = document.getElementById('user-aktiv-ab');
+        const urlaubGesamtField = document.getElementById('user-urlaub-gesamt');
+        const urlaubRestField = document.getElementById('user-urlaub-rest');
+        const diensthundField = document.getElementById('user-diensthund');
+        const tutorialField = document.getElementById('user-tutorial');
+        const passGeaendertField = document.getElementById('user-pass-geaendert');
+        const zuletztOnlineField = document.getElementById('user-zuletzt-online');
+        function openModal(modalEl) {
+            modalEl.style.display = 'block';
+        }
+        function closeModal(modalEl) { modalEl.style.display = 'none'; }
+        closeModalBtn.onclick = () => closeModal(modal);
+        window.onclick = (event) => {
+            if (event.target == modal) closeModal(modal);
+            if (event.target == columnModal) closeModal(columnModal);
+        }
+        function openTab(evt, tabName) {
+            let i, tabcontent, tablinks;
+            tabcontent = document.getElementsByClassName("modal-tab-content");
+            for (i = 0; i < tabcontent.length; i++) {
+                tabcontent[i].style.display = "none";
+            }
+            tablinks = document.getElementsByClassName("tab-link");
+            for (i = 0; i < tablinks.length; i++) {
+                tablinks[i].className = tablinks[i].className.replace(" active", "");
+            }
+            document.getElementById(tabName).style.display = "block";
+            if (evt) evt.currentTarget.className += " active";
+            else tablinks[0].className += " active";
+        }
+        function formatDateTime(isoString, type = 'date') {
+            if (!isoString) return '';
+            const d = new Date(isoString);
+            if (isNaN(d.getTime())) return '';
+            if (type === 'date') {
+                return d.toISOString().split('T')[0];
+            } else {
+                return d.toLocaleString('de-DE', { dateStyle: 'medium', timeStyle: 'short' }) + ' Uhr';
+            }
+        }
+        const columnModal = document.getElementById('column-modal');
+        const toggleColumnsBtn = document.getElementById('toggle-columns-btn');
+        const saveColumnToggleBtn = document.getElementById('save-column-toggle');
+        const columnCheckboxes = document.querySelectorAll('.col-toggle-cb');
+        const columnNames = [
+            'col-telefon', 'col-eintrittsdatum', 'col-aktiv_ab_datum',
+            'col-urlaub_rest', 'col-diensthund', 'col-zuletzt_online'
+        ];
+        function applyColumnPreferences() {
+            columnNames.forEach(colClass => {
+                const isVisible = localStorage.getItem(colClass) === 'true';
+                document.querySelectorAll('.' + colClass).forEach(el => {
+                    if (isVisible) {
+                        el.classList.remove('hidden');
+                    } else {
+                        el.classList.add('hidden');
+                    }
+                });
+                const checkbox = document.querySelector(`.col-toggle-cb[data-col="${colClass}"]`);
+                if(checkbox) checkbox.checked = isVisible;
+            });
+        }
+        toggleColumnsBtn.onclick = () => {
+            openModal(columnModal);
+        };
+        document.getElementById('close-column-modal').onclick = () => closeModal(columnModal);
+        saveColumnToggleBtn.onclick = () => {
+            columnCheckboxes.forEach(cb => {
+                localStorage.setItem(cb.dataset.col, cb.checked);
+            });
+            applyColumnPreferences();
+            closeModal(columnModal);
+        };
+        async function loadRolesIntoDropdown(selectedRoleId = null) {
+            try {
+                if (allRoles.length === 0) {
+                    allRoles = await apiFetch('/api/roles');
+                }
+                roleField.innerHTML = '';
+                allRoles.forEach(role => {
+                    const option = document.createElement('option');
+                    option.value = role.id;
+                    option.textContent = role.name;
+                    if (role.id === selectedRoleId) {
+                        option.selected = true;
+                    }
+                    roleField.appendChild(option);
+                });
+            } catch (error) {
+                modalStatus.textContent = "Fehler beim Laden der Rollen: " + error.message;
+            }
+        }
+        async function loadUsers() {
+            try {
+                const users = await apiFetch('/api/users');
+                userTableBody.innerHTML = '';
+                users.forEach(u => {
+                    const row = document.createElement('tr');
+                    const roleName = u.role ? u.role.name : 'Keine Rolle';
+                    const userJsonString = JSON.stringify(u).replace(/'/g, "\\'");
+                    const telefon = u.telefon || '---';
+                    const eintritt = formatDateTime(u.eintrittsdatum, 'date') || '---';
+                    const aktiv = formatDateTime(u.aktiv_ab_datum, 'date') || '---';
+                    const urlaub = u.urlaub_rest + ' / ' + u.urlaub_gesamt;
+                    const hund = u.diensthund || '---';
+                    const online = formatDateTime(u.zuletzt_online, 'datetime') || 'Nie';
+                    row.innerHTML = `
+                        <td>${u.id}</td>
+                        <td>${u.vorname}</td>
+                        <td>${u.name}</td>
+                        <td>${roleName}</td>
+                        <td class="col-telefon hidden">${telefon}</td>
+                        <td class="col-eintrittsdatum hidden">${eintritt}</td>
+                        <td class="col-aktiv_ab_datum hidden">${aktiv}</td>
+                        <td class="col-urlaub_rest hidden">${urlaub}</td>
+                        <td class="col-diensthund hidden">${hund}</td>
+                        <td class="col-zuletzt_online hidden">${online}</td>
+                        <td class="actions">
+                            <button class="btn-edit" onclick='openEditModal(${userJsonString})'>Bearbeiten</button>
+                            <button class="btn-delete" onclick="deleteUser(${u.id})">Löschen</button>
+                        </td>
+                    `;
+                    userTableBody.appendChild(row);
+                });
+                applyColumnPreferences();
+            } catch (error) {
+                alert('Fehler beim Laden der Benutzer: ' + error.message);
+            }
+        }
+        addUserBtn.onclick = async () => {
+            modalTitle.textContent = 'Neuen Benutzer erstellen';
+            modalStatus.textContent = '';
+            userIdField.value = '';
+            vornameField.value = '';
+            nameField.value = '';
+            passwortField.placeholder = 'Passwort (erforderlich)';
+            geburtstagField.value = '';
+            telefonField.value = '';
+            eintrittsdatumField.value = '';
+            aktivAbField.value = '';
+            urlaubGesamtField.value = 0;
+            urlaubRestField.value = 0;
+            diensthundField.value = '';
+            tutorialField.checked = false;
+            passGeaendertField.value = 'Wird autom. gesetzt';
+            zuletztOnlineField.value = 'Nie';
+            await loadRolesIntoDropdown();
+            openModal(modal);
+            openTab(null, 'tab-stammdaten');
+        };
+        async function openEditModal(user) {
+            modalTitle.textContent = 'Benutzer bearbeiten';
+            modalStatus.textContent = '';
+            userIdField.value = user.id;
+            vornameField.value = user.vorname;
+            nameField.value = user.name;
+            passwortField.value = '';
+            passwortField.placeholder = 'Leer lassen für "keine Änderung"';
+            geburtstagField.value = formatDateTime(user.geburtstag, 'date');
+            telefonField.value = user.telefon || '';
+            eintrittsdatumField.value = formatDateTime(user.eintrittsdatum, 'date');
+            aktivAbField.value = formatDateTime(user.aktiv_ab_datum, 'date');
+            urlaubGesamtField.value = user.urlaub_gesamt || 0;
+            urlaubRestField.value = user.urlaub_rest || 0;
+            diensthundField.value = user.diensthund || '';
+            tutorialField.checked = user.tutorial_gesehen;
+            passGeaendertField.value = formatDateTime(user.password_geaendert, 'datetime') || 'Unbekannt';
+            zuletztOnlineField.value = formatDateTime(user.zuletzt_online, 'datetime') || 'Nie';
+            await loadRolesIntoDropdown(user.role_id);
+            openModal(modal);
+            openTab(null, 'tab-stammdaten');
+        }
+        saveUserBtn.onclick = async () => {
+            const id = userIdField.value;
+            const payload = {
+                vorname: vornameField.value,
+                name: nameField.value,
+                role_id: parseInt(roleField.value),
+                passwort: passwortField.value || null,
+                geburtstag: geburtstagField.value || null,
+                telefon: telefonField.value || null,
+                eintrittsdatum: eintrittsdatumField.value || null,
+                aktiv_ab_datum: aktivAbField.value || null,
+                urlaub_gesamt: parseInt(urlaubGesamtField.value) || 0,
+                urlaub_rest: parseInt(urlaubRestField.value) || 0,
+                diensthund: diensthundField.value || null,
+                tutorial_gesehen: tutorialField.checked
+            };
+            if (!payload.passwort) { delete payload.passwort; }
+            try {
+                if (id) {
+                    await apiFetch(`/api/users/${id}`, 'PUT', payload);
+                } else {
+                    if (!payload.passwort) {
+                        modalStatus.textContent = "Passwort ist für neue User erforderlich.";
+                        openTab(null, 'tab-stammdaten');
+                        return;
+                    }
+                    await apiFetch('/api/users', 'POST', payload);
+                }
+                closeModal(modal);
+                loadUsers();
+            } catch (error) {
+                modalStatus.textContent = 'Fehler: ' + error.message;
+            }
+        };
+        async function deleteUser(id) {
+            if (confirm('Sind Sie sicher, dass Sie diesen Benutzer löschen möchten?')) {
+                try {
+                    await apiFetch(`/api/users/${id}`, 'DELETE');
+                    loadUsers();
+                } catch (error) {
+                    alert('Löschen fehlgeschlagen: ' + error.message);
+                }
+            }
+        }
+        loadUsers();
+        applyColumnPreferences();
+    </script>
+</body>
+</html>

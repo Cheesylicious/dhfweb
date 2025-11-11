@@ -1,0 +1,556 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <title>Shortcuts - DHF-Planer</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        /* Import einer modernen Schriftart */
+        @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap');
+
+        body {
+            font-family: 'Poppins', sans-serif;
+            margin: 0;
+            background: #1a1a1a;
+            color: #ffffff; /* Standard-Textfarbe auf Weiß */
+            overflow-x: hidden;
+        }
+
+        /* Das Canvas-Element für die Animation */
+        #particle-canvas {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: -1; /* Liegt hinter allem */
+        }
+
+        /* Header (Glas-Effekt) */
+        header {
+            background: rgba(255, 255, 255, 0.05);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+
+            padding: 15px 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        header h1 {
+            margin: 0;
+            color: #ffffff;
+            font-size: 24px;
+        }
+
+        header nav {
+            display: flex;
+            gap: 20px;
+            align-items: center;
+        }
+
+        header nav a {
+            text-decoration: none;
+            color: #bdc3c7;
+            font-weight: 500;
+            font-size: 16px;
+            padding: 10px;
+            border-radius: 5px;
+            transition: background-color 0.3s, color 0.3s;
+        }
+
+        header nav a.active, header nav a:hover {
+            background-color: rgba(255, 255, 255, 0.1);
+            color: #ffffff;
+        }
+
+        #user-info {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            color: #bdc3c7;
+        }
+
+        #logout-btn {
+            background: #e74c3c;
+            color: white;
+            padding: 10px 15px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 15px;
+            transition: background-color 0.3s;
+        }
+        #logout-btn:hover {
+            background: #c0392b;
+        }
+
+        main {
+            padding: 30px;
+            max-width: 1200px;
+            margin: auto;
+        }
+
+        /* Card (Glas-Effekt) */
+        .card {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            box-shadow: 0 4px 30px rgba(0, 0, 0, 0.2);
+            border-radius: 10px;
+            overflow: hidden;
+        }
+
+        /* Card Header (Glas-Effekt) */
+        .card-header {
+            padding: 20px 25px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .card-header h2 {
+            margin: 0;
+            color: #ffffff;
+            font-weight: 600;
+        }
+
+        /* Card Footer (Glas-Effekt) */
+        .card-footer {
+            padding: 15px 25px;
+            background: rgba(0, 0, 0, 0.2);
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+            text-align: right;
+        }
+
+        .btn-primary {
+            background: #007bff;
+            color: white;
+            padding: 10px 15px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 15px;
+            transition: opacity 0.3s;
+        }
+        .btn-primary:hover {
+            opacity: 0.8;
+        }
+
+        /* --- SUB-NAV Styling (Glas-Effekt) --- */
+        .sub-nav {
+            background: rgba(255, 255, 255, 0.05);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+
+            padding: 0 30px;
+            margin-bottom: 30px;
+            margin-top: -1px; /* (Schließt Lücke zum Header) */
+            display: flex;
+            align-items: center;
+        }
+        .sub-nav a {
+            display: inline-block;
+            padding: 15px 20px;
+            text-decoration: none;
+            color: #bdc3c7;
+            font-weight: 500;
+            border-bottom: 3px solid transparent;
+            transition: color 0.3s;
+        }
+        .sub-nav a.active, .sub-nav a:hover {
+            color: #ffffff;
+            border-bottom-color: #3498db;
+        }
+
+        /* --- Dropdown-Menü (Glas-Effekt) --- */
+        .dropdown { position: relative; display: inline-block; }
+        .dropdown .dropbtn {
+            font-family: 'Poppins', sans-serif;
+            text-decoration: none; color: #bdc3c7; font-weight: 500; font-size: 16px;
+            padding: 15px 20px;
+            background: none; border: none; cursor: pointer;
+            border-bottom: 3px solid transparent;
+            transition: color 0.3s;
+        }
+        .dropdown-content {
+            display: none;
+            position: absolute;
+            background: rgba(30, 30, 30, 0.9); /* Dunkles Glas für Dropdown */
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            min-width: 200px;
+            box-shadow: 0px 8px 16px 0px rgba(0,0,0,0.2);
+            z-index: 100;
+            border-radius: 5px;
+            margin-top: -1px;
+        }
+        .dropdown-content a {
+            color: #bdc3c7;
+            padding: 12px 16px;
+            text-decoration: none;
+            display: block;
+            font-size: 15px;
+            border-bottom: none;
+            transition: background-color 0.3s, color 0.3s;
+        }
+        .dropdown-content a:hover {
+            background-color: rgba(255, 255, 255, 0.05);
+            color: #ffffff;
+        }
+        .dropdown:hover .dropdown-content { display: block; }
+        .dropdown:hover .dropbtn, .dropbtn.active {
+            color: #ffffff;
+            border-bottom-color: #3498db;
+        }
+        .dropdown-content a.active {
+            background-color: rgba(52, 152, 219, 0.2); /* Blauer Akzent */
+            font-weight: 600;
+            color: #3498db;
+        }
+
+        /* --- STYLING FÜR DIESE SEITE (Shortcut-Liste) --- */
+        #shortcut-list {
+            list-style: none; padding: 0; margin: 0;
+        }
+        .shortcut-item {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 15px;
+            padding: 15px 20px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            color: #bdc3c7;
+        }
+        .shortcut-item:last-child { border-bottom: none; }
+
+        .shortcut-label {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            flex-grow: 1;
+        }
+        .shortcut-label b {
+            font-size: 16px;
+            min-width: 40px;
+            color: #ffffff; /* (Abkürzung hervorheben) */
+        }
+        .shortcut-label .color-preview {
+            width: 15px; height: 15px;
+            border: 1px solid #555;
+            border-radius: 3px;
+        }
+
+        /* Input-Feld (Glas-Effekt) */
+        .shortcut-input {
+            width: 50px;
+            padding: 10px;
+            font-size: 16px;
+            text-align: center;
+            background: rgba(0, 0, 0, 0.2);
+            border: 1px solid #3498db;
+            border-radius: 5px;
+            color: #ffffff;
+            font-family: 'Poppins', sans-serif;
+            text-transform: lowercase;
+        }
+
+        #status-message {
+            color: #2ecc71; /* (Grün für Erfolg) */
+            font-weight: 500;
+            text-align: left;
+            padding: 0 5px; /* (Angepasst an Header) */
+        }
+    </style>
+</head>
+<body>
+
+    <canvas id="particle-canvas"></canvas>
+
+    <header>
+        <h1>DHF-Planer</h1>
+        <nav>
+            <a href="dashboard.html">Dashboard</a>
+            <a href="users.html">Benutzerverwaltung</a>
+            <a href="schichtplan.html" class="active">Schichtplan</a>
+        </nav>
+        <div id="user-info">
+            <span id="welcome-user"></span>
+            <button id="logout-btn">Abmelden</button>
+        </div>
+    </header>
+
+    <div class="sub-nav">
+        <a href="schichtplan.html">Schichtplan</a>
+        <div class="dropdown">
+            <button class="dropbtn active">Einstellungen &raquo;</button>
+            <div class="dropdown-content">
+                <a href="einstellungen.html">Mitarbeiter Sortierung</a>
+                <a href="schichtarten.html">Schichtarten</a>
+                <a href="shortcuts.html" class="active">Shortcuts</a>
+            </div>
+        </div>
+    </div>
+
+    <main>
+        <div class="card">
+            <div class="card-header">
+                <h2>Tastatur-Shortcuts (Schichtplan)</h2>
+                <div id="status-message"></div>
+            </div>
+
+            <ul id="shortcut-list">
+                </ul>
+
+            <div class="card-footer">
+                <button class="btn-primary" id="save-shortcuts-btn">Shortcuts speichern</button>
+            </div>
+        </div>
+    </main>
+
+    <script>
+        // --- START: PARTIKEL-ANIMATION ---
+        const canvas = document.getElementById('particle-canvas');
+        const ctx = canvas.getContext('2d');
+        const nodeColor = '#3498db';
+        const lineColor = '#ecf0f1'; // (Angepasst für besseren Kontrast)
+        let particlesArray;
+
+        function setCanvasSize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        setCanvasSize();
+
+        class Particle {
+            constructor(x, y, directionX, directionY, size) {
+                this.x = x; this.y = y; this.directionX = directionX; this.directionY = directionY; this.size = size;
+            }
+            draw() {
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2, false);
+                ctx.fillStyle = nodeColor;
+                ctx.fill();
+            }
+            update() {
+                if (this.x > canvas.width || this.x < 0) { this.directionX = -this.directionX; }
+                if (this.y > canvas.height || this.y < 0) { this.directionY = -this.directionY; }
+                this.x += this.directionX; this.y += this.directionY;
+                this.draw();
+            }
+        }
+
+        function init() {
+            particlesArray = [];
+            let numberOfParticles = (canvas.height * canvas.width) / 9000;
+            if (numberOfParticles > 100) numberOfParticles = 100;
+
+            for (let i = 0; i < numberOfParticles; i++) {
+                let size = (Math.random() * 2) + 1;
+                let x = (Math.random() * ((canvas.width - size * 2) - (size * 2)) + size * 2);
+                let y = (Math.random() * ((canvas.height - size * 2) - (size * 2)) + size * 2);
+                let directionX = (Math.random() * 0.4) - 0.2;
+                let directionY = (Math.random() * 0.4) - 0.2;
+                particlesArray.push(new Particle(x, y, directionX, directionY, size));
+            }
+        }
+
+        function connect() {
+            let maxDistance = 150;
+            ctx.strokeStyle = lineColor;
+            for (let a = 0; a < particlesArray.length; a++) {
+                for (let b = a; b < particlesArray.length; b++) {
+                    let distance = ((particlesArray[a].x - particlesArray[b].x) * (particlesArray[a].x - particlesArray[b].x))
+                                 + ((particlesArray[a].y - particlesArray[b].y) * (particlesArray[a].y - particlesArray[b].y));
+                    if (distance < (maxDistance * maxDistance)) {
+                        let opacity = 1 - (distance / (maxDistance * maxDistance));
+                        ctx.globalAlpha = opacity;
+                        ctx.beginPath();
+                        ctx.moveTo(particlesArray[a].x, particlesArray[a].y);
+                        ctx.lineTo(particlesArray[b].x, particlesArray[b].y);
+                        ctx.stroke();
+                    }
+                }
+            }
+            ctx.globalAlpha = 1.0;
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            for (let i = 0; i < particlesArray.length; i++) {
+                particlesArray[i].update();
+            }
+            connect();
+        }
+
+        window.addEventListener('resize', () => {
+            setCanvasSize();
+            init();
+        });
+        init();
+        animate();
+        // --- ENDE: PARTIKEL-ANIMATION ---
+    </script>
+
+    <script>
+        // --- Globales Setup (unverändert) ---
+        const API_URL = 'http://46.224.63.203:5000';
+        let user;
+        const SHORTCUT_STORAGE_KEY = 'dhf_shortcuts';
+
+        async function logout() {
+            try { await apiFetch('/api/logout', 'POST'); }
+            catch (e) { console.error(e); }
+            finally {
+                localStorage.removeItem('dhf_user');
+                window.location.href = 'index.html?logout=true';
+            }
+        }
+
+        try {
+            user = JSON.parse(localStorage.getItem('dhf_user'));
+            if (!user || !user.vorname) { throw new Error("Kein User"); }
+            document.getElementById('welcome-user').textContent = `Willkommen, ${user.vorname}!`;
+        } catch (e) {
+            logout();
+        }
+        document.getElementById('logout-btn').onclick = logout;
+
+        // --- Globale API-Funktion (unverändert) ---
+        async function apiFetch(endpoint, method = 'GET', body = null) {
+            const options = {
+                method,
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include'
+            };
+            if (body) { options.body = JSON.stringify(body); }
+            const response = await fetch(API_URL + endpoint, options);
+            if (response.status === 401 || response.status === 403) {
+                logout();
+                throw new Error('Sitzung ungültig oder fehlende Rechte.');
+            }
+            const contentType = response.headers.get("content-type");
+            let data;
+            if (contentType && contentType.indexOf("application/json") !== -1) {
+                data = await response.json();
+            } else {
+                data = { message: await response.text() };
+            }
+            if (!response.ok) {
+                throw new Error(data.message || 'API-Fehler');
+            }
+            return data;
+        }
+
+        // --- Seiten-Logik ---
+        const shortcutList = document.getElementById('shortcut-list');
+        const saveBtn = document.getElementById('save-shortcuts-btn');
+        const statusMsg = document.getElementById('status-message');
+
+        // (Diese Standard-Map wird verwendet, falls nichts gespeichert ist)
+        const defaultShortcuts = {
+            'T.': 't', 'N.': 'n', '6': '6', 'FREI': 'f', 'X': 'x', 'U': 'u'
+        };
+
+        // Lädt die Schichtarten UND die gespeicherten Shortcuts
+        async function loadData() {
+            let savedShortcuts = {};
+            try {
+                const data = localStorage.getItem(SHORTCUT_STORAGE_KEY);
+                if (data) {
+                    savedShortcuts = JSON.parse(data);
+                } else {
+                    savedShortcuts = defaultShortcuts;
+                }
+            } catch (e) {
+                console.error("Fehler beim Laden der Shortcuts aus localStorage", e);
+                savedShortcuts = defaultShortcuts;
+            }
+
+            try {
+                const shiftTypes = await apiFetch('/api/shifttypes');
+                shortcutList.innerHTML = '';
+
+                shiftTypes.forEach(st => {
+                    const li = document.createElement('li');
+                    li.className = 'shortcut-item';
+
+                    // Finde den gespeicherten Shortcut für diese Abkürzung
+                    const savedKey = savedShortcuts[st.abbreviation] || '';
+
+                    li.innerHTML = `
+                        <label class="shortcut-label" for="sc-${st.abbreviation}">
+                            <div class="color-preview" style="background-color: ${st.color}; border-color: #555;"></div>
+                            <b>${st.abbreviation}</b>
+                            <span>(${st.name})</span>
+                        </label>
+                        <input type="text"
+                               class="shortcut-input"
+                               id="sc-${st.abbreviation}"
+                               data-abbreviation="${st.abbreviation}"
+                               value="${savedKey}"
+                               maxlength="1"
+                               placeholder="-">
+                    `;
+                    shortcutList.appendChild(li);
+                });
+
+            } catch (error) {
+                shortcutList.innerHTML = `<li style="color: #e74c3c; padding: 20px;">Fehler beim Laden der Schichtarten: ${error.message}</li>`;
+            }
+        }
+
+        // Speichert die Shortcuts im localStorage
+        saveBtn.onclick = () => {
+            statusMsg.textContent = 'Speichere...';
+            statusMsg.style.color = '#bdc3c7'; /* (Angepasst für dunklen Modus) */
+
+            const inputs = document.querySelectorAll('.shortcut-input');
+            const newShortcutMap = {};
+            let hasError = false;
+            let usedKeys = new Set();
+
+            inputs.forEach(input => {
+                const abbreviation = input.dataset.abbreviation;
+                const key = input.value.toLowerCase(); // (Immer Kleinbuchstaben)
+                input.style.borderColor = '#3498db'; /* (Reset) */
+
+                if (key) { // Nur speichern, wenn ein Wert gesetzt ist
+                    if (usedKeys.has(key)) {
+                        statusMsg.textContent = `Fehler: Taste '${key}' ist doppelt vergeben.`;
+                        statusMsg.style.color = '#e74c3c'; /* (Rot) */
+                        input.style.borderColor = '#e74c3c';
+                        hasError = true;
+                    }
+                    usedKeys.add(key);
+                    // Wir speichern { 'T.': 't', 'N.': 'n' }
+                    newShortcutMap[abbreviation] = key;
+                }
+            });
+
+            if (hasError) return;
+
+            try {
+                localStorage.setItem(SHORTCUT_STORAGE_KEY, JSON.stringify(newShortcutMap));
+                statusMsg.textContent = 'Erfolgreich gespeichert!';
+                statusMsg.style.color = '#2ecc71'; /* (Grün) */
+                setTimeout(() => statusMsg.textContent = '', 2000);
+            } catch (error) {
+                statusMsg.textContent = 'Fehler beim Speichern: ' + error.message;
+                statusMsg.style.color = '#e74c3c'; /* (Rot) */
+            }
+        };
+
+        // --- Initialisierung ---
+        loadData();
+
+    </script>
+</body>
+</html>

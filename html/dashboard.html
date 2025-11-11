@@ -1,0 +1,278 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <title>Dashboard - DHF-Planer</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        /* Import einer modernen Schriftart */
+        @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap');
+
+        body {
+            font-family: 'Poppins', sans-serif;
+            margin: 0;
+            background: #1a1a1a;
+            color: #ffffff; /* Standard-Textfarbe auf Weiß */
+            overflow-x: hidden; /* Verhindert horizontales Scrollen */
+        }
+
+        /* Das Canvas-Element für die Animation */
+        #particle-canvas {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: -1; /* Liegt hinter allem */
+        }
+
+        /* Header (Glas-Effekt) */
+        header {
+            background: rgba(255, 255, 255, 0.05);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+
+            padding: 15px 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            /* (box-shadow entfernt, da Glas-Effekt) */
+        }
+
+        header h1 {
+            margin: 0;
+            color: #ffffff; /* Angepasst */
+            font-size: 24px;
+        }
+
+        header nav {
+            display: flex;
+            gap: 20px;
+        }
+
+        header nav a {
+            text-decoration: none;
+            color: #bdc3c7; /* Angepasst (helles Grau) */
+            font-weight: 500;
+            font-size: 16px;
+            padding: 10px;
+            border-radius: 5px;
+            transition: background-color 0.3s, color 0.3s;
+        }
+
+        header nav a.active, header nav a:hover {
+            background-color: rgba(255, 255, 255, 0.1); /* Leichter Glas-Hover */
+            color: #ffffff; /* Angepasst */
+        }
+
+        #user-info {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            color: #bdc3c7; /* Angepasst */
+        }
+
+        /* Logout-Button (Design bleibt, Hover-Effekt angepasst) */
+        #logout-btn {
+            background: #e74c3c;
+            color: white;
+            padding: 10px 15px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 15px;
+            transition: background-color 0.3s;
+        }
+        #logout-btn:hover {
+            background: #c0392b;
+        }
+
+        main {
+            padding: 30px;
+            max-width: 1200px;
+            margin: auto;
+        }
+
+        /* Card (Glas-Effekt von index.html übernommen) */
+        .card {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            box-shadow: 0 4px 30px rgba(0, 0, 0, 0.2);
+            border-radius: 10px;
+            padding: 30px;
+        }
+
+        .card h2 {
+            color: #ffffff;
+            font-weight: 600;
+            margin-top: 0;
+        }
+
+        .card p {
+            color: #bdc3c7;
+            font-weight: 300;
+        }
+    </style>
+</head>
+<body>
+
+    <canvas id="particle-canvas"></canvas>
+
+    <header>
+        <h1>DHF-Planer</h1>
+        <nav>
+            <a href="dashboard.html" class="active">Dashboard</a>
+            <a href="users.html">Benutzerverwaltung</a>
+            <a href="schichtplan.html">Schichtplan</a>
+        </nav>
+        <div id="user-info">
+            <span id="welcome-user"></span>
+            <button id="logout-btn">Abmelden</button>
+        </div>
+    </header>
+
+    <main>
+        <div class="card">
+            <h2>Willkommen!</h2>
+            <p>Dies ist das Admin-Dashboard. Wählen Sie einen Bereich aus der Navigation oben.</p>
+        </div>
+    </main>
+
+    <script>
+        // --- START: PARTIKEL-ANIMATION ---
+        const canvas = document.getElementById('particle-canvas');
+        const ctx = canvas.getContext('2d');
+        const nodeColor = '#3498db';
+        const lineColor = '#ecf0f1'; // (Angepasst für besseren Kontrast)
+        let particlesArray;
+
+        function setCanvasSize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        setCanvasSize();
+
+        class Particle {
+            constructor(x, y, directionX, directionY, size) {
+                this.x = x; this.y = y; this.directionX = directionX; this.directionY = directionY; this.size = size;
+            }
+            draw() {
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2, false);
+                ctx.fillStyle = nodeColor;
+                ctx.fill();
+            }
+            update() {
+                if (this.x > canvas.width || this.x < 0) { this.directionX = -this.directionX; }
+                if (this.y > canvas.height || this.y < 0) { this.directionY = -this.directionY; }
+                this.x += this.directionX; this.y += this.directionY;
+                this.draw();
+            }
+        }
+
+        function init() {
+            particlesArray = [];
+            let numberOfParticles = (canvas.height * canvas.width) / 9000;
+            if (numberOfParticles > 100) numberOfParticles = 100;
+
+            for (let i = 0; i < numberOfParticles; i++) {
+                let size = (Math.random() * 2) + 1;
+                let x = (Math.random() * ((canvas.width - size * 2) - (size * 2)) + size * 2);
+                let y = (Math.random() * ((canvas.height - size * 2) - (size * 2)) + size * 2);
+                let directionX = (Math.random() * 0.4) - 0.2;
+                let directionY = (Math.random() * 0.4) - 0.2;
+                particlesArray.push(new Particle(x, y, directionX, directionY, size));
+            }
+        }
+
+        function connect() {
+            let maxDistance = 150;
+            ctx.strokeStyle = lineColor;
+            for (let a = 0; a < particlesArray.length; a++) {
+                for (let b = a; b < particlesArray.length; b++) {
+                    let distance = ((particlesArray[a].x - particlesArray[b].x) * (particlesArray[a].x - particlesArray[b].x))
+                                 + ((particlesArray[a].y - particlesArray[b].y) * (particlesArray[a].y - particlesArray[b].y));
+                    if (distance < (maxDistance * maxDistance)) {
+                        let opacity = 1 - (distance / (maxDistance * maxDistance));
+                        ctx.globalAlpha = opacity;
+                        ctx.beginPath();
+                        ctx.moveTo(particlesArray[a].x, particlesArray[a].y);
+                        ctx.lineTo(particlesArray[b].x, particlesArray[b].y);
+                        ctx.stroke();
+                    }
+                }
+            }
+            ctx.globalAlpha = 1.0;
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            for (let i = 0; i < particlesArray.length; i++) {
+                particlesArray[i].update();
+            }
+            connect();
+        }
+
+        window.addEventListener('resize', () => {
+            setCanvasSize();
+            init();
+        });
+        init();
+        animate();
+        // --- ENDE: PARTIKEL-ANIMATION ---
+    </script>
+
+
+    <script>
+        // (Das Basis-Skript für Logout und User-Check bleibt unverändert)
+        const API_URL = 'http://46.224.63.203:5000'; // Ersetzen Sie dies ggf. durch Ihre Domain
+        let user;
+
+        async function logout() {
+            try {
+                await apiFetch('/api/logout', 'POST');
+            } catch (error) {
+                console.error("Logout-Fehler:", error.message);
+            } finally {
+                localStorage.removeItem('dhf_user');
+                window.location.href = 'index.html?logout=true';
+            }
+        }
+
+        try {
+            user = JSON.parse(localStorage.getItem('dhf_user'));
+            if (!user || !user.vorname) { throw new Error("Kein User"); }
+            document.getElementById('welcome-user').textContent = `Willkommen, ${user.vorname}!`;
+        } catch (e) {
+            window.location.href = 'index.html?logout=true';
+        }
+
+        document.getElementById('logout-btn').onclick = logout;
+
+        async function apiFetch(endpoint, method = 'GET', body = null) {
+            const options = {
+                method,
+                headers: { 'Content-Type': 'application/json' },
+                credentials: 'include'
+            };
+            if (body) { options.body = JSON.stringify(body); }
+            const response = await fetch(API_URL + endpoint, options);
+            if (response.status === 401 || response.status === 403) {
+                logout();
+                throw new Error('Sitzung ungültig');
+            }
+            if (!response.ok) {
+                const data = await response.json();
+                throw new Error(data.message || 'API-Fehler');
+            }
+            if (response.status !== 204) {
+                try { return await response.json(); } catch(e) { return {}; }
+            }
+        }
+    </script>
+</body>
+</html>

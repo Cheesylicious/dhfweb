@@ -1,0 +1,735 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <title>Schichtplan - DHF-Planer</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        /* Import einer modernen Schriftart */
+        @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap');
+
+        body {
+            font-family: 'Poppins', sans-serif;
+            margin: 0;
+            background: #1a1a1a; /* DUNKLER HINTERGRUND (BLEIBT) */
+            color: #ffffff;
+            overflow-x: hidden;
+        }
+
+        /* Das Canvas-Element für die Animation (BLEIBT) */
+        #particle-canvas {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: -1;
+        }
+
+        /* Header (Glas-Effekt) (BLEIBT) */
+        header {
+            background: rgba(255, 255, 255, 0.05);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            padding: 15px 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        header h1 { margin: 0; color: #ffffff; font-size: 24px; }
+        header nav { display: flex; gap: 20px; align-items: center; }
+        header nav a {
+            text-decoration: none; color: #bdc3c7; font-weight: 500; font-size: 16px;
+            padding: 10px; border-radius: 5px; transition: background-color 0.3s, color 0.3s;
+        }
+        header nav a.active, header nav a:hover {
+            background-color: rgba(255, 255, 255, 0.1); color: #ffffff;
+        }
+        #user-info { display: flex; align-items: center; gap: 15px; color: #bdc3c7; }
+        #logout-btn {
+            background: #e74c3c; color: white; padding: 10px 15px; border: none;
+            border-radius: 5px; cursor: pointer; font-size: 15px; transition: background-color 0.3s;
+        }
+        #logout-btn:hover { background: #c0392b; }
+
+        /* Main (Volle Breite) (BLEIBT) */
+        main {
+            padding: 30px;
+            max-width: 100%;
+            box-sizing: border-box;
+        }
+
+        /* Card (ZURÜCK ZU WEISS - WIE VOM USER GEWÜNSCHT) */
+        .card {
+            background: #fff; /* (KORREKTUR: Weißer Hintergrund) */
+            color: #333; /* (KORREKTUR: Dunkler Text) */
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+            overflow: hidden;
+            /* (Glas-Filter entfernt) */
+        }
+
+        /* Sub-Nav (Glas-Effekt) (BLEIBT) */
+        .sub-nav {
+            background: rgba(255, 255, 255, 0.05);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            padding: 0 30px;
+            margin-bottom: 30px;
+            margin-top: -1px;
+            display: flex;
+            align-items: center;
+        }
+        .sub-nav a {
+            display: inline-block; padding: 15px 20px; text-decoration: none;
+            color: #bdc3c7; font-weight: 500; border-bottom: 3px solid transparent;
+            transition: color 0.3s;
+        }
+        .sub-nav a.active, .sub-nav a:hover {
+            color: #ffffff;
+            border-bottom-color: #3498db;
+        }
+
+        /* Dropdown-Menü (KORRIGIERT) */
+        .dropdown { position: relative; display: inline-block; }
+        .dropdown .dropbtn {
+            font-family: 'Poppins', sans-serif;
+            text-decoration: none; color: #bdc3c7; font-weight: 500; font-size: 16px;
+            padding: 15px 20px; background: none; border: none; cursor: pointer;
+            border-bottom: 3px solid transparent; transition: color 0.3s;
+        }
+        /* KORREKTUR: Roter Kasten - Dropdown-Menü (Glas-Effekt) */
+        .dropdown-content {
+            display: none;
+            position: absolute;
+            background: rgba(30, 30, 30, 0.9); /* (Dunkles Glas) */
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            min-width: 200px;
+            box-shadow: 0px 8px 16px 0px rgba(0,0,0,0.2);
+            z-index: 100;
+            border-radius: 5px;
+            margin-top: -1px;
+        }
+        .dropdown-content a {
+            color: #bdc3c7; /* (Heller Text) */
+            padding: 12px 16px; text-decoration: none; display: block;
+            font-size: 15px; border-bottom: none; transition: background-color 0.3s, color 0.3s;
+        }
+        .dropdown-content a:hover {
+            background-color: rgba(255, 255, 255, 0.05);
+            color: #ffffff;
+        }
+        /* (Ende Roter Kasten Korrektur) */
+
+        .dropdown:hover .dropdown-content { display: block; }
+        .dropdown:hover .dropbtn, .dropbtn.active {
+            color: #ffffff;
+            border-bottom-color: #3498db;
+        }
+        .dropdown-content a.active {
+            background-color: rgba(52, 152, 219, 0.2);
+            font-weight: 600;
+            color: #3498db;
+        }
+
+        /* --- KORREKTUR: Grüner Kasten (Grid zurück zu Weiß) --- */
+
+        .plan-nav {
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 20px;
+            background-color: #fcfcfc; /* (Zurück zu Hell) */
+            border-bottom: 1px solid #eee; /* (Zurück zu Hell) */
+        }
+        .plan-nav h2 { margin: 0; font-size: 22px; color: #333; } /* (Zurück zu Dunkel) */
+        .plan-nav button {
+            padding: 8px 16px; font-size: 15px;
+            background: #f0f0f0; /* (Zurück zu Hell) */
+            border: 1px solid #ccc; /* (Zurück zu Hell) */
+            color: #333; /* (Zurück zu Dunkel) */
+            border-radius: 5px; cursor: pointer; margin-left: 10px;
+        }
+        .plan-nav button:hover {
+            background: #e0e0e0;
+        }
+
+        #schichtplan-grid-container { overflow-x: hidden; }
+        #schichtplan-grid { display: grid; }
+
+        .grid-header, .grid-cell, .grid-user-name, .grid-user-total, .grid-user-dog {
+            padding: 10px;
+            border-bottom: 1px solid #eee; /* (Zurück zu Hell) */
+            border-right: 1px solid #eee; /* (Zurück zu Hell) */
+            text-align: center; font-size: 14px; line-height: 1.4;
+            overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+            color: #333; /* (Standardtext Dunkel) */
+        }
+
+        .grid-header {
+            background: #fcfcfc; /* (Zurück zu Hell) */
+            font-weight: 600; position: sticky; top: 0; z-index: 10;
+        }
+        .grid-header.weekend { background-color: #fff8f8; }
+
+        .grid-user-name {
+            font-weight: 600; text-align: left;
+            position: sticky; left: 0;
+            background: #fcfcfc; /* (Zurück zu Hell - WICHTIG für sticky) */
+            z-index: 5;
+            border-left: 1px solid #eee;
+        }
+
+        .grid-user-dog { font-weight: 500; text-align: left; background: #fcfcfc; color: #555; }
+        .grid-header-dog { font-weight: 600; background: #fcfcfc; }
+        .grid-user-total { font-weight: 600; background: #f8f9fa; text-align: center; }
+        .grid-header-total { font-weight: 600; background: #f8f9fa; }
+
+        .grid-cell { cursor: pointer; transition: background-color 0.2s; font-weight: 500; }
+        .grid-cell.hovered {
+            background-color: #d6eaff !important;
+            box-shadow: inset 0 0 0 2px #007bff;
+        }
+        .grid-cell.weekend { background-color: #fff8f8; }
+
+        .plan-legende {
+            padding: 20px; display: flex; flex-wrap: wrap; gap: 15px;
+            background: #fcfcfc; /* (Zurück zu Hell) */
+            color: #333; /* (Zurück zu Dunkel) */
+            border-top: 1px solid #eee;
+        }
+        .plan-legende b { color: #333; }
+        .legende-item { display: flex; align-items: center; gap: 5px; }
+        .legende-color { width: 15px; height: 15px; border: 1px solid #ccc; border-radius: 3px; }
+
+        /* --- ENDE KORREKTUR Grüner Kasten --- */
+
+        /* Modal (Zurück zu Hell) */
+        .modal {
+            display: none; position: fixed; z-index: 100; left: 0; top: 0;
+            width: 100%; height: 100%; overflow: auto;
+            background-color: rgba(0,0,0,0.4); /* (Overlay bleibt dunkel) */
+        }
+        .modal-content {
+            background-color: #fefefe; /* (Zurück zu Hell) */
+            color: #333; /* (Zurück zu Dunkel) */
+            margin: 15% auto; padding: 0; border: 1px solid #888;
+            width: 80%; max-width: 450px; border-radius: 8px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+        }
+        .modal-header {
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 15px 25px; border-bottom: 1px solid #eee; /* (Zurück zu Hell) */
+        }
+        .modal-header h2 { margin: 0; font-size: 18px; color: #333; } /* (Zurück zu Dunkel) */
+        .close { color: #aaa; font-size: 28px; font-weight: bold; cursor: pointer; }
+        .modal-body { padding: 25px; color: #333; }
+
+        #shift-selection { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+        #shift-selection button {
+            padding: 12px; font-size: 15px; font-weight: 600;
+            border: 1px solid #ccc; /* (Zurück zu Hell) */
+            border-radius: 5px; cursor: pointer;
+            background-color: #f9f9f9; /* (Zurück zu Hell) */
+            color: #333; /* (Zurück zu Dunkel) */
+        }
+        #shift-selection button:hover {
+            border-color: #007bff;
+            background-color: #f0f5fa;
+        }
+    </style>
+</head>
+<body>
+
+    <canvas id="particle-canvas"></canvas>
+
+    <header>
+        <h1>DHF-Planer</h1>
+        <nav>
+            <a href="dashboard.html">Dashboard</a>
+            <a href="users.html">Benutzerverwaltung</a>
+            <a href="schichtplan.html" class="active">Schichtplan</a>
+        </nav>
+        <div id="user-info">
+            <span id="welcome-user"></span>
+            <button id="logout-btn">Abmelden</button>
+        </div>
+    </header>
+
+    <div class="sub-nav">
+        <a href="schichtplan.html" class="active">Schichtplan</a>
+        <div class="dropdown">
+            <button class="dropbtn">Einstellungen &raquo;</button>
+            <div class="dropdown-content">
+                <a href="einstellungen.html">Mitarbeiter Sortierung</a>
+                <a href="schichtarten.html">Schichtarten</a>
+                <a href="shortcuts.html">Shortcuts</a> </div>
+        </div>
+    </div>
+
+    <main>
+        <div class="card">
+            <div class="plan-nav">
+                <button id="prev-month-btn">&laquo; Vorheriger</button>
+                <h2 id="current-month-label">Lade...</h2>
+                <button id="next-month-btn">Nächster &raquo;</button>
+            </div>
+
+            <div id="schichtplan-grid-container">
+                <div id="schichtplan-grid">
+                    </div>
+            </div>
+
+            <div class="plan-legende" id="plan-legende">
+                </div>
+        </div>
+    </main>
+
+    <div id="shift-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="shift-modal-title">Schicht auswählen</h2>
+                <span class="close" id="close-shift-modal">&times;</span>
+            </div>
+            <div class="modal-body">
+                <p id="shift-modal-info"></p>
+                <div id="shift-selection"></div>
+            </div>
+        </div>
+    </div>
+
+
+    <script>
+        // --- START: PARTIKEL-ANIMATION ---
+        const canvas = document.getElementById('particle-canvas');
+        const ctx = canvas.getContext('2d');
+        const nodeColor = '#3498db';
+        const lineColor = '#ecf0f1'; // (Angepasst für besseren Kontrast)
+        let particlesArray;
+
+        function setCanvasSize() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        setCanvasSize();
+
+        class Particle {
+            constructor(x, y, directionX, directionY, size) {
+                this.x = x; this.y = y; this.directionX = directionX; this.directionY = directionY; this.size = size;
+            }
+            draw() {
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2, false);
+                ctx.fillStyle = nodeColor;
+                ctx.fill();
+            }
+            update() {
+                if (this.x > canvas.width || this.x < 0) { this.directionX = -this.directionX; }
+                if (this.y > canvas.height || this.y < 0) { this.directionY = -this.directionY; }
+                this.x += this.directionX; this.y += this.directionY;
+                this.draw();
+            }
+        }
+
+        function init() {
+            particlesArray = [];
+            let numberOfParticles = (canvas.height * canvas.width) / 9000;
+            if (numberOfParticles > 100) numberOfParticles = 100;
+
+            for (let i = 0; i < numberOfParticles; i++) {
+                let size = (Math.random() * 2) + 1;
+                let x = (Math.random() * ((canvas.width - size * 2) - (size * 2)) + size * 2);
+                let y = (Math.random() * ((canvas.height - size * 2) - (size * 2)) + size * 2);
+                let directionX = (Math.random() * 0.4) - 0.2;
+                let directionY = (Math.random() * 0.4) - 0.2;
+                particlesArray.push(new Particle(x, y, directionX, directionY, size));
+            }
+        }
+
+        function connect() {
+            let maxDistance = 150;
+            ctx.strokeStyle = lineColor;
+            for (let a = 0; a < particlesArray.length; a++) {
+                for (let b = a; b < particlesArray.length; b++) {
+                    let distance = ((particlesArray[a].x - particlesArray[b].x) * (particlesArray[a].x - particlesArray[b].x))
+                                 + ((particlesArray[a].y - particlesArray[b].y) * (particlesArray[a].y - particlesArray[b].y));
+                    if (distance < (maxDistance * maxDistance)) {
+                        let opacity = 1 - (distance / (maxDistance * maxDistance));
+                        ctx.globalAlpha = opacity;
+                        ctx.beginPath();
+                        ctx.moveTo(particlesArray[a].x, particlesArray[a].y);
+                        ctx.lineTo(particlesArray[b].x, particlesArray[b].y);
+                        ctx.stroke();
+                    }
+                }
+            }
+            ctx.globalAlpha = 1.0;
+        }
+
+        function animate() {
+            requestAnimationFrame(animate);
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            for (let i = 0; i < particlesArray.length; i++) {
+                particlesArray[i].update();
+            }
+            connect();
+        }
+
+        window.addEventListener('resize', () => {
+            setCanvasSize();
+            init();
+        });
+        init();
+        animate();
+        // --- ENDE: PARTIKEL-ANIMATION ---
+    </script>
+
+    <script>
+        // --- Globales Setup (unverändert) ---
+        const API_URL = 'http://46.224.63.203:5000';
+        const SHORTCUT_STORAGE_KEY = 'dhf_shortcuts';
+        let user;
+        let currentDate = new Date();
+        let currentYear = currentDate.getFullYear();
+        let currentMonth = currentDate.getMonth() + 1;
+        let allUsers = [];
+        let allShiftTypes = {};
+        let currentShifts = {};
+        let currentTotals = {};
+        let hoveredCellContext = null;
+
+        // --- NEU: shortcutMap wird dynamisch geladen ---
+        let shortcutMap = {};
+        const defaultShortcuts = { 'T.': 't', 'N.': 'n', '6': '6', 'FREI': 'f', 'X': 'x', 'U': 'u' };
+
+
+        const gridContainer = document.getElementById('schichtplan-grid-container');
+        const grid = document.getElementById('schichtplan-grid');
+        const legend = document.getElementById('plan-legende');
+        const monthLabel = document.getElementById('current-month-label');
+        const prevMonthBtn = document.getElementById('prev-month-btn');
+        const nextMonthBtn = document.getElementById('next-month-btn');
+        const shiftModal = document.getElementById('shift-modal');
+        const shiftModalTitle = document.getElementById('shift-modal-title');
+        const shiftModalInfo = document.getElementById('shift-modal-info');
+        const shiftSelection = document.getElementById('shift-selection');
+        const closeShiftModalBtn = document.getElementById('close-shift-modal');
+        let modalContext = { userId: null, dateStr: null };
+
+
+        // --- Basis-Funktionen (Logout, Auth-Check) (unverändert) ---
+        async function logout() {
+            try { await apiFetch('/api/logout', 'POST'); }
+            catch (e) { console.error(e); }
+            finally {
+                localStorage.removeItem('dhf_user');
+                window.location.href = 'index.html?logout=true';
+            }
+        }
+        try {
+            user = JSON.parse(localStorage.getItem('dhf_user'));
+            if (!user || !user.vorname) { throw new Error("Kein User"); }
+            document.getElementById('welcome-user').textContent = `Willkommen, ${user.vorname}!`;
+        } catch (e) {
+            logout();
+        }
+        document.getElementById('logout-btn').onclick = logout;
+
+        // --- Globale API-Funktion (unverändert) ---
+        async function apiFetch(endpoint, method = 'GET', body = null) {
+            const options = { method, headers: { 'Content-Type': 'application/json' }, credentials: 'include' };
+            if (body) { options.body = JSON.stringify(body); }
+            const response = await fetch(API_URL + endpoint, options);
+            if (response.status === 401 || response.status === 403) { logout(); throw new Error('Sitzung ungültig oder fehlende Rechte.'); }
+            const contentType = response.headers.get("content-type");
+            let data;
+            if (contentType && contentType.indexOf("application/json") !== -1) { data = await response.json(); } else { data = { message: await response.text() }; }
+            if (!response.ok) { throw new Error(data.message || 'API-Fehler'); }
+            return data;
+        }
+
+        // --- MODAL-LOGIK (unverändert) ---
+        function closeModal(modalEl) {
+            modalEl.style.display = 'none';
+        }
+        function openShiftModal(userId, dateStr, userName) {
+            const d = new Date(dateStr);
+            const dateDisplay = d.toLocaleDateString('de-DE', { weekday: 'long', day: '2-digit', month: '2-digit' });
+            modalContext = { userId, dateStr };
+            shiftModalTitle.textContent = "Schicht zuweisen";
+            shiftModalInfo.textContent = `Für: ${userName} am ${dateDisplay}`;
+            shiftModal.style.display = 'block';
+        }
+        closeShiftModalBtn.onclick = () => closeModal(shiftModal);
+        window.onclick = (event) => {
+            if (event.target == shiftModal) closeModal(shiftModal);
+        }
+
+        // --- HAUPT-RENDER-LOGIK (unverändert) ---
+        async function renderGrid() {
+            monthLabel.textContent = "Lade...";
+            grid.innerHTML = '<div style="padding: 20px; text-align: center; color: #333;">Lade Daten...</div>'; // (Textfarbe angepasst)
+            try {
+                const shiftDataPromise = apiFetch(`/api/shifts?year=${currentYear}&month=${currentMonth}`);
+                const userDataPromise = apiFetch('/api/users');
+                // (Stellt sicher, dass Schichtarten geladen sind, bevor Shortcuts geladen werden)
+                const typeDataPromise = Object.keys(allShiftTypes).length > 0 ? Promise.resolve(Object.values(allShiftTypes)) : apiFetch('/api/shifttypes');
+
+                const [shiftPayload, userData, typeData] = await Promise.all([shiftDataPromise, userDataPromise, typeDataPromise]);
+
+                allUsers = userData;
+                if (Object.keys(allShiftTypes).length === 0) {
+                    typeData.forEach(st => allShiftTypes[st.id] = st);
+                }
+
+                // (Shortcuts laden, NACHDEM allShiftTypes gefüllt ist)
+                loadShortcuts();
+
+                currentShifts = {};
+                shiftPayload.shifts.forEach(s => {
+                    const key = `${s.user_id}-${s.date}`;
+                    currentShifts[key] = s;
+                });
+                currentTotals = shiftPayload.totals;
+                buildGridDOM();
+            } catch (error) {
+                grid.innerHTML = `<div style="padding: 20px; text-align: center; color: red;">Fehler beim Laden des Plans: ${error.message}</div>`;
+            }
+        }
+
+        function buildGridDOM() {
+            // (Diese Funktion bleibt 1:1 unverändert)
+            const daysInMonth = new Date(currentYear, currentMonth, 0).getDate();
+            const monthName = new Date(currentYear, currentMonth - 1, 1).toLocaleString('de-DE', { month: 'long', year: 'numeric' });
+            monthLabel.textContent = monthName;
+            grid.style.gridTemplateColumns = `auto auto repeat(${daysInMonth}, 1fr) auto`;
+            grid.innerHTML = '';
+            const weekdays = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'];
+            grid.appendChild(document.createElement('div'));
+            grid.appendChild(document.createElement('div'));
+            for (let day = 1; day <= daysInMonth; day++) {
+                const d = new Date(currentYear, currentMonth - 1, day);
+                const dayName = weekdays[d.getDay()];
+                const isWeekend = d.getDay() === 0 || d.getDay() === 6;
+                const headerCell = document.createElement('div');
+                headerCell.className = 'grid-header' + (isWeekend ? ' weekend' : '');
+                headerCell.textContent = dayName;
+                grid.appendChild(headerCell);
+            }
+            grid.appendChild(document.createElement('div'));
+            grid.appendChild(document.createElement('div'));
+            const dogHeader = document.createElement('div');
+            dogHeader.className = 'grid-header-dog';
+            dogHeader.textContent = 'Diensthund';
+            grid.appendChild(dogHeader);
+            for (let day = 1; day <= daysInMonth; day++) {
+                const d = new Date(currentYear, currentMonth - 1, day);
+                const isWeekend = d.getDay() === 0 || d.getDay() === 6;
+                const headerCell = document.createElement('div');
+                headerCell.className = 'grid-header' + (isWeekend ? ' weekend' : '');
+                headerCell.textContent = day;
+                grid.appendChild(headerCell);
+            }
+            const totalHeader = document.createElement('div');
+            totalHeader.className = 'grid-header-total';
+            totalHeader.textContent = 'Std.';
+            grid.appendChild(totalHeader);
+            const visibleUsers = allUsers.filter(user => user.shift_plan_visible === true);
+            visibleUsers.forEach(user => {
+                const nameCell = document.createElement('div');
+                nameCell.className = 'grid-user-name';
+                nameCell.textContent = `${user.vorname} ${user.name}`;
+                grid.appendChild(nameCell);
+                const dogCell = document.createElement('div');
+                dogCell.className = 'grid-user-dog';
+                dogCell.textContent = user.diensthund || '---';
+                grid.appendChild(dogCell);
+                for (let day = 1; day <= daysInMonth; day++) {
+                    const d = new Date(currentYear, currentMonth - 1, day);
+                    const isWeekend = d.getDay() === 0 || d.getDay() === 6;
+                    const dateStr = d.toISOString().split('T')[0];
+                    const key = `${user.id}-${dateStr}`;
+                    const shift = currentShifts[key];
+                    const shiftType = shift ? allShiftTypes[shift.shifttype_id] : null;
+                    const cell = document.createElement('div');
+                    cell.className = 'grid-cell' + (isWeekend ? ' weekend' : '');
+                    cell.dataset.key = key;
+                    if(shiftType) {
+                        cell.textContent = shiftType.abbreviation;
+                        cell.style.backgroundColor = shiftType.color;
+                        if (shiftType.color === '#5D6D7E') cell.style.color = 'white';
+                    } else {
+                        cell.textContent = '---';
+                    }
+                    cell.onclick = () => {
+                        openShiftModal(user.id, dateStr, `${user.vorname} ${user.name}`);
+                    };
+                    cell.onmouseenter = () => {
+                        cell.classList.add('hovered');
+                        hoveredCellContext = {
+                            userId: user.id, dateStr: dateStr,
+                            userName: `${user.vorname} ${user.name}`,
+                            cellElement: cell
+                        };
+                    };
+                    cell.onmouseleave = () => {
+                        cell.classList.remove('hovered');
+                        hoveredCellContext = null;
+                    };
+                    grid.appendChild(cell);
+                }
+                const totalCell = document.createElement('div');
+                totalCell.className = 'grid-user-total';
+                totalCell.id = `total-hours-${user.id}`;
+                const userTotalHours = currentTotals[user.id] || 0.0;
+                totalCell.textContent = userTotalHours.toFixed(1);
+                grid.appendChild(totalCell);
+            });
+        }
+
+        // (populateStaticElements - unverändert)
+        async function populateStaticElements() {
+            if (Object.keys(allShiftTypes).length === 0) {
+                const typeData = await apiFetch('/api/shifttypes');
+                typeData.forEach(st => allShiftTypes[st.id] = st);
+            }
+
+            legend.innerHTML = '<b>Legende:</b>';
+            shiftSelection.innerHTML = '';
+
+            Object.values(allShiftTypes).forEach(st => {
+                const item = document.createElement('div');
+                item.className = 'legende-item';
+                item.innerHTML = `<div class="legende-color" style="background-color: ${st.color};"></div> ${st.abbreviation} (${st.name})`;
+                legend.appendChild(item);
+
+                const btn = document.createElement('button');
+                btn.textContent = `${st.abbreviation} (${st.name})`;
+                btn.style.backgroundColor = st.color;
+                if (st.color === '#5D6D7E') btn.style.color = 'white';
+                btn.onclick = () => saveShift(st.id, modalContext.userId, modalContext.dateStr);
+                shiftSelection.appendChild(btn);
+            });
+        }
+
+        // --- DATEN SPEICHERN (unverändert) ---
+        async function saveShift(shifttypeId, userId, dateStr) {
+            // (Diese Funktion ist bereits korrekt)
+            if (!userId || !dateStr) return;
+            const key = `${userId}-${dateStr}`;
+            const cell = findCellByKey(key);
+            try {
+                if(cell) cell.textContent = '...';
+                const savedData = await apiFetch('/api/shifts', 'POST', {
+                    user_id: userId,
+                    date: dateStr,
+                    shifttype_id: shifttypeId
+                });
+                closeModal(shiftModal);
+                if (savedData.message && (savedData.message.includes("gelöscht") || savedData.message.includes("bereits Frei"))) {
+                    currentShifts[key] = null;
+                    if (cell) {
+                        cell.textContent = '---';
+                        cell.style.backgroundColor = '';
+                        cell.style.color = '';
+                    }
+                } else {
+                    const shiftType = allShiftTypes[savedData.shifttype_id];
+                    currentShifts[key] = savedData;
+                    if (cell) {
+                        cell.textContent = shiftType.abbreviation;
+                        cell.style.backgroundColor = shiftType.color;
+                        cell.style.color = (shiftType.color === '#5D6D7E') ? 'white' : '';
+                    }
+                }
+                const totalCell = document.getElementById(`total-hours-${userId}`);
+                if (totalCell) {
+                    totalCell.textContent = (savedData.new_total_hours || 0.0).toFixed(1);
+                }
+            } catch (error) {
+                if (cell) cell.textContent = 'Fehler!';
+                alert(`Fehler beim Speichern: ${error.message}`);
+                if (shiftModal.style.display === 'block') {
+                    shiftModalInfo.textContent = `Fehler: ${error.message}`;
+                }
+            }
+        }
+
+        // (findCellByKey - unverändert)
+        function findCellByKey(key) {
+            return grid.querySelector(`[data-key="${key}"]`);
+        }
+
+        // --- NAVIGATIONS-EVENTS (unverändert) ---
+        prevMonthBtn.onclick = () => {
+            currentMonth--;
+            if (currentMonth < 1) { currentMonth = 12; currentYear--; }
+            renderGrid();
+        };
+        nextMonthBtn.onclick = () => {
+            currentMonth++;
+            if (currentMonth > 12) { currentMonth = 1; currentYear++; }
+            renderGrid();
+        };
+
+        // --- NEU: Shortcut Ladefunktion ---
+        function loadShortcuts() {
+            let savedShortcuts = {};
+            try {
+                const data = localStorage.getItem(SHORTCUT_STORAGE_KEY);
+                if (data) {
+                    savedShortcuts = JSON.parse(data); // Ergibt { 'T.': 't', 'N.': 'n' }
+                } else {
+                    savedShortcuts = defaultShortcuts;
+                }
+            } catch (e) {
+                console.error("Fehler beim Laden der Shortcuts, verwende Standards.", e);
+                savedShortcuts = defaultShortcuts;
+            }
+
+            // Dreht die Map um, damit der TASTENDRUCK (key) die ABKÜRZUNG (value) findet.
+            // Aus { 'T.': 't' } wird { 't': 'T.' }
+            shortcutMap = Object.fromEntries(
+                Object.entries(savedShortcuts).map(([abbrev, key]) => [key, abbrev])
+            );
+        }
+
+        // --- KEYBOARD SHORTCUT LISTENER (Angepasst) ---
+        window.addEventListener('keydown', async (event) => {
+            if (shiftModal.style.display === 'block') return;
+            if (!hoveredCellContext || !hoveredCellContext.userId) return;
+
+            const key = event.key.toLowerCase();
+
+            // NEU: Verwendet die dynamische shortcutMap
+            const abbrev = shortcutMap[key]; // z.B. shortcutMap['t'] -> 'T.'
+
+            if (abbrev !== undefined) {
+                event.preventDefault();
+
+                // Findet die Schichtart anhand der Abkürzung (z.B. 'T.')
+                const shiftType = Object.values(allShiftTypes).find(st => st.abbreviation === abbrev);
+
+                if (shiftType) {
+                    await saveShift(shiftType.id, hoveredCellContext.userId, hoveredCellContext.dateStr);
+                } else {
+                    console.warn(`Shortcut "${key}" (Abk.: "${abbrev}") nicht in allShiftTypes gefunden.`);
+                }
+            }
+        });
+
+        // --- Initialisierung ---
+        async function initialize() {
+            // (populateStaticElements lädt die Schichtarten)
+            await populateStaticElements();
+            // (renderGrid lädt Shortcuts und rendert)
+            await renderGrid();
+        }
+
+        initialize();
+
+    </script>
+</body>
+</html>
