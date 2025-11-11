@@ -433,7 +433,7 @@
         let sortableInstance = null;
         let isAdmin = false; // <<< NEU
         let isVisitor = false; // <<< NEU
-        const isUser = true; // Angenommen, wenn nicht Admin und nicht Visitor
+        // (isUser nicht mehr benötigt, da wir nur auf isAdmin prüfen)
 
         async function logout() {
             try { await apiFetch('/api/logout', 'POST'); }

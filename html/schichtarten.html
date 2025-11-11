@@ -370,9 +370,9 @@
         <div class="dropdown">
             <button class="dropbtn active" id="settings-dropbtn">Einstellungen &raquo;</button>
             <div class="dropdown-content" id="settings-dropdown-content">
-                <a href="einstellungen.html" class="user-only">Mitarbeiter Sortierung</a>
+                <a href="einstellungen.html" class="admin-only">Mitarbeiter Sortierung</a>
                 <a href="schichtarten.html" class="admin-only active">Schichtarten</a>
-                <a href="shortcuts.html" class="user-only">Shortcuts</a>
+                <a href="shortcuts.html" class="admin-only">Shortcuts</a>
                 <a href="feiertage.html" class="admin-only">Feiertage & Sondertermine</a>
                 <a href="farbeeinstellungen.html" class="admin-only">Farbeinstellungen</a>
             </div>
@@ -396,8 +396,10 @@
                                 <th>Farbe</th>
                                 <th>Std. (Tag)</th>
                                 <th>Std. (Übertrag)</th>
-                                <th>Startzeit</th> <th>Endzeit</th> <th>Zählt als Arbeitszeit</th>
-                                <th>Aktionen</th>
+                                <th>Startzeit</th>
+                                <th>Endzeit</th>
+                                <th>Zählt als Arbeitszeit</th>
+                                <th>Hintergrund Priorität?</th> <th>Aktionen</th>
                             </tr>
                         </thead>
                         <tbody id="type-table-body">
@@ -453,12 +455,17 @@
                         <input type="text" id="type-end-time" pattern="\d{2}:\d{2}" placeholder="14:00" title="Uhrzeit im Format HH:MM (Endet nach 00:00: z.B. 06:00)">
                     </div>
                 </div>
+
                 <div class="form-group" style="margin-top: 20px;">
                     <input type="checkbox" id="type-is-work-shift">
                     <label for="type-is-work-shift" style="display: inline-block;">Zählt als Arbeitszeit (für Stundensumme)</label>
                 </div>
 
-            </div>
+                <div class="form-group" style="margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.1);">
+                    <input type="checkbox" id="type-prioritize-background">
+                    <label for="type-prioritize-background" style="display: inline-block;">Tages-Hintergrundfarbe priorisieren (z.B. für Wochenende/Feiertag)</label>
+                </div>
+                </div>
             <div class="modal-footer">
                 <div id="modal-status" style="text-align: left; color: #e74c3c; float: left;"></div> <button class="btn-primary" id="save-type-btn">Speichern</button>
             </div>
@@ -594,8 +601,8 @@
 
             // 2. Dropdown-Anpassung (Nur für Admins relevant, da Nicht-Admins oben geblockt werden)
             if (isAdmin) {
-                document.querySelectorAll('#settings-dropdown-content .user-only').forEach(el => {
-                    // Standardmäßig alle Links anzeigen
+                // (Korrektur: JavaScript muss die 'admin-only' Links anzeigen, nicht 'user-only')
+                document.querySelectorAll('#settings-dropdown-content .admin-only').forEach(el => {
                     el.style.display = 'block';
                 });
             }
@@ -652,6 +659,8 @@
         const typeIsWorkShiftField = document.getElementById('type-is-work-shift');
         const typeStartTimeField = document.getElementById('type-start-time');
         const typeEndTimeField = document.getElementById('type-end-time');
+        // NEUES FELD
+        const typePrioritizeBackgroundField = document.getElementById('type-prioritize-background');
 
         function openModal() { modal.style.display = 'block'; modalStatus.textContent = ''; }
         function closeModal() { modal.style.display = 'none'; }
@@ -666,6 +675,8 @@
                 types.forEach(st => {
                     const row = document.createElement('tr');
                     const isWorkShiftText = st.is_work_shift ? 'Ja' : 'Nein';
+                    // NEU: Text für prioritize_background
+                    const prioritizeBgText = st.prioritize_background ? 'Ja' : 'Nein';
                     const colorPreview = `<div style="width: 20px; height: 20px; background-color: ${st.color}; border: 1px solid #555; display: inline-block; vertical-align: middle; margin-right: 5px;"></div> ${st.color}`;
 
                     const stJsonString = JSON.stringify(st).replace(/'/g, "\\'");
@@ -682,8 +693,10 @@
                         <td style="font-family: monospace;">${colorPreview}</td>
                         <td>${hours}</td>
                         <td>${spillover}</td>
-                        <td>${startTime}</td> <td>${endTime}</td>   <td>${isWorkShiftText}</td>
-                        <td class="actions">
+                        <td>${startTime}</td>
+                        <td>${endTime}</td>
+                        <td>${isWorkShiftText}</td>
+                        <td>${prioritizeBgText}</td> <td class="actions">
                             <button class="btn-edit" onclick='openEditModal(${stJsonString})'>Bearbeiten</button>
                             <button class="btn-delete" onclick="deleteShiftType(${st.id})">Löschen</button>
                         </td>
@@ -707,6 +720,7 @@
             typeIsWorkShiftField.checked = false;
             typeStartTimeField.value = '';
             typeEndTimeField.value = '';
+            typePrioritizeBackgroundField.checked = false; // NEU
             openModal();
         };
 
@@ -722,6 +736,7 @@
             typeIsWorkShiftField.checked = st.is_work_shift;
             typeStartTimeField.value = st.start_time || '';
             typeEndTimeField.value = st.end_time || '';
+            typePrioritizeBackgroundField.checked = st.prioritize_background; // NEU
             openModal();
         }
 
@@ -736,7 +751,8 @@
                 hours_spillover: parseFloat(typeHoursSpilloverField.value) || 0.0,
                 is_work_shift: typeIsWorkShiftField.checked,
                 start_time: typeStartTimeField.value || null,
-                end_time: typeEndTimeField.value || null
+                end_time: typeEndTimeField.value || null,
+                prioritize_background: typePrioritizeBackgroundField.checked // NEU
             };
 
             if (!payload.name || !payload.abbreviation) {

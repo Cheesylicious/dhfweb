@@ -65,9 +65,12 @@ class ShiftType(db.Model):
     hours = db.Column(db.Float, default=0.0)
     is_work_shift = db.Column(db.Boolean, default=False)
     hours_spillover = db.Column(db.Float, default=0.0)
-    # --- NEU: Start- und Endzeit für Konfliktprüfung ---
+    # --- Start- und Endzeit für Konfliktprüfung ---
     start_time = db.Column(db.String(5), nullable=True)  # Format 'HH:MM'
     end_time = db.Column(db.String(5), nullable=True)  # Format 'HH:MM'
+
+    # --- NEU: Hintergrund-Priorisierung ---
+    prioritize_background = db.Column(db.Boolean, default=False, nullable=False)
 
     # --- ENDE NEU ---
 
@@ -76,9 +79,10 @@ class ShiftType(db.Model):
                 "color": self.color, "hours": self.hours,
                 "is_work_shift": self.is_work_shift,
                 "hours_spillover": self.hours_spillover,
-                # --- NEU: Rückgabe der Zeiten ---
                 "start_time": self.start_time,
-                "end_time": self.end_time
+                "end_time": self.end_time,
+                # --- NEU: Rückgabe des Feldes ---
+                "prioritize_background": self.prioritize_background
                 # --- ENDE NEU ---
                 }
 

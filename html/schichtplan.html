@@ -204,14 +204,30 @@
         .grid-user-total { font-weight: 600; background: #f8f9fa; text-align: center; }
         .grid-header-total { font-weight: 600; background: #f8f9fa; }
 
-        .grid-cell { cursor: pointer; transition: background-color 0.2s; font-weight: 500; }
-        /* Geändert: Cursor wird nur für Admins/User mit Klick-Recht zu "Pointer" */
+        /* --- STIL ANPASSUNG (3D-Effekt & Hover) --- */
+        .grid-cell {
+            cursor: pointer;
+            font-weight: 500;
+            /* Übergang erweitert */
+            transition: background-color 0.2s, transform 0.2s, box-shadow 0.2s;
+            /* Leichter 3D-Inset-Schatten */
+            box-shadow: inset 0px 1px 3px rgba(0, 0, 0, 0.2);
+            position: relative;
+            z-index: 1;
+        }
+
         body:not(.admin-mode) .grid-cell { cursor: default; }
 
+        /* Hover-Effekt (Zoom & Outset-Schatten) */
         .grid-cell.hovered {
             background-color: #d6eaff !important;
-            box-shadow: inset 0 0 0 2px #007bff;
+            /* Heller "Outset"-Schatten für den Zoom-Effekt */
+            box-shadow: 0px 2px 8px rgba(0, 0, 0, 0.3);
+            transform: scale(1.05);
+            z-index: 20; /* Zelle überlappt Nachbarn beim Hover */
         }
+        /* --- ENDE STIL ANPASSUNG --- */
+
         body.visitor-mode .grid-cell {
             cursor: default;
         }
@@ -633,7 +649,13 @@
                 currentShifts = {};
                 shiftPayload.shifts.forEach(s => {
                     const key = `${s.user_id}-${s.date}`;
-                    currentShifts[key] = s;
+                    // WICHTIG: Wir müssen die vollen Schichtdaten speichern, nicht nur die ID
+                    // (Wir holen sie aus allShiftTypes, das in populateStaticElements geladen wurde)
+                    const fullShiftType = allShiftTypes[s.shifttype_id];
+                    currentShifts[key] = {
+                        ...s,
+                        shift_type: fullShiftType // Füge die vollen Schicht-Typ-Daten hinzu
+                    };
                 });
                 currentTotals = shiftPayload.totals;
 
@@ -667,21 +689,21 @@
 
                 const headerCell = document.createElement('div');
                 let headerClasses = 'grid-header';
-                let cellColor = '';
+                let cellColor = ''; // (Wird nicht mehr für Wochenende/Events genutzt)
                 let textColor = '#333';
 
                 if (eventType) {
                     headerClasses += ` day-color-${eventType}`;
                 } else if (isWeekend) {
-                    cellColor = colorSettings.weekend_bg_color;
-                    textColor = colorSettings.weekend_text_color;
+                    headerClasses += ' weekend'; // (CSS-Variable wird im Stil angewendet)
                 } else {
                     cellColor = '#fcfcfc'; // Default normaler Tag
                 }
 
                 headerCell.className = headerClasses;
-                headerCell.style.backgroundColor = cellColor;
-                headerCell.style.color = textColor;
+                if (cellColor) headerCell.style.backgroundColor = cellColor;
+                if (textColor && !isWeekend && !eventType) headerCell.style.color = textColor;
+
                 return headerCell;
             };
 
@@ -739,61 +761,73 @@
                     const d = new Date(currentYear, currentMonth - 1, day);
                     const isWeekend = d.getDay() === 0 || d.getDay() === 6;
 
-                    // --- KORREKTUR: Timezone-Bug am Monatsanfang beheben ---
                     const year = d.getFullYear();
                     const month = String(d.getMonth() + 1).padStart(2, '0');
                     const dayOfMonth = String(d.getDate()).padStart(2, '0');
                     const dateStr = `${year}-${month}-${dayOfMonth}`;
-                    // --- ENDE KORREKTUR ---
 
                     const key = `${user.id}-${dateStr}`;
                     const violationKey = `${user.id}-${day}`;
                     const eventType = currentSpecialDates[dateStr];
 
                     const shift = currentShifts[key];
-                    const shiftType = shift ? allShiftTypes[shift.shifttype_id] : null;
+                    // KORREKTUR: shift_type ist jetzt ein volles Objekt
+                    const shiftType = shift ? shift.shift_type : null;
                     const cell = document.createElement('div');
 
+                    // --- KORRIGIERTE LOGIK FÜR FARBEN & "---" ---
                     let cellClasses = 'grid-cell';
-                    let cellColor = '';
-                    let textColor = '#333';
+                    let cellColor = null; // (Standard: null, damit CSS-Klassen greifen)
+                    let textColor = null; // (Standard: null, damit CSS-Klassen greifen)
 
-                    // Konflikt-Stil hat Priorität vor Hintergrund
                     if (currentViolations.has(violationKey)) {
-                         cellClasses += ' violation'; // Roter Rahmen hat Priorität
+                         cellClasses += ' violation';
                     }
 
+                    const dayHasSpecialBg = eventType || isWeekend;
+
                     if (shiftType) {
-                        // 1. Priorität: Schichtfarbe
                         cell.textContent = shiftType.abbreviation;
-                        cellColor = shiftType.color;
-                        textColor = isColorDark(shiftType.color) ? 'white' : 'black';
+
+                        // Prüfe die neue Einstellung
+                        if (shiftType.prioritize_background && dayHasSpecialBg) {
+                            // PRIORISIERUNG: Nutze Tagesfarbe (Klasse)
+                            if (eventType) {
+                                cellClasses += ` day-color-${eventType}`;
+                            } else if (isWeekend) {
+                                cellClasses += ' weekend';
+                            }
+                            // Textfarbe wird von der Klasse gesteuert
+                        } else {
+                            // STANDARD: Nutze Schichtfarbe (Inline Style)
+                            cellColor = shiftType.color;
+                            textColor = isColorDark(shiftType.color) ? 'white' : 'black';
+                        }
 
                     } else {
-                        // 2. Priorität: Sondertermin oder Wochenende
-                        cell.textContent = '---';
+                        // KEINE SCHICHT
+                        cell.textContent = ''; // KORREKTUR: "---" entfernt
 
                         if (eventType) {
                              cellClasses += ` day-color-${eventType}`;
                         } else if (isWeekend) {
                             cellClasses += ' weekend';
-                            cellColor = colorSettings.weekend_bg_color;
-                            textColor = colorSettings.weekend_text_color;
-                        } else {
-                            // Normale Tage
-                            cellColor = 'transparent';
-                            textColor = '#333';
                         }
+                        // Textfarbe wird von der Klasse gesteuert
                     }
+                    // --- ENDE KORRIGIERTE LOGIK ---
 
                     cell.className = cellClasses;
-                    cell.style.backgroundColor = cellColor;
-                    cell.style.color = textColor;
-                    // Ende Farbzuweisung
+                    // Wende Inline-Stile nur an, wenn sie explizit gesetzt wurden (d.h. Schichtfarbe hat Prio)
+                    if (cellColor) {
+                        cell.style.backgroundColor = cellColor;
+                    }
+                    if (textColor) {
+                        cell.style.color = textColor;
+                    }
 
                     cell.dataset.key = key;
 
-                    // NEUER FIX: Klick-Handler nur für Admin anhängen (damit das Modal nur für Admins kommt)
                     if (isAdmin) {
                         cell.onclick = () => {
                             openShiftModal(user.id, dateStr, `${user.vorname} ${user.name}`);
@@ -811,7 +845,6 @@
                             hoveredCellContext = null;
                         };
                     } else {
-                        // Für Nicht-Admins: Cursor auf Default setzen (Bereits durch CSS geregelt, aber hier zur Sicherheit)
                         cell.style.cursor = 'default';
                     }
                     grid.appendChild(cell);
@@ -827,14 +860,21 @@
 
         // --- NEU: Helligkeitsprüfung für Textfarbe (innovativ) ---
         function isColorDark(hexColor) {
+            if (!hexColor) return false; // Fallback
             // Konvertiert RGB in Dezimal
             const hex = hexColor.replace('#', '');
-            const r = parseInt(hex.substring(0, 2), 16);
-            const g = parseInt(hex.substring(2, 4), 16);
-            const b = parseInt(hex.substring(4, 6), 16);
-            // Berechne Luminanz
-            const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
-            return luminance < 0.5;
+            // (Robustheits-Check für ungültige Farben)
+            if (hex.length !== 6) return false;
+            try {
+                const r = parseInt(hex.substring(0, 2), 16);
+                const g = parseInt(hex.substring(2, 4), 16);
+                const b = parseInt(hex.substring(4, 6), 16);
+                // Berechne Luminanz
+                const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+                return luminance < 0.5;
+            } catch (e) {
+                return false;
+            }
         }
         // --- ENDE NEU: Helligkeitsprüfung ---
 
@@ -844,6 +884,7 @@
             // Laden der Schichtarten
             if (Object.keys(allShiftTypes).length === 0) {
                 const typeData = await apiFetch('/api/shifttypes');
+                // KORREKTUR: Sicherstellen, dass alle Daten (inkl. prioritize_background) hier gespeichert werden
                 typeData.forEach(st => allShiftTypes[st.id] = st);
             }
 
@@ -853,7 +894,11 @@
             Object.values(allShiftTypes).forEach(st => {
                 const item = document.createElement('div');
                 item.className = 'legende-item';
-                item.innerHTML = `<div class="legende-color" style="background-color: ${st.color};"></div> ${st.abbreviation} (${st.name})`;
+
+                // NEU: Fügt Indikator hinzu, wenn Hintergrund priorisiert wird
+                const priorityIndicator = st.prioritize_background ? ' (Hintergrund prior.)' : '';
+
+                item.innerHTML = `<div class="legende-color" style="background-color: ${st.color};"></div> ${st.abbreviation} (${st.name}${priorityIndicator})`;
                 legend.appendChild(item);
 
                 // Füge nur Buttons hinzu, wenn es kein Besucher ist
@@ -894,14 +939,21 @@
                 });
                 closeModal(shiftModal);
 
-                // 1. Schicht-Daten im Frontend-Cache aktualisieren (Logik unverändert)
+                // 1. Schicht-Daten im Frontend-Cache aktualisieren
+                // (Hole die vollen Schichtdaten aus dem Cache)
                 const shiftType = allShiftTypes[savedData.shifttype_id];
                 const shiftWasDeleted = savedData.message && (savedData.message.includes("gelöscht") || savedData.message.includes("bereits Frei"));
 
                 if (shiftWasDeleted) {
                     currentShifts[key] = null;
                 } else if (shiftType) {
-                    currentShifts[key] = savedData;
+                    // KORREKTUR: Speichere das volle Schicht-Objekt, damit buildGridDOM es lesen kann
+                    currentShifts[key] = {
+                        ...savedData,
+                        shift_type: shiftType
+                    };
+                } else {
+                     currentShifts[key] = savedData; // Fallback
                 }
 
                 // 2. Konflikt-Set komplett neu setzen
@@ -942,6 +994,9 @@
             if (currentMonth < 1) { currentMonth = 12; currentYear--; }
             // Lade Farben und rendere
             loadColorSettings();
+            // KORREKTUR: Muss Schichtarten neu laden, falls sie sich geändert haben
+            // (Sicherer, aber langsamer)
+            // Besser: Nur renderGrid() aufrufen.
             renderGrid();
         };
         nextMonthBtn.onclick = () => {
@@ -1021,7 +1076,7 @@
             await loadColorSettings();
 
             // 1. Schichtarten laden & statische Elemente befüllen
-            // WICHTIG: allShiftTypes wird hier gefüllt und ist für loadShortcuts nötig!
+            // WICHTIG: allShiftTypes wird hier gefüllt und ist für loadShortcuts UND renderGrid nötig!
             await populateStaticElements();
 
             // 2. Shortcuts laden (Karte ist jetzt bereit für Keydown-Events)

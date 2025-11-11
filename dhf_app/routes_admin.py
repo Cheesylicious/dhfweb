@@ -186,7 +186,10 @@ def create_shifttype():
         hours_spillover=data.get('hours_spillover', 0.0),
         # --- NEU: Zeiten speichern ---
         start_time=data.get('start_time'),
-        end_time=data.get('end_time')
+        end_time=data.get('end_time'),
+        # --- ENDE NEU ---
+        # --- NEU: Hintergrund-Priorisierung speichern ---
+        prioritize_background=data.get('prioritize_background', False)
         # --- ENDE NEU ---
     )
     db.session.add(new_type)
@@ -210,6 +213,9 @@ def update_shifttype(type_id):
     # --- NEU: Zeiten aktualisieren ---
     st.start_time = data.get('start_time', st.start_time)
     st.end_time = data.get('end_time', st.end_time)
+    # --- ENDE NEU ---
+    # --- NEU: Hintergrund-Priorisierung aktualisieren ---
+    st.prioritize_background = data.get('prioritize_background', st.prioritize_background)
     # --- ENDE NEU ---
 
     db.session.commit()

@@ -51,7 +51,9 @@ def create_app(config_name='default'):
     with app.app_context():
         db.create_all()
         create_default_roles(db)
-        create_default_shifttypes(db)  # <<< HIER FÜHREN WIR DIE WIEDERHERSTELLUNG DURCH
+        # --- ENTFERNT ---
+        # create_default_shifttypes(db)
+        # --- ENDE ENTFERNT ---
         create_default_holidays(db)
         create_default_settings(db)  # <<< NEU: Globale Einstellungen erstellen
 
@@ -85,63 +87,10 @@ def create_default_roles(db_instance):
         print(f"Fehler beim Erstellen der Standard-Rollen: {e}")
 
 
-def create_default_shifttypes(db_instance):
-    """
-    Erstellt die Standard-Schichtarten (T, N, 6, FREI, U, X).
-    """
-    from .models import ShiftType  # Importiert Model *innerhalb* der Funktion
-
-    default_types = [
-        # Startzeit / Endzeit sind für Konfliktprüfung wichtig (HH:MM)
-        {'name': 'Tag (T)', 'abbreviation': 'T.', 'color': '#AED6F1',
-         'hours': 8.0, 'hours_spillover': 0.0, 'is_work_shift': True,
-         'start_time': '06:00', 'end_time': '14:00'},
-
-        {'name': 'Nacht (N)', 'abbreviation': 'N.', 'color': '#5D6D7E',
-         'hours': 2.0, 'hours_spillover': 6.0, 'is_work_shift': True,
-         'start_time': '18:00', 'end_time': '06:00'},  # Übernachtschicht
-
-        {'name': 'Kurz (6)', 'abbreviation': '6', 'color': '#A9DFBF',
-         'hours': 6.0, 'hours_spillover': 0.0, 'is_work_shift': True,
-         'start_time': '10:00', 'end_time': '16:00'},
-
-        {'name': 'Frei (Geplant)', 'abbreviation': 'FREI', 'color': '#FFFFFF',
-         'hours': 0.0, 'hours_spillover': 0.0, 'is_work_shift': False},
-
-        {'name': 'Urlaub', 'abbreviation': 'U', 'color': '#FAD7A0',
-         'hours': 0.0, 'hours_spillover': 0.0, 'is_work_shift': False},
-
-        {'name': 'Wunschfrei (X)', 'abbreviation': 'X', 'color': '#D2B4DE',
-         'hours': 0.0, 'hours_spillover': 0.0, 'is_work_shift': False},
-    ]
-
-    try:
-        for st_data in default_types:
-            # Suche nach vorhandenem Eintrag über die Abkürzung
-            existing = ShiftType.query.filter_by(abbreviation=st_data['abbreviation']).first()
-
-            if not existing:
-                # Füge den Eintrag neu hinzu, wenn er fehlt
-                new_type = ShiftType(**st_data)
-                db_instance.session.add(new_type)
-            else:
-                # Wenn er existiert, aktualisiere die Felder
-                update_needed = False
-                for key, value in st_data.items():
-                    # Überspringe den 'id' Key (nicht vorhanden, aber zur Sicherheit)
-                    if key == 'id': continue
-                    # Prüfe auf Unterschiede und update
-                    if getattr(existing, key) != value:
-                        setattr(existing, key, value)
-                        update_needed = True
-
-                if update_needed:
-                    db_instance.session.add(existing)  # Markiere für Update
-
-        db_instance.session.commit()
-    except Exception as e:
-        db_instance.session.rollback()
-        print(f"Fehler beim Erstellen der Standard-Schichtarten: {e}")
+# --- ENTFERNT ---
+# def create_default_shifttypes(db_instance):
+#     ... (Funktion wurde komplett entfernt) ...
+# --- ENDE ENTFERNT ---
 
 
 def create_default_holidays(db_instance):

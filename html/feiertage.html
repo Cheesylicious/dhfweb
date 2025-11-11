@@ -282,9 +282,9 @@
         <div class="dropdown">
             <button class="dropbtn active" id="settings-dropbtn">Einstellungen &raquo;</button>
             <div class="dropdown-content" id="settings-dropdown-content">
-                <a href="einstellungen.html" class="user-only">Mitarbeiter Sortierung</a>
+                <a href="einstellungen.html" class="admin-only">Mitarbeiter Sortierung</a>
                 <a href="schichtarten.html" class="admin-only">Schichtarten</a>
-                <a href="shortcuts.html" class="user-only">Shortcuts</a>
+                <a href="shortcuts.html" class="admin-only">Shortcuts</a>
                 <a href="feiertage.html" class="admin-only active">Feiertage & Sondertermine</a>
                 <a href="farbeeinstellungen.html" class="admin-only">Farbeinstellungen</a>
             </div>
@@ -509,7 +509,8 @@
 
             // 2. Dropdown-Anpassung (Nur für Admins relevant)
             if (isAdmin) {
-                document.querySelectorAll('#settings-dropdown-content .user-only').forEach(el => {
+                // (Korrektur: JavaScript muss die 'admin-only' Links anzeigen, nicht 'user-only')
+                document.querySelectorAll('#settings-dropdown-content .admin-only').forEach(el => {
                     el.style.display = 'block';
                 });
             }
