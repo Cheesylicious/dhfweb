@@ -51,7 +51,7 @@ def create_app(config_name='default'):
     with app.app_context():
         db.create_all()
         create_default_roles(db)
-        create_default_shifttypes(db)
+        create_default_shifttypes(db)  # <<< HIER FÜHREN WIR DIE WIEDERHERSTELLUNG DURCH
         create_default_holidays(db)
         create_default_settings(db)  # <<< NEU: Globale Einstellungen erstellen
 
@@ -62,19 +62,21 @@ def create_app(config_name='default'):
 
 def create_default_roles(db_instance):
     """
-    Erstellt die Standard-Rollen 'admin' und 'user', falls sie nicht existieren.
+    Erstellt die Standard-Rollen 'admin', 'user' und NEU 'Besucher', falls sie nicht existieren.
     """
     from .models import Role  # Importiert Model *innerhalb* der Funktion
 
-    admin_role = Role.query.filter_by(name='admin').first()
-    if not admin_role:
-        admin_role = Role(name='admin', description='Systemadministrator')
-        db_instance.session.add(admin_role)
+    roles_to_create = {
+        'admin': 'Systemadministrator',
+        'user': 'Standardbenutzer',
+        'Besucher': 'Nur-Lese-Zugriff auf Schichtplan'  # <<< NEU
+    }
 
-    user_role = Role.query.filter_by(name='user').first()
-    if not user_role:
-        user_role = Role(name='user', description='Standardbenutzer')
-        db_instance.session.add(user_role)
+    for role_name, description in roles_to_create.items():
+        existing_role = Role.query.filter_by(name=role_name).first()
+        if not existing_role:
+            new_role = Role(name=role_name, description=description)
+            db_instance.session.add(new_role)
 
     try:
         db_instance.session.commit()
@@ -115,15 +117,26 @@ def create_default_shifttypes(db_instance):
 
     try:
         for st_data in default_types:
+            # Suche nach vorhandenem Eintrag über die Abkürzung
             existing = ShiftType.query.filter_by(abbreviation=st_data['abbreviation']).first()
+
             if not existing:
+                # Füge den Eintrag neu hinzu, wenn er fehlt
                 new_type = ShiftType(**st_data)
                 db_instance.session.add(new_type)
             else:
-                # Aktualisiere auch die neuen Felder (Zeiten), falls sie fehlen
-                for key in ['hours', 'hours_spillover', 'start_time', 'end_time']:
-                    if key in st_data and (getattr(existing, key) is None or getattr(existing, key) == 0.0):
-                        setattr(existing, key, st_data[key])
+                # Wenn er existiert, aktualisiere die Felder
+                update_needed = False
+                for key, value in st_data.items():
+                    # Überspringe den 'id' Key (nicht vorhanden, aber zur Sicherheit)
+                    if key == 'id': continue
+                    # Prüfe auf Unterschiede und update
+                    if getattr(existing, key) != value:
+                        setattr(existing, key, value)
+                        update_needed = True
+
+                if update_needed:
+                    db_instance.session.add(existing)  # Markiere für Update
 
         db_instance.session.commit()
     except Exception as e:
@@ -136,9 +149,7 @@ def create_default_holidays(db_instance):
     Erstellt die Standard-Feiertage für MV (als Vorlagen ohne Datum).
     """
     from .models import SpecialDate
-    # ... (Logik unverändert) ...
-
-    # Gesetzliche Feiertage Mecklenburg-Vorpommern
+    # ... (Rest des Codes bleibt unverändert, da die Funktion nur auszugsweise benötigt wurde)
     mv_holidays = [
         "Neujahr",
         "Internationaler Frauentag",

@@ -270,6 +270,19 @@
             color: #ffffff;
             border-bottom-color: #3498db;
         }
+
+        /* --- NEU: Restricted View Style --- */
+        #content-wrapper.restricted-view {
+             max-width: 600px;
+             margin: 50px auto;
+             padding: 30px;
+             text-align: center;
+             background: rgba(255, 255, 255, 0.05);
+             border-radius: 10px;
+             border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        #content-wrapper.restricted-view h2 { color: #e74c3c; }
+        /* --- ENDE NEU --- */
     </style>
 </head>
 <body>
@@ -279,9 +292,9 @@
     <header>
         <h1>DHF-Planer</h1>
         <nav>
-            <a href="dashboard.html">Dashboard</a>
-            <a href="users.html" class="active">Benutzerverwaltung</a>
-            <a href="schichtplan.html">Schichtplan</a>
+            <a href="dashboard.html" id="nav-dashboard">Dashboard</a>
+            <a href="users.html" class="active" id="nav-users">Benutzerverwaltung</a>
+            <a href="schichtplan.html" id="nav-shiftplan">Schichtplan</a>
         </nav>
         <div id="user-info">
             <span id="welcome-user"></span>
@@ -289,28 +302,30 @@
         </div>
     </header>
 
-    <div class="sub-nav">
-        <a href="users.html">Benutzer</a>
+    <div class="sub-nav" id="sub-nav-roles-container">
+        <a href="users.html" id="sub-nav-users-link">Benutzer</a>
         <a href="roles.html" class="active">Rollen</a>
     </div>
 
     <main>
-        <div class="card">
-            <div class="card-header">
-                <h2>Rollen</h2> <button class="btn-primary" id="add-role-btn">Neue Rolle erstellen</button>
+        <div id="content-wrapper">
+            <div class="card">
+                <div class="card-header">
+                    <h2>Rollen</h2> <button class="btn-primary" id="add-role-btn">Neue Rolle erstellen</button>
+                </div>
+                <table>
+                    <thead>
+                        <tr>
+                            <th>ID</th>
+                            <th>Name</th>
+                            <th>Beschreibung</th>
+                            <th>Aktionen</th>
+                        </tr>
+                    </thead>
+                    <tbody id="role-table-body">
+                        </tbody>
+                </table>
             </div>
-            <table>
-                <thead>
-                    <tr>
-                        <th>ID</th>
-                        <th>Name</th>
-                        <th>Beschreibung</th>
-                        <th>Aktionen</th>
-                    </tr>
-                </thead>
-                <tbody id="role-table-body">
-                    </tbody>
-            </table>
         </div>
     </main>
 
@@ -424,6 +439,7 @@
         // --- Globales Setup (unverändert) ---
         const API_URL = 'http://46.224.63.203:5000'; // Ersetzen Sie dies ggf. durch Ihre Domain
         let user;
+        let isAdmin = false; // <<< NEU
 
         async function logout() {
             try { await apiFetch('/api/logout', 'POST'); }
@@ -436,10 +452,41 @@
 
         try {
             user = JSON.parse(localStorage.getItem('dhf_user'));
-            if (!user || !user.vorname) { throw new Error("Kein User"); }
+            if (!user || !user.vorname || !user.role) { throw new Error("Kein User oder fehlende Rolle"); }
             document.getElementById('welcome-user').textContent = `Willkommen, ${user.vorname}!`;
+
+            // --- NEUE LOGIK: Rollenprüfung (WICHTIG) ---
+            isAdmin = user.role.name === 'admin';
+            const isVisitor = user.role.name === 'Besucher';
+
+            // 1. Haupt-Navigationsanpassung
+            const navDashboard = document.getElementById('nav-dashboard');
+            const navUsers = document.getElementById('nav-users');
+
+            if (isVisitor || !isAdmin) {
+                // Nur Admins dürfen auf die Rollenverwaltung zugreifen
+                navDashboard.style.display = isVisitor ? 'none' : 'block';
+                navUsers.style.display = 'none';
+
+                // Blockiere den Zugriff auf die gesamte Seite, wenn nicht Admin
+                document.getElementById('content-wrapper').innerHTML = `
+                    <div class="restricted-view">
+                        <h2 style="color: #e74c3c;">Zugriff verweigert</h2>
+                        <p>Sie benötigen Admin-Rechte, um auf die Rollenverwaltung zuzugreifen.</p>
+                        <p>Bitte nutzen Sie den Link zum <a href="schichtplan.html" style="color: #3498db;">Schichtplan</a>.</p>
+                    </div>
+                `;
+                 document.getElementById('sub-nav-roles-container').style.display = 'none';
+
+                // Wirf Fehler, um das Laden der Daten zu verhindern
+                throw new Error("Keine Admin-Rechte für Rollenverwaltung.");
+            }
+            // --- ENDE NEUE LOGIK ---
+
         } catch (e) {
-            logout();
+            if (!e.message.includes("Admin-Rechte")) {
+                 logout();
+            }
         }
 
         document.getElementById('logout-btn').onclick = logout;
@@ -454,7 +501,7 @@
             if (body) { options.body = JSON.stringify(body); }
             const response = await fetch(API_URL + endpoint, options);
             if (response.status === 401 || response.status === 403) {
-                logout();
+                if (response.status === 401) { logout(); }
                 throw new Error('Sitzung ungültig oder fehlende Rechte.');
             }
             const contentType = response.headers.get("content-type");
@@ -496,10 +543,10 @@
                 roles.forEach(role => {
                     const row = document.createElement('tr');
 
-                    // (Dieser Schutz-Code ist der, den Sie in einer vorherigen Iteration bestätigt haben)
-                    const isProtected = (role.name === 'admin');
+                    // Hinzugefügt: Rolle 'Besucher' ist jetzt eine geschützte Basis-Rolle.
+                    const isProtected = (role.name === 'admin' || role.name === 'Besucher'); // <<< ANGEPASST
                     const buttons = isProtected ?
-                        '<span style="color: #777;">Basis-Rolle (Admin)</span>' :
+                        `<span style="color: #777;">Basis-Rolle (${role.name})</span>` :
                         `<button class="btn-edit" onclick="openEditModal(${role.id}, '${role.name}', '${role.description || ''}')">Bearbeiten</button>
                          <button class="btn-delete" onclick="deleteRole(${role.id})">Löschen</button>`;
 

@@ -1,8 +1,8 @@
 from flask import Blueprint, request, jsonify, current_app
 # Importe für Shift und GlobalSetting hinzugefügt (Regel 1)
 from .models import User, Role, ShiftType, Shift, GlobalSetting
-from .extensions import db, bcrypt  # <--- BCRYPT HINZUGEFÜGT
-from flask_login import login_required, current_user
+from .extensions import db, bcrypt
+from flask_login import login_required, current_user # <<< login_required HINZUGEFÜGT
 from functools import wraps
 from datetime import datetime
 
@@ -29,7 +29,7 @@ def none_if_empty(value):
 
 # --- 8. BENUTZERVERWALTUNGS-API ---
 @admin_bp.route('/users', methods=['GET'])
-@admin_required
+@login_required # <<< GEÄNDERT: Erlaubt allen eingeloggten Benutzern das Lesen
 def get_users():
     users = User.query.order_by(User.shift_plan_sort_order, User.name).all()
     return jsonify([user.to_dict() for user in users]), 200
@@ -163,7 +163,7 @@ def delete_role(role_id):
 
 
 @admin_bp.route('/shifttypes', methods=['GET'])
-@admin_required
+@login_required # <<< GEÄNDERT: Erlaubt allen eingeloggten Benutzern das Lesen
 def get_shifttypes():
     types = ShiftType.query.all()
     return jsonify([st.to_dict() for st in types]), 200
@@ -232,7 +232,7 @@ def delete_shifttype(type_id):
 # --- NEUE ROUTEN: GLOBALE EINSTELLUNGEN ---
 
 @admin_bp.route('/settings', methods=['GET'])
-@admin_required
+@login_required # <<< GEÄNDERT: Erlaubt allen eingeloggten Benutzern das Lesen
 def get_global_settings():
     """
     Ruft alle globalen Schlüssel-Wert-Paare (GlobalSetting) ab und gibt sie als Dictionary zurück.

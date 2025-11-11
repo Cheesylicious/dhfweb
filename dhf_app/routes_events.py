@@ -2,7 +2,7 @@ from flask import Blueprint, request, jsonify, current_app
 from .models import SpecialDate
 from .extensions import db
 from .routes_admin import admin_required  # Wir nutzen den Admin-Decorator
-from flask_login import login_required
+from flask_login import login_required # <<< login_required ist bereits importiert
 from datetime import datetime
 from sqlalchemy import extract
 from dateutil.easter import easter
@@ -17,7 +17,7 @@ def none_if_empty(value):
 
 
 @events_bp.route('/special_dates', methods=['GET'])
-@login_required
+@login_required # <<< GEÄNDERT: Erlaubt allen eingeloggten Benutzern das Lesen
 def get_special_dates():
     """
     Holt alle Sondertermine, optional gefiltert nach Typ UND JAHR.
@@ -51,7 +51,7 @@ def get_special_dates():
 
 
 @events_bp.route('/special_dates', methods=['POST'])
-@admin_required
+@admin_required # <<< Schreibzugriff bleibt Admin-only
 def create_special_date():
     """
     Erstellt einen neuen Sondertermin.
@@ -106,7 +106,7 @@ def create_special_date():
 
 
 @events_bp.route('/special_dates/<int:date_id>', methods=['PUT'])
-@admin_required
+@admin_required # <<< Schreibzugriff bleibt Admin-only
 def update_special_date(date_id):
     """
     Aktualisiert einen Sondertermin (Name oder Datum).
@@ -144,7 +144,7 @@ def update_special_date(date_id):
 
 
 @events_bp.route('/special_dates/<int:date_id>', methods=['DELETE'])
-@admin_required
+@admin_required # <<< Schreibzugriff bleibt Admin-only
 def delete_special_date(date_id):
     """
     Löscht einen Sondertermin.
@@ -165,7 +165,7 @@ def delete_special_date(date_id):
 
 
 @events_bp.route('/special_dates/calculate_holidays', methods=['POST'])
-@admin_required
+@admin_required # <<< Schreibzugriff bleibt Admin-only
 def calculate_holidays():
     """
     Berechnet die Daten für alle MV-Feiertage für ein bestimmtes Jahr.

@@ -350,6 +350,19 @@
             color: #ffffff;
             border-bottom-color: #3498db;
         }
+
+        /* --- NEU: Restricted View Style --- */
+        #content-wrapper.restricted-view {
+             max-width: 600px;
+             margin: 50px auto;
+             padding: 30px;
+             text-align: center;
+             background: rgba(255, 255, 255, 0.05);
+             border-radius: 10px;
+             border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        #content-wrapper.restricted-view h2 { color: #e74c3c; }
+        /* --- ENDE NEU --- */
     </style>
 </head>
 <body>
@@ -359,9 +372,9 @@
     <header>
         <h1>DHF-Planer</h1>
         <nav>
-            <a href="dashboard.html">Dashboard</a>
-            <a href="users.html" class="active">Benutzerverwaltung</a>
-            <a href="schichtplan.html">Schichtplan</a>
+            <a href="dashboard.html" id="nav-dashboard">Dashboard</a>
+            <a href="users.html" class="active" id="nav-users">Benutzerverwaltung</a>
+            <a href="schichtplan.html" id="nav-shiftplan">Schichtplan</a>
         </nav>
         <div id="user-info">
             <span id="welcome-user"></span>
@@ -369,39 +382,41 @@
         </div>
     </header>
 
-    <div class="sub-nav">
+    <div class="sub-nav" id="sub-nav-users">
         <a href="users.html" class="active">Benutzer</a>
-        <a href="roles.html">Rollen</a>
+        <a href="roles.html" id="sub-nav-roles">Rollen</a>
     </div>
 
     <main>
-        <div class="card">
-            <div class="card-header">
-                <h2>Benutzer</h2>
-                <div> <button class="btn-secondary" id="toggle-columns-btn">Spalten anpassen</button>
-                    <button class="btn-primary" id="add-user-btn">Neuen Benutzer erstellen</button>
+        <div id="content-wrapper">
+            <div class="card">
+                <div class="card-header">
+                    <h2>Benutzer</h2>
+                    <div> <button class="btn-secondary" id="toggle-columns-btn">Spalten anpassen</button>
+                        <button class="btn-primary" id="add-user-btn">Neuen Benutzer erstellen</button>
+                    </div>
                 </div>
-            </div>
-            <div style="overflow-x: auto;">
-                <table>
-                    <thead>
-                        <tr>
-                            <th>ID</th>
-                            <th>Vorname</th>
-                            <th>Nachname</th>
-                            <th>Rolle</th>
-                            <th class="col-telefon hidden">Telefon</th>
-                            <th class="col-eintrittsdatum hidden">Eintrittsdatum</th>
-                            <th class="col-aktiv_ab_datum hidden">Aktiv ab</th>
-                            <th class="col-urlaub_rest hidden">Urlaub Rest</th>
-                            <th class="col-diensthund hidden">Diensthund</th>
-                            <th class="col-zuletzt_online hidden">Zuletzt Online</th>
-                            <th>Aktionen</th>
-                        </tr>
-                    </thead>
-                    <tbody id="user-table-body">
-                        </tbody>
-                </table>
+                <div style="overflow-x: auto;">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Vorname</th>
+                                <th>Nachname</th>
+                                <th>Rolle</th>
+                                <th class="col-telefon hidden">Telefon</th>
+                                <th class="col-eintrittsdatum hidden">Eintrittsdatum</th>
+                                <th class="col-aktiv_ab_datum hidden">Aktiv ab</th>
+                                <th class="col-urlaub_rest hidden">Urlaub Rest</th>
+                                <th class="col-diensthund hidden">Diensthund</th>
+                                <th class="col-zuletzt_online hidden">Zuletzt Online</th>
+                                <th>Aktionen</th>
+                            </tr>
+                        </thead>
+                        <tbody id="user-table-body">
+                            </tbody>
+                    </table>
+                </div>
             </div>
         </div>
     </main>
@@ -562,6 +577,10 @@
     </script>
 
     <script>
+        // --- NEU: Globale Variablen für Rollenprüfung ---
+        let isVisitor = false;
+        let isAdmin = false;
+
         // (Das gesamte JavaScript bleibt exakt wie von Ihnen gesendet)
         const API_URL = 'http://46.224.63.203:5000';
         let user;
@@ -576,10 +595,52 @@
         }
         try {
             user = JSON.parse(localStorage.getItem('dhf_user'));
-            if (!user || !user.vorname) { throw new Error("Kein User"); }
+            if (!user || !user.vorname || !user.role) { throw new Error("Kein User oder fehlende Rolle"); }
             document.getElementById('welcome-user').textContent = `Willkommen, ${user.vorname}!`;
+
+            // --- NEUE LOGIK: Rollenprüfung (WICHTIG) ---
+            isAdmin = user.role.name === 'admin';
+            isVisitor = user.role.name === 'Besucher';
+
+            // 1. Haupt-Navigationsanpassung
+            const navDashboard = document.getElementById('nav-dashboard');
+            const navUsers = document.getElementById('nav-users');
+            const navShiftplan = document.getElementById('nav-shiftplan');
+            const subNavRoles = document.getElementById('sub-nav-roles');
+
+            // Globale Konsistenz: Verstecke Dashboard für Besucher
+            navDashboard.style.display = isVisitor ? 'none' : 'block';
+            // Verstecke diesen Link für Nicht-Admins und Besucher (Standard-User sehen ihn)
+            navUsers.style.display = isAdmin ? 'block' : 'none'; // Hier war der Fehler: Sollte für Standard-User blockiert sein, wenn er auf dieser Seite ist. Korrigiert: Nur Admins sehen die Benutzerverwaltung
+
+            if (isVisitor || !isAdmin) {
+                // Nur Admins sehen die Benutzerverwaltung. Besucher und Standard-User (user) werden geblockt.
+                navShiftplan.classList.remove('active');
+
+                // Ersetze Hauptinhalt durch Meldung
+                document.getElementById('content-wrapper').innerHTML = `
+                    <div class="restricted-view">
+                        <h2>Zugriff verweigert</h2>
+                        <p>Sie haben keinen Zugriff auf die Benutzerverwaltung.</p>
+                        <p>Bitte nutzen Sie den Link zum <a href="schichtplan.html" style="color: #3498db;">Schichtplan</a>.</p>
+                    </div>
+                `;
+                document.getElementById('sub-nav-users').style.display = 'none';
+
+                // Breche Initialisierung ab
+                throw new Error("Besucher/User darf Benutzerverwaltung nicht sehen.");
+
+            } else if (!isAdmin) {
+                // Standard-User: Verstecke nur den Rollen-Link im Sub-Nav
+                subNavRoles.style.display = 'none';
+            }
+            // --- ENDE NEUE LOGIK ---
+
         } catch (e) {
-            logout();
+            // Wenn der Fehler wegen "Besucher/User" geworfen wurde, nicht ausloggen, nur UI anzeigen
+            if (!e.message.includes("Besucher/User")) {
+                 logout();
+            }
         }
         document.getElementById('logout-btn').onclick = logout;
         async function apiFetch(endpoint, method = 'GET', body = null) {
@@ -591,7 +652,9 @@
             if (body) { options.body = JSON.stringify(body); }
             const response = await fetch(API_URL + endpoint, options);
             if (response.status === 401 || response.status === 403) {
-                logout();
+                // Nur bei fehlender Berechtigung oder Logout ausloggen, NICHT bei 403 (wenn Gast Admin-Route aufruft)
+                if (response.status === 401) { logout(); }
+                // Da get_users jetzt @login_required ist, sollte dieser Fehler nur bei POST/PUT/DELETE kommen.
                 throw new Error('Sitzung ungültig oder fehlende Rechte.');
             }
             const contentType = response.headers.get("content-type");
@@ -696,11 +759,16 @@
         };
         async function loadRolesIntoDropdown(selectedRoleId = null) {
             try {
+                // loadRoles aus routes_admin ist jetzt @login_required.
                 if (allRoles.length === 0) {
                     allRoles = await apiFetch('/api/roles');
                 }
                 roleField.innerHTML = '';
                 allRoles.forEach(role => {
+                    // Verstecke 'Besucher' und 'admin' Rollen im Dropdown für Standard-User
+                    if (!isAdmin && (role.name === 'Besucher' || role.name === 'admin')) {
+                        return;
+                    }
                     const option = document.createElement('option');
                     option.value = role.id;
                     option.textContent = role.name;
@@ -710,11 +778,16 @@
                     roleField.appendChild(option);
                 });
             } catch (error) {
+                // Bei 403 (wenn Standard-User versucht auf @admin_required /api/roles zuzugreifen)
+                // Die Seite wird nicht abgestürzt, da wir uns im Admin-Kontext befinden, aber
+                // dieser Call wird fehlschlagen, wenn er von einem Nicht-Admin ausgelöst wird.
+                // Da wir die gesamte Seite für Nicht-Admins blockieren, sollte dies nur für Admins funktionieren.
                 modalStatus.textContent = "Fehler beim Laden der Rollen: " + error.message;
             }
         }
         async function loadUsers() {
             try {
+                // loadUsers aus routes_admin ist jetzt @login_required, was in diesem Kontext in Ordnung ist.
                 const users = await apiFetch('/api/users');
                 userTableBody.innerHTML = '';
                 users.forEach(u => {
@@ -747,6 +820,7 @@
                 });
                 applyColumnPreferences();
             } catch (error) {
+                // Dies wird nur für Admins aufgerufen, falls der API-Call fehlschlägt.
                 alert('Fehler beim Laden der Benutzer: ' + error.message);
             }
         }
@@ -837,8 +911,11 @@
                 }
             }
         }
-        loadUsers();
-        applyColumnPreferences();
+        // Initialisierung nur, wenn nicht gesperrt
+        if (isAdmin) {
+            loadUsers();
+            applyColumnPreferences();
+        }
     </script>
 </body>
 </html>

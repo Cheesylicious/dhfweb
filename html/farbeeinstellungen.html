@@ -64,7 +64,7 @@
         }
         .btn-primary:hover { opacity: 0.8; }
 
-        /* Sub-Nav und Dropdown (wie in schichtplan.html) */
+        /* Sub-Nav und Dropdown */
         .sub-nav {
             background: rgba(255, 255, 255, 0.05); border-bottom: 1px solid rgba(255, 255, 255, 0.1);
             backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
@@ -117,6 +117,18 @@
             color: #2ecc71; font-weight: 500;
             text-align: left; padding: 0 5px;
         }
+         /* --- NEU: Restricted View Style --- */
+        #content-wrapper.restricted-view {
+             max-width: 600px;
+             margin: 50px auto;
+             padding: 30px;
+             text-align: center;
+             background: rgba(255, 255, 255, 0.05);
+             border-radius: 10px;
+             border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        #content-wrapper.restricted-view h2 { color: #e74c3c; }
+        /* --- ENDE NEU --- */
     </style>
 </head>
 <body>
@@ -126,8 +138,8 @@
     <header>
         <h1>DHF-Planer</h1>
         <nav>
-            <a href="dashboard.html">Dashboard</a>
-            <a href="users.html">Benutzerverwaltung</a>
+            <a href="dashboard.html" id="nav-dashboard">Dashboard</a>
+            <a href="users.html" id="nav-users">Benutzerverwaltung</a>
             <a href="schichtplan.html" class="active">Schichtplan</a>
         </nav>
         <div id="user-info">
@@ -139,63 +151,65 @@
     <div class="sub-nav">
         <a href="schichtplan.html">Schichtplan</a>
         <div class="dropdown">
-            <button class="dropbtn active">Einstellungen &raquo;</button>
-            <div class="dropdown-content">
-                <a href="einstellungen.html">Mitarbeiter Sortierung</a>
-                <a href="schichtarten.html">Schichtarten</a>
-                <a href="shortcuts.html">Shortcuts</a>
-                <a href="feiertage.html">Feiertage & Sondertermine</a>
-                <a href="farbeeinstellungen.html" class="active">Farbeinstellungen</a> </div>
+            <button class="dropbtn active" id="settings-dropbtn">Einstellungen &raquo;</button>
+            <div class="dropdown-content" id="settings-dropdown-content">
+                <a href="einstellungen.html" class="user-only">Mitarbeiter Sortierung</a>
+                <a href="schichtarten.html" class="admin-only">Schichtarten</a>
+                <a href="shortcuts.html" class="user-only">Shortcuts</a>
+                <a href="feiertage.html" class="admin-only">Feiertage & Sondertermine</a>
+                <a href="farbeeinstellungen.html" class="admin-only active">Farbeinstellungen</a> </div>
         </div>
     </div>
 
     <main>
-        <div class="card">
-            <div class="card-header">
-                <h2>Farbeinstellungen (Schichtplan)</h2>
-                <div id="status-message"></div>
-            </div>
+        <div id="content-wrapper">
+            <div class="card">
+                <div class="card-header">
+                    <h2>Farbeinstellungen (Schichtplan)</h2>
+                    <div id="status-message"></div>
+                </div>
 
-            <div class="form-section">
-                <h3>Allgemeine Tage</h3>
-                <div class="color-group">
-                    <label for="weekend-bg-color">Wochenende (Hintergrund):</label>
-                    <div class="color-input-container">
-                        <input type="color" id="weekend-bg-color" class="color-input">
+                <div class="form-section">
+                    <h3>Allgemeine Tage</h3>
+                    <div class="color-group">
+                        <label for="weekend-bg-color">Wochenende (Hintergrund):</label>
+                        <div class="color-input-container">
+                            <input type="color" id="weekend-bg-color" class="color-input">
+                        </div>
+                    </div>
+                    <div class="color-group">
+                        <label for="weekend-text-color">Wochenende (Text):</label>
+                        <div class="color-input-container">
+                            <input type="color" id="weekend-text-color" class="color-input">
+                        </div>
                     </div>
                 </div>
-                <div class="color-group">
-                    <label for="weekend-text-color">Wochenende (Text):</label>
-                    <div class="color-input-container">
-                        <input type="color" id="weekend-text-color" class="color-input">
-                    </div>
-                </div>
-            </div>
 
-            <div class="form-section">
-                <h3>Sondertermine (Spalten-Hintergrund)</h3>
-                 <div class="color-group">
-                    <label for="holiday-bg-color">Feiertag:</label>
-                    <div class="color-input-container">
-                        <input type="color" id="holiday-bg-color" class="color-input">
+                <div class="form-section">
+                    <h3>Sondertermine (Spalten-Hintergrund)</h3>
+                    <div class="color-group">
+                        <label for="holiday-bg-color">Feiertag:</label>
+                        <div class="color-input-container">
+                            <input type="color" id="holiday-bg-color" class="color-input">
+                        </div>
+                    </div>
+                    <div class="color-group">
+                        <label for="training-bg-color">Quartals Ausbildung:</label>
+                        <div class="color-input-container">
+                            <input type="color" id="training-bg-color" class="color-input">
+                        </div>
+                    </div>
+                    <div class="color-group">
+                        <label for="shooting-bg-color">Schießen:</label>
+                        <div class="color-input-container">
+                            <input type="color" id="shooting-bg-color" class="color-input">
+                        </div>
                     </div>
                 </div>
-                <div class="color-group">
-                    <label for="training-bg-color">Quartals Ausbildung:</label>
-                    <div class="color-input-container">
-                        <input type="color" id="training-bg-color" class="color-input">
-                    </div>
-                </div>
-                <div class="color-group">
-                    <label for="shooting-bg-color">Schießen:</label>
-                    <div class="color-input-container">
-                        <input type="color" id="shooting-bg-color" class="color-input">
-                    </div>
-                </div>
-            </div>
 
-            <div class="card-footer">
-                <button class="btn-primary" id="save-colors-btn">Farben speichern</button>
+                <div class="card-footer">
+                    <button class="btn-primary" id="save-colors-btn">Farben speichern</button>
+                </div>
             </div>
         </div>
     </main>
@@ -239,6 +253,7 @@
         const API_URL = 'http://46.224.63.203:5000';
         const STORAGE_KEY = 'dhf_color_settings'; // Temporärer Key (wird entfernt)
         let user;
+        let isAdmin = false; // <<< NEU
 
         async function logout() {
             try { await apiFetch('/api/logout', 'POST'); } catch (e) { console.error(e); }
@@ -246,15 +261,56 @@
         }
         try {
             user = JSON.parse(localStorage.getItem('dhf_user'));
-            if (!user || !user.vorname) { throw new Error("Kein User"); }
+            if (!user || !user.vorname || !user.role) { throw new Error("Kein User oder fehlende Rolle"); }
             document.getElementById('welcome-user').textContent = `Willkommen, ${user.vorname}!`;
-        } catch (e) { logout(); }
+
+            // --- NEUE LOGIK: Rollenprüfung und UI-Anpassung ---
+            isAdmin = user.role.name === 'admin';
+            const isVisitor = user.role.name === 'Besucher';
+            const isUser = user.role.name === 'user';
+
+            // 1. Haupt-Navigationsanpassung
+            document.getElementById('nav-dashboard').style.display = isVisitor ? 'none' : 'block';
+            document.getElementById('nav-users').style.display = isAdmin ? 'block' : 'none';
+
+            if (isVisitor || isUser) {
+                // Nur Admins dürfen auf die Farbeinstellungen zugreifen
+                const wrapper = document.getElementById('content-wrapper');
+                wrapper.classList.add('restricted-view');
+                wrapper.innerHTML = `
+                    <h2 style="color: #e74c3c;">Zugriff verweigert</h2>
+                    <p>Sie benötigen Admin-Rechte, um die Farbeinstellungen zu verwalten.</p>
+                    <p>Bitte nutzen Sie den Link zum <a href="schichtplan.html" style="color: #3498db;">Schichtplan</a>.</p>
+                `;
+                document.getElementById('settings-dropbtn').style.display = 'none';
+                 throw new Error("Keine Admin-Rechte für Farbeinstellungen.");
+            }
+
+            // 2. Dropdown-Anpassung (Nur für Admins relevant)
+            if (isAdmin) {
+                document.querySelectorAll('#settings-dropdown-content .user-only').forEach(el => {
+                    el.style.display = 'block';
+                });
+                document.querySelectorAll('#settings-dropdown-content .admin-only').forEach(el => {
+                    el.style.display = 'block';
+                });
+            }
+            // --- ENDE NEUE LOGIK ---
+
+        } catch (e) {
+             if (!e.message.includes("Admin-Rechte")) {
+                 logout();
+            }
+        }
         document.getElementById('logout-btn').onclick = logout;
         async function apiFetch(endpoint, method = 'GET', body = null) {
             const options = { method, headers: { 'Content-Type': 'application/json' }, credentials: 'include' };
             if (body) { options.body = JSON.stringify(body); }
             const response = await fetch(API_URL + endpoint, options);
-            if (response.status === 401 || response.status === 403) { logout(); throw new Error('Sitzung ungültig oder fehlende Rechte.'); }
+            if (response.status === 401 || response.status === 403) {
+                if (response.status === 401) { logout(); }
+                throw new Error('Sitzung ungültig oder fehlende Rechte.');
+            }
             const contentType = response.headers.get("content-type");
             let data;
             if (contentType && contentType.indexOf("application/json") !== -1) { data = await response.json(); }
@@ -294,6 +350,7 @@
             }
 
             for (const key in DEFAULT_COLORS) {
+                // Konvertiere key (z.B. weekend_bg_color) zu ID (weekend-bg-color)
                 const input = document.getElementById(key.replace(/_/g, '-'));
                 if (input) {
                     // Setze den Wert auf den aus der DB geladenen (oder Default)
@@ -311,6 +368,7 @@
             let hasError = false;
 
             for (const key in DEFAULT_COLORS) {
+                // Konvertiere key (z.B. weekend_bg_color) zu ID (weekend-bg-color)
                 const input = document.getElementById(key.replace(/_/g, '-'));
                 if (input) {
                     // Sammle alle Farben in der Payload
@@ -321,7 +379,7 @@
             if (hasError) return;
 
             try {
-                // Sende die gesamte Payload an die neue /api/settings PUT Route
+                // Sende die gesamte Payload an die /api/settings PUT Route
                 await apiFetch('/api/settings', 'PUT', payload);
 
                 statusMsg.textContent = 'Erfolgreich gespeichert!';
@@ -338,7 +396,9 @@
         };
 
         // --- Initialisierung ---
-        loadColors();
+        if (isAdmin) {
+             loadColors();
+        }
     </script>
 </body>
 </html>

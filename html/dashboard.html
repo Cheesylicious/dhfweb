@@ -4,6 +4,19 @@
     <meta charset="UTF-8">
     <title>Dashboard - DHF-Planer</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <script>
+        // Prüft sofort, ob der Benutzer ein "Besucher" ist und leitet direkt um.
+        try {
+            const user = JSON.parse(localStorage.getItem('dhf_user'));
+            if (user && user.role && user.role.name === 'Besucher') {
+                window.location.href = 'schichtplan.html';
+            }
+        } catch (e) {
+            // Ignoriere Fehler, wenn localStorage leer ist, der Login-Check kommt später
+        }
+    </script>
+
     <style>
         /* Import einer modernen Schriftart */
         @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap');
@@ -123,9 +136,9 @@
 
     <header>
         <h1>DHF-Planer</h1>
-        <nav>
-            <a href="dashboard.html" class="active">Dashboard</a>
-            <a href="users.html">Benutzerverwaltung</a>
+        <nav id="main-nav">
+            <a href="dashboard.html" class="active" id="nav-dashboard" style="display: none;">Dashboard</a>
+            <a href="users.html" id="nav-users" style="display: none;">Benutzerverwaltung</a>
             <a href="schichtplan.html">Schichtplan</a>
         </nav>
         <div id="user-info">
@@ -136,8 +149,8 @@
 
     <main>
         <div class="card">
-            <h2>Willkommen!</h2>
-            <p>Dies ist das Admin-Dashboard. Wählen Sie einen Bereich aus der Navigation oben.</p>
+            <h2 id="welcome-message">Willkommen!</h2>
+            <p>Dies ist das Dashboard.</p>
         </div>
     </main>
 
@@ -228,7 +241,6 @@
 
 
     <script>
-        // (Das Basis-Skript für Logout und User-Check bleibt unverändert)
         const API_URL = 'http://46.224.63.203:5000'; // Ersetzen Sie dies ggf. durch Ihre Domain
         let user;
 
@@ -243,11 +255,37 @@
             }
         }
 
+        // --- NEUE LOGIK: Benutzerrollen-Check und Navigation anpassen ---
         try {
             user = JSON.parse(localStorage.getItem('dhf_user'));
-            if (!user || !user.vorname) { throw new Error("Kein User"); }
+            if (!user || !user.vorname || !user.role) { throw new Error("Kein User oder fehlende Rolle"); }
+
+            const isAdmin = user.role.name === 'admin';
+            // Die isVisitor Prüfung ist dank des Head-Skripts nicht mehr nötig,
+            // da Besucher bereits umgeleitet werden, bevor dieser Teil ausgeführt wird.
+
             document.getElementById('welcome-user').textContent = `Willkommen, ${user.vorname}!`;
+            document.getElementById('welcome-message').textContent = `Willkommen, ${user.vorname}!`;
+
+            const navDashboard = document.getElementById('nav-dashboard');
+            const navUsers = document.getElementById('nav-users');
+
+            // Sichtbarkeit der Links für Nicht-Besucher (Admins und Standard-User)
+
+            // Dashboard Link ist für Nicht-Besucher sichtbar
+            navDashboard.style.display = 'block';
+
+            // Benutzerverwaltung Link ist nur für Admins sichtbar
+            if (isAdmin) {
+                navUsers.style.display = 'block';
+                 document.querySelector('.card p').textContent = "Dies ist das Admin-Dashboard. Wählen Sie einen Bereich aus der Navigation oben.";
+            } else {
+                 document.querySelector('.card p').textContent = "Dies ist das Dashboard. Wählen Sie einen Bereich aus der Navigation oben.";
+            }
+
+
         } catch (e) {
+            // Wenn der User nicht da ist oder ungültig, leite um
             window.location.href = 'index.html?logout=true';
         }
 

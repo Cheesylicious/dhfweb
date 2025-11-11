@@ -278,6 +278,18 @@
             color: #2ecc71; /* (Standard-Grün für Erfolg) */
             font-weight: 500;
         }
+        /* --- NEU: Restricted View Style --- */
+        #content-wrapper.restricted-view {
+             max-width: 600px;
+             margin: 50px auto;
+             padding: 30px;
+             text-align: center;
+             background: rgba(255, 255, 255, 0.05);
+             border-radius: 10px;
+             border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        #content-wrapper.restricted-view h2 { color: #e74c3c; }
+        /* --- ENDE NEU --- */
     </style>
 </head>
 <body>
@@ -287,8 +299,8 @@
     <header>
         <h1>DHF-Planer</h1>
         <nav>
-            <a href="dashboard.html">Dashboard</a>
-            <a href="users.html">Benutzerverwaltung</a>
+            <a href="dashboard.html" id="nav-dashboard">Dashboard</a>
+            <a href="users.html" id="nav-users" style="display: none;">Benutzerverwaltung</a>
             <a href="schichtplan.html" class="active">Schichtplan</a>
         </nav>
         <div id="user-info">
@@ -300,28 +312,31 @@
     <div class="sub-nav">
         <a href="schichtplan.html">Schichtplan</a>
         <div class="dropdown">
-            <button class="dropbtn active">Einstellungen &raquo;</button>
-            <div class="dropdown-content">
+            <button class="dropbtn active" id="settings-dropbtn">Einstellungen &raquo;</button>
+            <div class="dropdown-content" id="settings-dropdown-content">
                 <a href="einstellungen.html" class="active">Mitarbeiter Sortierung</a>
-                <a href="schichtarten.html">Schichtarten</a>
+                <a href="schichtarten.html" class="admin-only">Schichtarten</a>
                 <a href="shortcuts.html">Shortcuts</a>
-                <a href="feiertage.html">Feiertage & Sondertermine</a>
+                <a href="feiertage.html" class="admin-only">Feiertage & Sondertermine</a>
+                <a href="farbeeinstellungen.html" class="admin-only">Farbeinstellungen</a>
             </div>
         </div>
     </div>
 
     <main>
-        <div class="card">
-            <div class="card-header">
-                <h2>Mitarbeiter Sortierung (Schichtplan)</h2>
-                <div id="status-message"></div>
-            </div>
+        <div id="content-wrapper">
+            <div class="card">
+                <div class="card-header">
+                    <h2>Mitarbeiter Sortierung (Schichtplan)</h2>
+                    <div id="status-message"></div>
+                </div>
 
-            <ul id="user-sort-list">
-                </ul>
+                <ul id="user-sort-list">
+                    </ul>
 
-            <div class="card-footer">
-                <button class="btn-primary" id="save-order-btn">Reihenfolge speichern</button>
+                <div class="card-footer">
+                    <button class="btn-primary" id="save-order-btn">Reihenfolge speichern</button>
+                </div>
             </div>
         </div>
     </main>
@@ -412,11 +427,13 @@
     </script>
 
     <script>
-        // (Das gesamte JavaScript für SortableJS bleibt 1:1 unverändert)
         // --- Globales Setup ---
         const API_URL = 'http://46.224.63.203:5000'; // (Ihre IP)
         let user;
         let sortableInstance = null;
+        let isAdmin = false; // <<< NEU
+        let isVisitor = false; // <<< NEU
+
         async function logout() {
             try { await apiFetch('/api/logout', 'POST'); }
             catch (e) { console.error(e); }
@@ -427,11 +444,44 @@
         }
         try {
             user = JSON.parse(localStorage.getItem('dhf_user'));
-            if (!user || !user.vorname) { throw new Error("Kein User"); }
+            if (!user || !user.vorname || !user.role) { throw new Error("Kein User oder fehlende Rolle"); }
             document.getElementById('welcome-user').textContent = `Willkommen, ${user.vorname}!`;
+
+            // --- NEUE LOGIK: Rollenprüfung und UI-Anpassung ---
+            isAdmin = user.role.name === 'admin';
+            isVisitor = user.role.name === 'Besucher';
+
+            // 1. Haupt-Navigationsanpassung
+            document.getElementById('nav-dashboard').style.display = isVisitor ? 'none' : 'block';
+
+            if (isVisitor) {
+                // Besucher haben keinen Zugriff auf diese Seite
+                document.getElementById('content-wrapper').innerHTML = `
+                    <div class="restricted-view">
+                        <h2 style="color: #e74c3c;">Zugriff verweigert</h2>
+                        <p>Als Besucher haben Sie keinen Zugriff auf die Einstellungen.</p>
+                        <p>Bitte nutzen Sie den Link zum <a href="schichtplan.html" style="color: #3498db;">Schichtplan</a>.</p>
+                    </div>
+                `;
+                // Verstecke Dropdown-Tasten
+                document.getElementById('settings-dropbtn').style.display = 'none';
+                throw new Error("Besucher darf Einstellungen nicht sehen.");
+            }
+
+            // 2. Dropdown-Anpassung: Nicht-Admins sehen nur "Mitarbeiter Sortierung" und "Shortcuts"
+            if (!isAdmin) {
+                document.querySelectorAll('#settings-dropdown-content .admin-only').forEach(el => {
+                    el.style.display = 'none';
+                });
+            }
+
         } catch (e) {
-            logout();
+            if (!e.message.includes("Besucher")) {
+                 logout();
+            }
         }
+        // --- ENDE NEUE LOGIK ---
+
         document.getElementById('logout-btn').onclick = logout;
         async function apiFetch(endpoint, method = 'GET', body = null) {
             const options = {
@@ -442,7 +492,7 @@
             if (body) { options.body = JSON.stringify(body); }
             const response = await fetch(API_URL + endpoint, options);
             if (response.status === 401 || response.status === 403) {
-                logout();
+                if (response.status === 401) { logout(); }
                 throw new Error('Sitzung ungültig oder fehlende Rechte.');
             }
             const contentType = response.headers.get("content-type");

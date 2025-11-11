@@ -246,6 +246,18 @@
             margin-top: 10px;
             min-height: 1.2em;
         }
+        /* --- NEU: Restricted View Style --- */
+        #content-wrapper.restricted-view {
+             max-width: 600px;
+             margin: 50px auto;
+             padding: 30px;
+             text-align: center;
+             background: rgba(255, 255, 255, 0.05);
+             border-radius: 10px;
+             border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        #content-wrapper.restricted-view h2 { color: #e74c3c; }
+        /* --- ENDE NEU --- */
     </style>
 </head>
 <body>
@@ -255,8 +267,8 @@
     <header>
         <h1>DHF-Planer</h1>
         <nav>
-            <a href="dashboard.html">Dashboard</a>
-            <a href="users.html">Benutzerverwaltung</a>
+            <a href="dashboard.html" id="nav-dashboard">Dashboard</a>
+            <a href="users.html" id="nav-users">Benutzerverwaltung</a>
             <a href="schichtplan.html" class="active">Schichtplan</a>
         </nav>
         <div id="user-info">
@@ -268,93 +280,96 @@
     <div class="sub-nav">
         <a href="schichtplan.html">Schichtplan</a>
         <div class="dropdown">
-            <button class="dropbtn active">Einstellungen &raquo;</button>
-            <div class="dropdown-content">
-                <a href="einstellungen.html">Mitarbeiter Sortierung</a>
-                <a href="schichtarten.html">Schichtarten</a>
-                <a href="shortcuts.html">Shortcuts</a>
-                <a href="feiertage.html" class="active">Feiertage & Sondertermine</a>
+            <button class="dropbtn active" id="settings-dropbtn">Einstellungen &raquo;</button>
+            <div class="dropdown-content" id="settings-dropdown-content">
+                <a href="einstellungen.html" class="user-only">Mitarbeiter Sortierung</a>
+                <a href="schichtarten.html" class="admin-only">Schichtarten</a>
+                <a href="shortcuts.html" class="user-only">Shortcuts</a>
+                <a href="feiertage.html" class="admin-only active">Feiertage & Sondertermine</a>
+                <a href="farbeeinstellungen.html" class="admin-only">Farbeinstellungen</a>
             </div>
         </div>
     </div>
 
     <main>
-        <div class="tab-nav">
-            <button class="tab-link active" data-tab="tab-holidays">Feiertage (MV)</button>
-            <button class="tab-link" data-tab="tab-training">Quartals Ausbildung</button>
-            <button class="tab-link" data-tab="tab-shooting">Schießen</button>
-        </div>
-
-        <div class="card">
-            <div id="tab-holidays" class="tab-content active">
-                <div class="card-header">
-                    <h2>Feiertage (MV)</h2>
-                    <div class="header-actions">
-                        <span id="holiday-status"></span>
-                        <input type="number" id="holiday-year-input" placeholder="Jahr">
-                        <button class="btn-primary" id="calculate-holidays-btn">Datum berechnen</button>
-                    </div>
-                    <button class="btn-primary" id="add-holiday-btn">Neuen Feiertag erstellen</button>
-                </div>
-                <div style="overflow-x: auto;">
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>Name</th>
-                                <th>Datum</th>
-                                <th>Aktionen</th>
-                            </tr>
-                        </thead>
-                        <tbody id="holiday-table-body"></tbody>
-                    </table>
-                </div>
+        <div id="content-wrapper">
+            <div class="tab-nav">
+                <button class="tab-link active" data-tab="tab-holidays">Feiertage (MV)</button>
+                <button class="tab-link" data-tab="tab-training">Quartals Ausbildung</button>
+                <button class="tab-link" data-tab="tab-shooting">Schießen</button>
             </div>
 
-            <div id="tab-training" class="tab-content">
-                <div class="card-header">
-                    <h2>Quartals Ausbildung</h2>
-                    <div class="year-nav-container">
-                        <button class="btn-primary year-nav" data-type="training" data-delta="-1">&lt;</button>
-                        <span class="year-label" id="training-year-label">...</span>
-                        <button class="btn-primary year-nav" data-type="training" data-delta="1">&gt;</button>
+            <div class="card">
+                <div id="tab-holidays" class="tab-content active">
+                    <div class="card-header">
+                        <h2>Feiertage (MV)</h2>
+                        <div class="header-actions">
+                            <span id="holiday-status"></span>
+                            <input type="number" id="holiday-year-input" placeholder="Jahr">
+                            <button class="btn-primary" id="calculate-holidays-btn">Datum berechnen</button>
+                        </div>
+                        <button class="btn-primary" id="add-holiday-btn">Neuen Feiertag erstellen</button>
                     </div>
-                    <button class="btn-primary" id="add-training-btn">Neuen Ausbildungstermin erstellen</button>
+                    <div style="overflow-x: auto;">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Name</th>
+                                    <th>Datum</th>
+                                    <th>Aktionen</th>
+                                </tr>
+                            </thead>
+                            <tbody id="holiday-table-body"></tbody>
+                        </table>
+                    </div>
                 </div>
-                <div style="overflow-x: auto;">
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>Name / Thema</th>
-                                <th>Datum</th>
-                                <th>Aktionen</th>
-                            </tr>
-                        </thead>
-                        <tbody id="training-table-body"></tbody>
-                    </table>
-                </div>
-            </div>
 
-            <div id="tab-shooting" class="tab-content">
-                <div class="card-header">
-                    <h2>Schießtermine</h2>
-                    <div class="year-nav-container">
-                        <button class="btn-primary year-nav" data-type="shooting" data-delta="-1">&lt;</button>
-                        <span class="year-label" id="shooting-year-label">...</span>
-                        <button class="btn-primary year-nav" data-type="shooting" data-delta="1">&gt;</button>
+                <div id="tab-training" class="tab-content">
+                    <div class="card-header">
+                        <h2>Quartals Ausbildung</h2>
+                        <div class="year-nav-container">
+                            <button class="btn-primary year-nav" data-type="training" data-delta="-1">&lt;</button>
+                            <span class="year-label" id="training-year-label">...</span>
+                            <button class="btn-primary year-nav" data-type="training" data-delta="1">&gt;</button>
+                        </div>
+                        <button class="btn-primary" id="add-training-btn">Neuen Ausbildungstermin erstellen</button>
                     </div>
-                    <button class="btn-primary" id="add-shooting-btn">Neuen Schießtermin erstellen</button>
+                    <div style="overflow-x: auto;">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Name / Thema</th>
+                                    <th>Datum</th>
+                                    <th>Aktionen</th>
+                                </tr>
+                            </thead>
+                            <tbody id="training-table-body"></tbody>
+                        </table>
+                    </div>
                 </div>
-                <div style="overflow-x: auto;">
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>Name / Thema</th>
-                                <th>Datum</th>
-                                <th>Aktionen</th>
-                            </tr>
-                        </thead>
-                        <tbody id="shooting-table-body"></tbody>
-                    </table>
+
+                <div id="tab-shooting" class="tab-content">
+                    <div class="card-header">
+                        <h2>Schießtermine</h2>
+                        <div class="year-nav-container">
+                            <button class="btn-primary year-nav" data-type="shooting" data-delta="-1">&lt;</button>
+                            <span class="year-label" id="shooting-year-label">...</span>
+                            <button class="btn-primary year-nav" data-type="shooting" data-delta="1">&gt;</button>
+                        </div>
+                        <button class="btn-primary" id="add-shooting-btn">Neuen Schießtermin erstellen</button>
+                    </div>
+                    <div style="overflow-x: auto;">
+                        <table>
+                            <thead>
+                                <tr>
+                                    <th>Name / Thema</th>
+                                    <th>Datum</th>
+                                    <th>Aktionen</th>
+                                </tr>
+                            </thead>
+                            <tbody id="shooting-table-body"></tbody>
+                        </table>
+                    </div>
                 </div>
             </div>
         </div>
@@ -457,15 +472,54 @@
         // --- Globales Setup (Auth, API) ---
         const API_URL = 'http://46.224.63.203:5000';
         let user;
+        let isAdmin = false; // <<< NEU
+        let isVisitor = false; // <<< NEU
+
         async function logout() {
             try { await apiFetch('/api/logout', 'POST'); } catch (e) { console.error(e); }
             finally { localStorage.removeItem('dhf_user'); window.location.href = 'index.html?logout=true'; }
         }
         try {
             user = JSON.parse(localStorage.getItem('dhf_user'));
-            if (!user || !user.vorname) { throw new Error("Kein User"); }
+            if (!user || !user.vorname || !user.role) { throw new Error("Kein User oder fehlende Rolle"); }
             document.getElementById('welcome-user').textContent = `Willkommen, ${user.vorname}!`;
-        } catch (e) { logout(); }
+
+            // --- NEUE LOGIK: Rollenprüfung und UI-Anpassung ---
+            isAdmin = user.role.name === 'admin';
+            isVisitor = user.role.name === 'Besucher';
+            const isUser = user.role.name === 'user';
+
+            // 1. Haupt-Navigationsanpassung
+            document.getElementById('nav-dashboard').style.display = isVisitor ? 'none' : 'block';
+            document.getElementById('nav-users').style.display = isAdmin ? 'block' : 'none';
+
+            if (isVisitor || isUser) {
+                // Nur Admins dürfen auf die Feiertags-Verwaltung zugreifen
+                const wrapper = document.getElementById('content-wrapper');
+                wrapper.innerHTML = `
+                    <div class="restricted-view">
+                        <h2 style="color: #e74c3c;">Zugriff verweigert</h2>
+                        <p>Sie benötigen Admin-Rechte, um Feiertage und Sondertermine zu verwalten.</p>
+                        <p>Bitte nutzen Sie den Link zum <a href="schichtplan.html" style="color: #3498db;">Schichtplan</a>.</p>
+                    </div>
+                `;
+                document.getElementById('settings-dropbtn').style.display = 'none';
+                 throw new Error("Keine Admin-Rechte für Feiertags-Verwaltung.");
+            }
+
+            // 2. Dropdown-Anpassung (Nur für Admins relevant)
+            if (isAdmin) {
+                document.querySelectorAll('#settings-dropdown-content .user-only').forEach(el => {
+                    el.style.display = 'block';
+                });
+            }
+            // --- ENDE NEUE LOGIK ---
+
+        } catch (e) {
+            if (!e.message.includes("Admin-Rechte")) {
+                 logout();
+            }
+        }
         document.getElementById('logout-btn').onclick = logout;
         async function apiFetch(endpoint, method = 'GET', body = null) {
             const options = {
@@ -473,7 +527,10 @@
             };
             if (body) { options.body = JSON.stringify(body); }
             const response = await fetch(API_URL + endpoint, options);
-            if (response.status === 401 || response.status === 403) { logout(); throw new Error('Sitzung ungültig oder fehlende Rechte.'); }
+            if (response.status === 401 || response.status === 403) {
+                if (response.status === 401) { logout(); }
+                throw new Error('Sitzung ungültig oder fehlende Rechte.');
+            }
             const contentType = response.headers.get("content-type");
             let data;
             if (contentType && contentType.indexOf("application/json") !== -1) { data = await response.json(); }
@@ -856,15 +913,19 @@
 
         // --- Initialisierung ---
         function initializePage() {
-            trainingYearLabel.textContent = currentTrainingYear;
-            shootingYearLabel.textContent = currentShootingYear;
-            holidayYearInput.value = new Date().getFullYear();
+            // Nur ausführen, wenn Admin-Check erfolgreich war
+            if (user && user.role.name === 'admin') {
+                trainingYearLabel.textContent = currentTrainingYear;
+                shootingYearLabel.textContent = currentShootingYear;
+                holidayYearInput.value = new Date().getFullYear();
 
-            loadHolidayData();
-            loadEventsForYear('training', currentTrainingYear);
-            loadEventsForYear('shooting', currentShootingYear);
+                loadHolidayData();
+                loadEventsForYear('training', currentTrainingYear);
+                loadEventsForYear('shooting', currentShootingYear);
+            }
         }
 
+        // Die Initialisierung wird nur für Admins aufgerufen (siehe try/catch Block oben)
         initializePage();
     </script>
 </body>

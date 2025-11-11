@@ -58,18 +58,17 @@
             padding: 30px;
             max-width: 100%;
             box-sizing: border-box;
-            position: relative; /* <<< NEU: Aktiviert den Stacking Context für main */
-            z-index: 1; /* <<< NEU: Hält den main-Inhalt bewusst niedrig */
+            position: relative;
+            z-index: 1;
         }
 
-        /* Card (ZURÜCK ZU WEISS - WIE VOM USER GEWÜNSCHT) */
+        /* Card (ZURÜCK ZU WEISS) */
         .card {
-            background: #fff; /* (KORREKTUR: Weißer Hintergrund) */
-            color: #333; /* (KORREKTUR: Dunkler Text) */
+            background: #fff;
+            color: #333;
             border-radius: 8px;
             box-shadow: 0 2px 4px rgba(0,0,0,0.05);
             overflow: hidden;
-            /* (Glas-Filter entfernt) */
         }
 
         /* Sub-Nav (Glas-Effekt) (BLEIBT) */
@@ -83,8 +82,8 @@
             margin-top: -1px;
             display: flex;
             align-items: center;
-            position: relative; /* <<< NEU: Wichtig für z-index */
-            z-index: 100000; /* <<< KORRIGIERT: Extrem hoher Z-Index für Sub-Nav */
+            position: relative;
+            z-index: 100000;
         }
         .sub-nav a {
             display: inline-block; padding: 15px 20px; text-decoration: none;
@@ -100,7 +99,7 @@
         .dropdown {
             position: relative;
             display: inline-block;
-            z-index: 100001; /* Stellt sicher, dass der Container dominiert */
+            z-index: 100001;
         }
         .dropdown .dropbtn {
             font-family: 'Poppins', sans-serif;
@@ -108,23 +107,22 @@
             padding: 15px 20px; background: none; border: none; cursor: pointer;
             border-bottom: 3px solid transparent; transition: color 0.3s;
         }
-        /* KORREKTUR: Roter Kasten - Dropdown-Menü (Glas-Effekt) */
         .dropdown-content {
             display: none;
             position: absolute;
-            background: rgba(30, 30, 30, 0.9); /* (Dunkles Glas) */
+            background: rgba(30, 30, 30, 0.9);
             backdrop-filter: blur(10px);
             -webkit-backdrop-filter: blur(10px);
             border: 1px solid rgba(255, 255, 255, 0.1);
             min-width: 200px;
             box-shadow: 0px 8px 16px 0px rgba(0,0,0,0.2);
-            z-index: 100002; /* <<< KORRIGIERT: Maximaler Z-Index */
+            z-index: 100002;
             border-radius: 5px;
             margin-top: 0px;
             left: 0;
         }
         .dropdown-content a {
-            color: #bdc3c7; /* (Heller Text) */
+            color: #bdc3c7;
             padding: 12px 16px; text-decoration: none; display: block;
             font-size: 15px; border-bottom: none; transition: background-color 0.3s, color 0.3s;
         }
@@ -132,7 +130,6 @@
             background-color: rgba(255, 255, 255, 0.05);
             color: #ffffff;
         }
-        /* (Ende Roter Kasten Korrektur) */
 
         .dropdown:hover .dropdown-content { display: block; }
         .dropdown:hover .dropbtn, .dropbtn.active {
@@ -145,20 +142,20 @@
             color: #3498db;
         }
 
-        /* --- KORREKTUR: Grüner Kasten (Grid zurück zu Weiß) --- */
+        /* --- Grid Styles --- */
 
         .plan-nav {
             display: flex; justify-content: space-between; align-items: center;
             padding: 20px;
-            background-color: #fcfcfc; /* (Zurück zu Hell) */
-            border-bottom: 1px solid #eee; /* (Zurück zu Hell) */
+            background-color: #fcfcfc;
+            border-bottom: 1px solid #eee;
         }
-        .plan-nav h2 { margin: 0; font-size: 22px; color: #333; } /* (Zurück zu Dunkel) */
+        .plan-nav h2 { margin: 0; font-size: 22px; color: #333; }
         .plan-nav button {
             padding: 8px 16px; font-size: 15px;
-            background: #f0f0f0; /* (Zurück zu Hell) */
-            border: 1px solid #ccc; /* (Zurück zu Hell) */
-            color: #333; /* (Zurück zu Dunkel) */
+            background: #f0f0f0;
+            border: 1px solid #ccc;
+            color: #333;
             border-radius: 5px; cursor: pointer; margin-left: 10px;
         }
         .plan-nav button:hover {
@@ -170,16 +167,16 @@
 
         .grid-header, .grid-cell, .grid-user-name, .grid-user-total, .grid-user-dog {
             padding: 10px;
-            border-bottom: 1px solid #eee; /* (Zurück zu Hell) */
-            border-right: 1px solid #eee; /* (Zurück zu Hell) */
+            border-bottom: 1px solid #eee;
+            border-right: 1px solid #eee;
             text-align: center; font-size: 14px; line-height: 1.4;
             overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
-            color: #333; /* (Standardtext Dunkel) */
+            color: #333;
         }
 
         .grid-header {
-            background: #fcfcfc; /* (Zurück zu Hell) */
-            font-weight: 600; position: sticky; top: 0; z-index: 1; /* <<< KORRIGIERT: Auf 1 reduziert */
+            background: #fcfcfc;
+            font-weight: 600; position: sticky; top: 0; z-index: 1;
         }
 
         /* Standard-Wochenende Farbe */
@@ -193,13 +190,11 @@
         .grid-header.day-color-holiday { color: var(--text-color, #333); }
         .grid-header.day-color-training { color: var(--text-color, #333); }
         .grid-header.day-color-shooting { color: var(--text-color, #333); }
-        /* --- ENDE NEU --- */
-
 
         .grid-user-name {
             font-weight: 600; text-align: left;
             position: sticky; left: 0;
-            background: #fcfcfc; /* (Zurück zu Hell - WICHTIG für sticky) */
+            background: #fcfcfc;
             z-index: 5;
             border-left: 1px solid #eee;
         }
@@ -214,58 +209,59 @@
             background-color: #d6eaff !important;
             box-shadow: inset 0 0 0 2px #007bff;
         }
+        body.visitor-mode .grid-cell {
+            cursor: default;
+        }
 
-        /* --- NEU: Konflikt-Stil --- */
         .grid-cell.violation {
             box-shadow: inset 0 0 0 3px #e74c3c !important; /* Roter Rand */
             border: 1px solid #e74c3c !important;
         }
-        /* --- ENDE NEU --- */
 
         .plan-legende {
             padding: 20px; display: flex; flex-wrap: wrap; gap: 15px;
-            background: #fcfcfc; /* (Zurück zu Hell) */
-            color: #333; /* (Zurück zu Dunkel) */
+            background: #fcfcfc;
+            color: #333;
             border-top: 1px solid #eee;
         }
         .plan-legende b { color: #333; }
         .legende-item { display: flex; align-items: center; gap: 5px; }
         .legende-color { width: 15px; height: 15px; border: 1px solid #ccc; border-radius: 3px; }
 
-        /* --- ENDE KORREKTUR Grüner Kasten --- */
-
-        /* Modal (Zurück zu Hell) */
         .modal {
             display: none; position: fixed; z-index: 100; left: 0; top: 0;
             width: 100%; height: 100%; overflow: auto;
-            background-color: rgba(0,0,0,0.4); /* (Overlay bleibt dunkel) */
+            background-color: rgba(0,0,0,0.4);
         }
         .modal-content {
-            background-color: #fefefe; /* (Zurück zu Hell) */
-            color: #333; /* (Zurück zu Dunkel) */
+            background-color: #fefefe;
+            color: #333;
             margin: 15% auto; padding: 0; border: 1px solid #888;
             width: 80%; max-width: 450px; border-radius: 8px;
             box-shadow: 0 4px 10px rgba(0,0,0,0.2);
         }
         .modal-header {
             display: flex; justify-content: space-between; align-items: center;
-            padding: 15px 25px; border-bottom: 1px solid #eee; /* (Zurück zu Hell) */
+            padding: 15px 25px; border-bottom: 1px solid #eee;
         }
-        .modal-header h2 { margin: 0; font-size: 18px; color: #333; } /* (Zurück zu Dunkel) */
+        .modal-header h2 { margin: 0; font-size: 18px; color: #333; }
         .close { color: #aaa; font-size: 28px; font-weight: bold; cursor: pointer; }
         .modal-body { padding: 25px; color: #333; }
 
         #shift-selection { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
         #shift-selection button {
             padding: 12px; font-size: 15px; font-weight: 600;
-            border: 1px solid #ccc; /* (Zurück zu Hell) */
+            border: 1px solid #ccc;
             border-radius: 5px; cursor: pointer;
-            background-color: #f9f9f9; /* (Zurück zu Hell) */
-            color: #333; /* (Zurück zu Dunkel) */
+            background-color: #f9f9f9;
+            color: #333;
         }
         #shift-selection button:hover {
             border-color: #007bff;
             background-color: #f0f5fa;
+        }
+        body.visitor-mode #shift-modal {
+            display: none !important;
         }
     </style>
 </head>
@@ -276,8 +272,8 @@
     <header>
         <h1>DHF-Planer</h1>
         <nav>
-            <a href="dashboard.html">Dashboard</a>
-            <a href="users.html">Benutzerverwaltung</a>
+            <a href="dashboard.html" id="nav-dashboard" style="display: none;">Dashboard</a>
+            <a href="users.html" id="nav-users" style="display: none;">Benutzerverwaltung</a>
             <a href="schichtplan.html" class="active">Schichtplan</a>
         </nav>
         <div id="user-info">
@@ -288,14 +284,14 @@
 
     <div class="sub-nav">
         <a href="schichtplan.html" class="active">Schichtplan</a>
-        <div class="dropdown">
+        <div class="dropdown" id="settings-dropdown">
             <button class="dropbtn">Einstellungen &raquo;</button>
-            <div class="dropdown-content">
-                <a href="einstellungen.html">Mitarbeiter Sortierung</a>
-                <a href="schichtarten.html">Schichtarten</a>
-                <a href="shortcuts.html">Shortcuts</a>
-                <a href="feiertage.html">Feiertage & Sondertermine</a>
-                <a href="farbeeinstellungen.html">Farbeinstellungen</a> </div>
+            <div class="dropdown-content" id="settings-dropdown-content">
+                <a href="einstellungen.html" class="user-only">Mitarbeiter Sortierung</a>
+                <a href="schichtarten.html" class="admin-only">Schichtarten</a>
+                <a href="shortcuts.html" class="user-only">Shortcuts</a>
+                <a href="feiertage.html" class="admin-only">Feiertage & Sondertermine</a>
+                <a href="farbeeinstellungen.html" class="admin-only">Farbeinstellungen</a> </div>
         </div>
     </div>
 
@@ -434,9 +430,10 @@
         let colorSettings = {};
         let hoveredCellContext = null;
 
-        // --- NEU: shortcutMap wird dynamisch geladen ---
+        // --- NEU: Shortcut Map und Rollen-Check Variablen ---
         let shortcutMap = {};
         const defaultShortcuts = { 'T.': 't', 'N.': 'n', '6': '6', 'FREI': 'f', 'X': 'x', 'U': 'u' };
+        let isVisitor = false; // <<< NEU
 
         const DEFAULT_COLORS = {
             'weekend_bg_color': '#fff8f8',
@@ -461,7 +458,7 @@
         let modalContext = { userId: null, dateStr: null };
 
 
-        // --- Basis-Funktionen (Logout, Auth-Check) (unverändert) ---
+        // --- Basis-Funktionen (Logout, Auth-Check) ---
         async function logout() {
             try { await apiFetch('/api/logout', 'POST'); }
             catch (e) { console.error(e); }
@@ -472,8 +469,44 @@
         }
         try {
             user = JSON.parse(localStorage.getItem('dhf_user'));
-            if (!user || !user.vorname) { throw new Error("Kein User"); }
+            if (!user || !user.vorname || !user.role) { throw new Error("Kein User"); }
             document.getElementById('welcome-user').textContent = `Willkommen, ${user.vorname}!`;
+
+            const isAdmin = user.role.name === 'admin';
+            isVisitor = user.role.name === 'Besucher';
+
+            const navDashboard = document.getElementById('nav-dashboard');
+            const navUsers = document.getElementById('nav-users');
+            const settingsDropdown = document.getElementById('settings-dropdown');
+
+            // --- NEUE LOGIK: Navigationsanpassung (KORRIGIERT für Admin-Sichtbarkeit) ---
+
+            // Dashboard Link nur für Admins/User anzeigen
+            if (isAdmin || user.role.name === 'user') {
+                 navDashboard.style.display = 'block';
+            }
+
+            // Benutzerverwaltung Link nur für Admins anzeigen
+            if (isAdmin) {
+                navUsers.style.display = 'block';
+            }
+
+            if (isVisitor) {
+                isVisitor = true;
+                document.body.classList.add('visitor-mode');
+                // Verstecke Einstellungen
+                settingsDropdown.style.display = 'none';
+                // Verstecke Dashboard & Benutzerverwaltung in der Hauptnavigation
+                navDashboard.style.display = 'none';
+                navUsers.style.display = 'none';
+            } else if (!isAdmin) {
+                // Standard-User sehen nur die user-only Links
+                document.querySelectorAll('#settings-dropdown-content .admin-only').forEach(el => {
+                    el.style.display = 'none';
+                });
+            }
+            // --- ENDE KORRIGIERTE LOGIK ---
+
         } catch (e) {
             logout();
         }
@@ -523,11 +556,16 @@
         // --- ENDE NEU: Laden der Farbeinstellungen aus der DB ---
 
 
-        // --- MODAL-LOGIK (unverändert) ---
+        // --- MODAL-LOGIK (Angepasst) ---
         function closeModal(modalEl) {
             modalEl.style.display = 'none';
         }
         function openShiftModal(userId, dateStr, userName) {
+            // <<< WICHTIG: Prüfe, ob Besucher-Modus aktiv ist
+            if (isVisitor) {
+                return; // Verbiete das Öffnen des Modals
+            }
+            // >>>
             const d = new Date(dateStr);
             const dateDisplay = d.toLocaleDateString('de-DE', { weekday: 'long', day: '2-digit', month: '2-digit' });
             modalContext = { userId, dateStr };
@@ -708,6 +746,7 @@
                     let cellColor = '';
                     let textColor = '#333';
 
+                    // Konflikt-Stil hat Priorität vor Hintergrund
                     if (currentViolations.has(violationKey)) {
                          cellClasses += ' violation'; // Roter Rahmen hat Priorität
                     }
@@ -741,21 +780,24 @@
                     // Ende Farbzuweisung
 
                     cell.dataset.key = key;
-                    cell.onclick = () => {
-                        openShiftModal(user.id, dateStr, `${user.vorname} ${user.name}`);
-                    };
-                    cell.onmouseenter = () => {
-                        cell.classList.add('hovered');
-                        hoveredCellContext = {
-                            userId: user.id, dateStr: dateStr,
-                            userName: `${user.vorname} ${user.name}`,
-                            cellElement: cell
+                    // Nur Admins/User dürfen Modal öffnen
+                    if (!isVisitor) {
+                        cell.onclick = () => {
+                            openShiftModal(user.id, dateStr, `${user.vorname} ${user.name}`);
                         };
-                    };
-                    cell.onmouseleave = () => {
-                        cell.classList.remove('hovered');
-                        hoveredCellContext = null;
-                    };
+                        cell.onmouseenter = () => {
+                            cell.classList.add('hovered');
+                            hoveredCellContext = {
+                                userId: user.id, dateStr: dateStr,
+                                userName: `${user.vorname} ${user.name}`,
+                                cellElement: cell
+                            };
+                        };
+                        cell.onmouseleave = () => {
+                            cell.classList.remove('hovered');
+                            hoveredCellContext = null;
+                        };
+                    }
                     grid.appendChild(cell);
                 }
                 const totalCell = document.createElement('div');
@@ -797,17 +839,27 @@
                 item.innerHTML = `<div class="legende-color" style="background-color: ${st.color};"></div> ${st.abbreviation} (${st.name})`;
                 legend.appendChild(item);
 
-                const btn = document.createElement('button');
-                btn.textContent = `${st.abbreviation} (${st.name})`;
-                btn.style.backgroundColor = st.color;
-                if (st.color === '#5D6D7E') btn.style.color = 'white';
-                btn.onclick = () => saveShift(st.id, modalContext.userId, modalContext.dateStr);
-                shiftSelection.appendChild(btn);
+                // Füge nur Buttons hinzu, wenn es kein Besucher ist
+                if (!isVisitor) {
+                    const btn = document.createElement('button');
+                    btn.textContent = `${st.abbreviation} (${st.name})`;
+                    btn.style.backgroundColor = st.color;
+                    if (st.color === '#5D6D7E') btn.style.color = 'white';
+                    btn.onclick = () => saveShift(st.id, modalContext.userId, modalContext.dateStr);
+                    shiftSelection.appendChild(btn);
+                }
             });
         }
 
         // --- DATEN SPEICHERN (Angepasst) ---
         async function saveShift(shifttypeId, userId, dateStr) {
+            // <<< WICHTIG: Erneute Backend-Sicherheitsprüfung
+            if (isVisitor) {
+                console.error("Besucher dürfen keine Schichten speichern.");
+                return;
+            }
+            // >>>
+
             if (!userId || !dateStr) return;
             const key = `${userId}-${dateStr}`;
             const cell = findCellByKey(key);
@@ -878,7 +930,7 @@
             renderGrid();
         };
 
-        // --- NEU: Shortcut Ladefunktion ---
+        // --- NEU: Shortcut Ladefunktion (Unverändert, aber WICHTIG für keydown-Logik) ---
         function loadShortcuts() {
             let savedShortcuts = {};
             try {
@@ -902,6 +954,7 @@
 
         // --- KEYBOARD SHORTCUT LISTENER (Angepasst) ---
         window.addEventListener('keydown', async (event) => {
+            if (isVisitor) return; // <<< NEU: Verbiete Shortcuts für Besucher
             if (shiftModal.style.display === 'block') return;
             if (!hoveredCellContext || !hoveredCellContext.userId) return;
 

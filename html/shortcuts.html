@@ -267,6 +267,19 @@
             text-align: left;
             padding: 0 5px; /* (Angepasst an Header) */
         }
+
+        /* --- NEU: Restricted View Style --- */
+        #content-wrapper.restricted-view {
+             max-width: 600px;
+             margin: 50px auto;
+             padding: 30px;
+             text-align: center;
+             background: rgba(255, 255, 255, 0.05);
+             border-radius: 10px;
+             border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        #content-wrapper.restricted-view h2 { color: #e74c3c; }
+        /* --- ENDE NEU --- */
     </style>
 </head>
 <body>
@@ -276,8 +289,8 @@
     <header>
         <h1>DHF-Planer</h1>
         <nav>
-            <a href="dashboard.html">Dashboard</a>
-            <a href="users.html">Benutzerverwaltung</a>
+            <a href="dashboard.html" id="nav-dashboard" style="display: none;">Dashboard</a>
+            <a href="users.html" id="nav-users" style="display: none;">Benutzerverwaltung</a>
             <a href="schichtplan.html" class="active">Schichtplan</a>
         </nav>
         <div id="user-info">
@@ -289,28 +302,31 @@
     <div class="sub-nav">
         <a href="schichtplan.html">Schichtplan</a>
         <div class="dropdown">
-            <button class="dropbtn active">Einstellungen &raquo;</button>
-            <div class="dropdown-content">
-                <a href="einstellungen.html">Mitarbeiter Sortierung</a>
-                <a href="schichtarten.html">Schichtarten</a>
-                <a href="shortcuts.html" class="active">Shortcuts</a>
-                <a href="feiertage.html">Feiertage & Sondertermine</a>
+            <button class="dropbtn active" id="settings-dropbtn">Einstellungen &raquo;</button>
+            <div class="dropdown-content" id="settings-dropdown-content">
+                <a href="einstellungen.html" class="user-only">Mitarbeiter Sortierung</a>
+                <a href="schichtarten.html" class="admin-only">Schichtarten</a>
+                <a href="shortcuts.html" class="user-only active">Shortcuts</a>
+                <a href="feiertage.html" class="admin-only">Feiertage & Sondertermine</a>
+                <a href="farbeeinstellungen.html" class="admin-only">Farbeinstellungen</a>
             </div>
         </div>
     </div>
 
     <main>
-        <div class="card">
-            <div class="card-header">
-                <h2>Tastatur-Shortcuts (Schichtplan)</h2>
-                <div id="status-message"></div>
-            </div>
+        <div id="content-wrapper">
+            <div class="card">
+                <div class="card-header">
+                    <h2>Tastatur-Shortcuts (Schichtplan)</h2>
+                    <div id="status-message"></div>
+                </div>
 
-            <ul id="shortcut-list">
-                </ul>
+                <ul id="shortcut-list">
+                    </ul>
 
-            <div class="card-footer">
-                <button class="btn-primary" id="save-shortcuts-btn">Shortcuts speichern</button>
+                <div class="card-footer">
+                    <button class="btn-primary" id="save-shortcuts-btn">Shortcuts speichern</button>
+                </div>
             </div>
         </div>
     </main>
@@ -401,10 +417,11 @@
     </script>
 
     <script>
-        // --- Globales Setup (unverändert) ---
+        // --- Globales Setup ---
         const API_URL = 'http://46.224.63.203:5000';
         let user;
         const SHORTCUT_STORAGE_KEY = 'dhf_shortcuts';
+        let isAdmin = false;
 
         async function logout() {
             try { await apiFetch('/api/logout', 'POST'); }
@@ -417,10 +434,49 @@
 
         try {
             user = JSON.parse(localStorage.getItem('dhf_user'));
-            if (!user || !user.vorname) { throw new Error("Kein User"); }
+            if (!user || !user.vorname || !user.role) { throw new Error("Kein User oder fehlende Rolle"); }
             document.getElementById('welcome-user').textContent = `Willkommen, ${user.vorname}!`;
+
+            // --- NEUE LOGIK: Rollenprüfung und UI-Anpassung ---
+            isAdmin = user.role.name === 'admin';
+            const isVisitor = user.role.name === 'Besucher';
+
+            // 1. Haupt-Navigationsanpassung
+            const navDashboard = document.getElementById('nav-dashboard');
+            const navUsers = document.getElementById('nav-users');
+
+            navDashboard.style.display = (isAdmin || user.role.name === 'user') ? 'block' : 'none';
+            navUsers.style.display = isAdmin ? 'block' : 'none';
+
+            if (isVisitor) {
+                // Besucher haben keinen Zugriff auf diese Seite
+                document.getElementById('content-wrapper').innerHTML = `
+                    <div class="restricted-view">
+                        <h2 style="color: #e74c3c;">Zugriff verweigert</h2>
+                        <p>Als Besucher haben Sie keinen Zugriff auf die Einstellungen.</p>
+                        <p>Bitte nutzen Sie den Link zum <a href="schichtplan.html" style="color: #3498db;">Schichtplan</a>.</p>
+                    </div>
+                `;
+                document.getElementById('settings-dropbtn').style.display = 'none';
+                throw new Error("Besucher darf Shortcuts nicht sehen.");
+            }
+
+            // 2. Dropdown-Anpassung
+            if (!isAdmin) {
+                document.querySelectorAll('#settings-dropdown-content .admin-only').forEach(el => {
+                    el.style.display = 'none';
+                });
+            } else {
+                document.querySelectorAll('#settings-dropdown-content .admin-only').forEach(el => {
+                    el.style.display = 'block';
+                });
+            }
+            // --- ENDE NEUE LOGIK ---
+
         } catch (e) {
-            logout();
+            if (!e.message.includes("Besucher")) {
+                 logout();
+            }
         }
         document.getElementById('logout-btn').onclick = logout;
 
@@ -434,7 +490,7 @@
             if (body) { options.body = JSON.stringify(body); }
             const response = await fetch(API_URL + endpoint, options);
             if (response.status === 401 || response.status === 403) {
-                logout();
+                if (response.status === 401) { logout(); }
                 throw new Error('Sitzung ungültig oder fehlende Rechte.');
             }
             const contentType = response.headers.get("content-type");
@@ -476,8 +532,18 @@
             }
 
             try {
+                // API-Call ist jetzt auf @login_required, sollte also für Standard-User funktionieren.
                 const shiftTypes = await apiFetch('/api/shifttypes');
                 shortcutList.innerHTML = '';
+
+                // --- KORRIGIERTE NEUE LOGIK: Fallback bei leeren Daten (Behebt das Problem) ---
+                if (!shiftTypes || shiftTypes.length === 0) {
+                     shortcutList.innerHTML = `<li style="color: #ffffff; padding: 20px; background: rgba(0,0,0,0.2); border-radius: 5px;">
+                                                   Es wurden **keine Schichtarten** gefunden. Bitte erstellen Sie welche über die "Schichtarten"-Einstellung.
+                                               </li>`;
+                     return;
+                }
+                // --- ENDE KORRIGIERTE NEUE LOGIK ---
 
                 shiftTypes.forEach(st => {
                     const li = document.createElement('li');
@@ -504,6 +570,7 @@
                 });
 
             } catch (error) {
+                // Sollte dieser Fehler auftreten, lag das Laden der Schichtarten fehl.
                 shortcutList.innerHTML = `<li style="color: #e74c3c; padding: 20px;">Fehler beim Laden der Schichtarten: ${error.message}</li>`;
             }
         }
@@ -550,7 +617,9 @@
         };
 
         // --- Initialisierung ---
-        loadData();
+        if (!isVisitor) {
+            loadData();
+        }
 
     </script>
 </body>
