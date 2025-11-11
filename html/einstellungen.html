@@ -314,9 +314,9 @@
         <div class="dropdown">
             <button class="dropbtn active" id="settings-dropbtn">Einstellungen &raquo;</button>
             <div class="dropdown-content" id="settings-dropdown-content">
-                <a href="einstellungen.html" class="active">Mitarbeiter Sortierung</a>
+                <a href="einstellungen.html" class="admin-only active">Mitarbeiter Sortierung</a>
                 <a href="schichtarten.html" class="admin-only">Schichtarten</a>
-                <a href="shortcuts.html">Shortcuts</a>
+                <a href="shortcuts.html" class="admin-only">Shortcuts</a>
                 <a href="feiertage.html" class="admin-only">Feiertage & Sondertermine</a>
                 <a href="farbeeinstellungen.html" class="admin-only">Farbeinstellungen</a>
             </div>
@@ -433,6 +433,7 @@
         let sortableInstance = null;
         let isAdmin = false; // <<< NEU
         let isVisitor = false; // <<< NEU
+        const isUser = true; // Angenommen, wenn nicht Admin und nicht Visitor
 
         async function logout() {
             try { await apiFetch('/api/logout', 'POST'); }
@@ -453,30 +454,42 @@
 
             // 1. Haupt-Navigationsanpassung
             document.getElementById('nav-dashboard').style.display = isVisitor ? 'none' : 'block';
+            document.getElementById('nav-users').style.display = isAdmin ? 'block' : 'none';
 
-            if (isVisitor) {
-                // Besucher haben keinen Zugriff auf diese Seite
+
+            // *** KORRIGIERTE ROLLENPRÜFUNG: Nur ADMIN darf auf diese Seite zugreifen ***
+            if (!isAdmin) { // Blockiere, wenn NICHT Admin
+                // Zeige die Seite mit Zugriff verweigert
                 document.getElementById('content-wrapper').innerHTML = `
                     <div class="restricted-view">
                         <h2 style="color: #e74c3c;">Zugriff verweigert</h2>
-                        <p>Als Besucher haben Sie keinen Zugriff auf die Einstellungen.</p>
+                        <p>Nur Administratoren dürfen die Mitarbeiter-Sortierung festlegen.</p>
                         <p>Bitte nutzen Sie den Link zum <a href="schichtplan.html" style="color: #3498db;">Schichtplan</a>.</p>
                     </div>
                 `;
                 // Verstecke Dropdown-Tasten
                 document.getElementById('settings-dropbtn').style.display = 'none';
-                throw new Error("Besucher darf Einstellungen nicht sehen.");
+
+                // Setze alle Admin-Only Links im Dropdown auf unsichtbar
+                document.querySelectorAll('#settings-dropdown-content a').forEach(el => {
+                     // Der aktive Link (einstellungen.html) ist im HTML admin-only, also sollte er versteckt werden.
+                     if (el.classList.contains('admin-only')) {
+                        el.style.display = 'none';
+                    }
+                });
+
+                throw new Error("Keine Admin-Rechte für Mitarbeiter Sortierung.");
             }
 
-            // 2. Dropdown-Anpassung: Nicht-Admins sehen nur "Mitarbeiter Sortierung" und "Shortcuts"
-            if (!isAdmin) {
+            // 2. Dropdown-Anpassung: Wenn Admin, zeige alle Admin-Only Links
+            if (isAdmin) {
                 document.querySelectorAll('#settings-dropdown-content .admin-only').forEach(el => {
-                    el.style.display = 'none';
+                    el.style.display = 'block';
                 });
             }
 
         } catch (e) {
-            if (!e.message.includes("Besucher")) {
+            if (!e.message.includes("Admin-Rechte")) {
                  logout();
             }
         }
@@ -510,6 +523,7 @@
         const userList = document.getElementById('user-sort-list');
         const saveBtn = document.getElementById('save-order-btn');
         const statusMsg = document.getElementById('status-message');
+
         async function loadUsers() {
             try {
                 const users = await apiFetch('/api/users');
@@ -539,6 +553,7 @@
                 userList.innerHTML = `<li style="color: red; padding: 20px;">Fehler beim Laden der Benutzer: ${error.message}</li>`;
             }
         }
+
         userList.addEventListener('click', function(e) {
             if (e.target.classList.contains('visibility-toggle')) {
                 const li = e.target.closest('.sortable-item');
@@ -547,6 +562,7 @@
                 e.target.classList.toggle('visible', !isVisible);
             }
         });
+
         saveBtn.onclick = async () => {
             statusMsg.textContent = 'Speichere...';
             statusMsg.style.color = '#bdc3c7'; /* (Farbe für dunklen Modus) */
@@ -560,6 +576,7 @@
                 });
             });
             try {
+                // API Call muss Admin-Rechte haben (was durch den Decorator gewährleistet ist)
                 await apiFetch('/api/users/display_settings', 'PUT', payload);
                 statusMsg.textContent = 'Erfolgreich gespeichert!';
                 statusMsg.style.color = '#2ecc71'; /* (Grün) */
@@ -569,7 +586,11 @@
                 statusMsg.style.color = '#e74c3c'; /* (Rot) */
             }
         };
-        loadUsers();
+
+        // Initialisierung nur, wenn isAdmin = true (siehe try/catch Block oben)
+        if (isAdmin) {
+            loadUsers();
+        }
 
     </script>
 </body>

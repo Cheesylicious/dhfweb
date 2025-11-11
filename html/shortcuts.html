@@ -432,14 +432,19 @@
             }
         }
 
+        let isVisitor = false;
+
+        // **WICHTIG:** Die gesamte Initialisierungslogik wurde ans Ende verschoben, um
+        // sicherzustellen, dass die Funktionen geladen sind, bevor sie aufgerufen werden.
+
         try {
             user = JSON.parse(localStorage.getItem('dhf_user'));
             if (!user || !user.vorname || !user.role) { throw new Error("Kein User oder fehlende Rolle"); }
             document.getElementById('welcome-user').textContent = `Willkommen, ${user.vorname}!`;
 
-            // --- NEUE LOGIK: Rollenprüfung und UI-Anpassung ---
+            // --- Rollenprüfung ---
             isAdmin = user.role.name === 'admin';
-            const isVisitor = user.role.name === 'Besucher';
+            isVisitor = user.role.name === 'Besucher';
 
             // 1. Haupt-Navigationsanpassung
             const navDashboard = document.getElementById('nav-dashboard');
@@ -447,19 +452,6 @@
 
             navDashboard.style.display = (isAdmin || user.role.name === 'user') ? 'block' : 'none';
             navUsers.style.display = isAdmin ? 'block' : 'none';
-
-            if (isVisitor) {
-                // Besucher haben keinen Zugriff auf diese Seite
-                document.getElementById('content-wrapper').innerHTML = `
-                    <div class="restricted-view">
-                        <h2 style="color: #e74c3c;">Zugriff verweigert</h2>
-                        <p>Als Besucher haben Sie keinen Zugriff auf die Einstellungen.</p>
-                        <p>Bitte nutzen Sie den Link zum <a href="schichtplan.html" style="color: #3498db;">Schichtplan</a>.</p>
-                    </div>
-                `;
-                document.getElementById('settings-dropbtn').style.display = 'none';
-                throw new Error("Besucher darf Shortcuts nicht sehen.");
-            }
 
             // 2. Dropdown-Anpassung
             if (!isAdmin) {
@@ -471,13 +463,12 @@
                     el.style.display = 'block';
                 });
             }
-            // --- ENDE NEUE LOGIK ---
 
         } catch (e) {
-            if (!e.message.includes("Besucher")) {
-                 logout();
-            }
+            // Wenn der User-Check fehlschlägt, leite um.
+            logout();
         }
+
         document.getElementById('logout-btn').onclick = logout;
 
         // --- Globale API-Funktion (unverändert) ---
@@ -516,62 +507,95 @@
             'T.': 't', 'N.': 'n', '6': '6', 'FREI': 'f', 'X': 'x', 'U': 'u'
         };
 
+        // NOTFALL-FALLBACK DATEN (Wenn DB-Abruf fehlschlägt)
+        const hardcodedShiftDefaults = [
+            // Datenstruktur aus dhf_app/models.py nachgebaut
+            { abbreviation: 'T.', name: 'Tag (T)', color: '#AED6F1' },
+            { abbreviation: 'N.', name: 'Nacht (N)', color: '#5D6D7E' },
+            { abbreviation: '6', name: 'Kurz (6)', color: '#A9DFBF' },
+            { abbreviation: 'FREI', name: 'Frei (Geplant)', color: '#FFFFFF' },
+            { abbreviation: 'U', name: 'Urlaub', color: '#FAD7A0' },
+            { abbreviation: 'X', name: 'Wunschfrei (X)', color: '#D2B4DE' }
+        ];
+
         // Lädt die Schichtarten UND die gespeicherten Shortcuts
         async function loadData() {
             let savedShortcuts = {};
+            let shiftTypes = [];
+            let errorOccurred = false;
+            shortcutList.innerHTML = ''; // Leere Liste sofort
+
             try {
+                // 1. Gespeicherte, benutzerdefinierte Shortcuts laden
                 const data = localStorage.getItem(SHORTCUT_STORAGE_KEY);
                 if (data) {
                     savedShortcuts = JSON.parse(data);
-                } else {
-                    savedShortcuts = defaultShortcuts;
                 }
             } catch (e) {
                 console.error("Fehler beim Laden der Shortcuts aus localStorage", e);
-                savedShortcuts = defaultShortcuts;
             }
 
             try {
-                // API-Call ist jetzt auf @login_required, sollte also für Standard-User funktionieren.
-                const shiftTypes = await apiFetch('/api/shifttypes');
-                shortcutList.innerHTML = '';
+                // 2. Schichtarten von der Datenbank laden (Dies ist die Basis für die Liste)
+                const apiData = await apiFetch('/api/shifttypes');
 
-                // --- KORRIGIERTE NEUE LOGIK: Fallback bei leeren Daten (Behebt das Problem) ---
-                if (!shiftTypes || shiftTypes.length === 0) {
-                     shortcutList.innerHTML = `<li style="color: #ffffff; padding: 20px; background: rgba(0,0,0,0.2); border-radius: 5px;">
-                                                   Es wurden **keine Schichtarten** gefunden. Bitte erstellen Sie welche über die "Schichtarten"-Einstellung.
-                                               </li>`;
-                     return;
+                // 3. Wenn API-Daten gültig sind und Einträge haben, verwenden wir diese
+                if (Array.isArray(apiData) && apiData.length > 0) {
+                     shiftTypes = apiData;
+                } else if (Array.isArray(apiData) && apiData.length === 0) {
+                     // API-Call O.K., aber DB leer
+                     shiftTypes = [];
+                } else {
+                    // API-Antwort unerwartet (z.B. {} oder text)
+                    throw new Error("API-Antwort war unerwartet oder leer.");
                 }
-                // --- ENDE KORRIGIERTE NEUE LOGIK ---
-
-                shiftTypes.forEach(st => {
-                    const li = document.createElement('li');
-                    li.className = 'shortcut-item';
-
-                    // Finde den gespeicherten Shortcut für diese Abkürzung
-                    const savedKey = savedShortcuts[st.abbreviation] || '';
-
-                    li.innerHTML = `
-                        <label class="shortcut-label" for="sc-${st.abbreviation}">
-                            <div class="color-preview" style="background-color: ${st.color}; border-color: #555;"></div>
-                            <b>${st.abbreviation}</b>
-                            <span>(${st.name})</span>
-                        </label>
-                        <input type="text"
-                               class="shortcut-input"
-                               id="sc-${st.abbreviation}"
-                               data-abbreviation="${st.abbreviation}"
-                               value="${savedKey}"
-                               maxlength="1"
-                               placeholder="-">
-                    `;
-                    shortcutList.appendChild(li);
-                });
 
             } catch (error) {
-                // Sollte dieser Fehler auftreten, lag das Laden der Schichtarten fehl.
-                shortcutList.innerHTML = `<li style="color: #e74c3c; padding: 20px;">Fehler beim Laden der Schichtarten: ${error.message}</li>`;
+                // 3a. Fehler beim API-Aufruf (Netzwerk/Server/403/usw.)
+                console.error(`Fehler beim Laden der Schichtarten von der API: ${error.message}. Verwende hartcodierte Standardwerte.`);
+                errorOccurred = true;
+
+                // NOTFALL-FALLBACK: Lade die hartcodierten Defaults
+                shiftTypes = hardcodedShiftDefaults;
+            }
+
+            // 4. Liste rendern basierend auf den geladenen/Fallback-Daten
+            if (shiftTypes.length === 0) {
+                 // Füge eine Fehler-/Hinweismeldung in die Liste ein
+                 shortcutList.innerHTML = `<li style="color: #ffffff; padding: 20px; background: rgba(0,0,0,0.2); border-radius: 5px;">
+                                               Es wurden **keine Schichtarten** gefunden. Bitte erstellen Sie welche über die "Schichtarten"-Einstellung.
+                                           </li>`;
+                 return;
+            }
+
+            shiftTypes.forEach(st => {
+                const li = document.createElement('li');
+                li.className = 'shortcut-item';
+
+                // Holt zuerst den gespeicherten Key, falls nicht vorhanden, den Standard-Key.
+                const savedKey = savedShortcuts[st.abbreviation] || defaultShortcuts[st.abbreviation] || '';
+
+                li.innerHTML = `
+                    <label class="shortcut-label" for="sc-${st.abbreviation}">
+                        <div class="color-preview" style="background-color: ${st.color}; border-color: #555;"></div>
+                        <b>${st.abbreviation}</b>
+                        <span>(${st.name})</span>
+                    </label>
+                    <input type="text"
+                           class="shortcut-input"
+                           id="sc-${st.abbreviation}"
+                           data-abbreviation="${st.abbreviation}"
+                           value="${savedKey}"
+                           maxlength="1"
+                           placeholder="-">
+                `;
+                shortcutList.appendChild(li);
+            });
+
+            // 5. Zeige Statusmeldung, wenn Fallback verwendet wird (Debug-Hilfe)
+            if (errorOccurred) {
+                statusMsg.textContent = "Hinweis: Es konnte keine Verbindung zur DB aufgebaut werden. Es werden Standard-Shortcuts angezeigt.";
+                statusMsg.style.color = '#e74c3c';
             }
         }
 
@@ -617,10 +641,26 @@
         };
 
         // --- Initialisierung ---
-        if (!isVisitor) {
-            loadData();
+        function initializePage() {
+             if (!isVisitor) {
+                loadData();
+             } else {
+                 // Zeige Restricted View an, wenn Visitor-Modus erkannt wird.
+                 document.getElementById('content-wrapper').innerHTML = `
+                     <div class="restricted-view">
+                         <h2 style="color: #e74c3c;">Zugriff verweigert</h2>
+                         <p>Als Besucher haben Sie keinen Zugriff auf die Einstellungen.</p>
+                         <p>Bitte nutzen Sie den Link zum <a href="schichtplan.html" style="color: #3498db;">Schichtplan</a>.</p>
+                     </div>
+                 `;
+                 document.getElementById('settings-dropbtn').style.display = 'none';
+             }
         }
 
+        // Führe die Initialisierung nur aus, wenn der Benutzer erfolgreich geladen wurde (was im try-Block bereits geprüft wird)
+        if (user) {
+             initializePage();
+        }
     </script>
 </body>
 </html>

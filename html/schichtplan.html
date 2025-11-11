@@ -205,6 +205,9 @@
         .grid-header-total { font-weight: 600; background: #f8f9fa; }
 
         .grid-cell { cursor: pointer; transition: background-color 0.2s; font-weight: 500; }
+        /* Geändert: Cursor wird nur für Admins/User mit Klick-Recht zu "Pointer" */
+        body:not(.admin-mode) .grid-cell { cursor: default; }
+
         .grid-cell.hovered {
             background-color: #d6eaff !important;
             box-shadow: inset 0 0 0 2px #007bff;
@@ -287,9 +290,9 @@
         <div class="dropdown" id="settings-dropdown">
             <button class="dropbtn">Einstellungen &raquo;</button>
             <div class="dropdown-content" id="settings-dropdown-content">
-                <a href="einstellungen.html" class="user-only">Mitarbeiter Sortierung</a>
+                <a href="einstellungen.html" class="admin-only">Mitarbeiter Sortierung</a>
                 <a href="schichtarten.html" class="admin-only">Schichtarten</a>
-                <a href="shortcuts.html" class="user-only">Shortcuts</a>
+                <a href="shortcuts.html" class="admin-only">Shortcuts</a>
                 <a href="feiertage.html" class="admin-only">Feiertage & Sondertermine</a>
                 <a href="farbeeinstellungen.html" class="admin-only">Farbeinstellungen</a> </div>
         </div>
@@ -434,6 +437,7 @@
         let shortcutMap = {};
         const defaultShortcuts = { 'T.': 't', 'N.': 'n', '6': '6', 'FREI': 'f', 'X': 'x', 'U': 'u' };
         let isVisitor = false; // <<< NEU
+        let isAdmin = false; // <<< NEU (Global definiert)
 
         const DEFAULT_COLORS = {
             'weekend_bg_color': '#fff8f8',
@@ -472,12 +476,13 @@
             if (!user || !user.vorname || !user.role) { throw new Error("Kein User"); }
             document.getElementById('welcome-user').textContent = `Willkommen, ${user.vorname}!`;
 
-            const isAdmin = user.role.name === 'admin';
+            isAdmin = user.role.name === 'admin';
             isVisitor = user.role.name === 'Besucher';
 
             const navDashboard = document.getElementById('nav-dashboard');
             const navUsers = document.getElementById('nav-users');
             const settingsDropdown = document.getElementById('settings-dropdown');
+            const settingsDropdownContent = document.getElementById('settings-dropdown-content');
 
             // --- NEUE LOGIK: Navigationsanpassung (KORRIGIERT für Admin-Sichtbarkeit) ---
 
@@ -494,17 +499,29 @@
             if (isVisitor) {
                 isVisitor = true;
                 document.body.classList.add('visitor-mode');
-                // Verstecke Einstellungen
-                settingsDropdown.style.display = 'none';
                 // Verstecke Dashboard & Benutzerverwaltung in der Hauptnavigation
                 navDashboard.style.display = 'none';
                 navUsers.style.display = 'none';
-            } else if (!isAdmin) {
-                // Standard-User sehen nur die user-only Links
+            }
+
+            // Verstecke alle admin-only Links für alle, die KEIN Admin sind (User, Besucher)
+            if (!isAdmin) {
                 document.querySelectorAll('#settings-dropdown-content .admin-only').forEach(el => {
                     el.style.display = 'none';
                 });
+
+                // ZUSÄTZLICHER FIX: Wenn der Inhalt des Dropdowns leer ist (nur Admin-Only Links da waren),
+                // verstecke das Dropdown selbst (die "Einstellungen" Taste).
+                const visibleLinks = settingsDropdownContent.querySelectorAll('a:not([style*="display: none"])');
+                if (visibleLinks.length === 0) {
+                     settingsDropdown.style.display = 'none';
+                }
+            } else {
+                 // Wenn Admin, füge die Admin-Klasse zum Body hinzu, um den Cursor zu steuern
+                 document.body.classList.add('admin-mode');
             }
+
+
             // --- ENDE KORRIGIERTE LOGIK ---
 
         } catch (e) {
@@ -549,7 +566,7 @@
             // Setzt CSS-Variablen, um Farben global anwendbar zu machen
             const root = document.documentElement.style;
             for (const key in colorSettings) {
-                // Ersetze Unterstrich durch Bindestrich für CSS-Variablen (z.B. weekend_bg_color -> --weekend-bg-color)
+                // Ersetze Unterstrich durch Bindestrich für CSS-Variablen (z.b. weekend_bg_color -> --weekend-bg-color)
                 root.setProperty(`--${key.replace(/_/g, '-')}`, colorSettings[key]);
             }
         }
@@ -561,11 +578,11 @@
             modalEl.style.display = 'none';
         }
         function openShiftModal(userId, dateStr, userName) {
-            // <<< WICHTIG: Prüfe, ob Besucher-Modus aktiv ist
-            if (isVisitor) {
-                return; // Verbiete das Öffnen des Modals
+            // Die Prüfung ist jetzt im onclick-Handler, aber wir lassen diese Prüfung als Sicherheitsnetz
+            if (!isAdmin) {
+                return; // Verbiete das Öffnen des Modals für Nicht-Admins
             }
-            // >>>
+
             const d = new Date(dateStr);
             const dateDisplay = d.toLocaleDateString('de-DE', { weekday: 'long', day: '2-digit', month: '2-digit' });
             modalContext = { userId, dateStr };
@@ -605,18 +622,13 @@
                 // Lade Daten parallel
                 const shiftDataPromise = apiFetch(`/api/shifts?year=${currentYear}&month=${currentMonth}`);
                 const userDataPromise = apiFetch('/api/users');
-                const typeDataPromise = Object.keys(allShiftTypes).length > 0 ? Promise.resolve(Object.values(allShiftTypes)) : apiFetch('/api/shifttypes');
-                // Sondertermine werden pro Jahr geladen, nicht pro Monat
+                // Sondertermine werden pro Jahr geladen
                 const specialDatesPromise = loadSpecialDates(currentYear);
 
-                const [shiftPayload, userData, typeData] = await Promise.all([shiftDataPromise, userDataPromise, typeDataPromise, specialDatesPromise]);
+                const [shiftPayload, userData, specialDatesResult] = await Promise.all([shiftDataPromise, userDataPromise, specialDatesPromise]); // typeDataPromise entfernt
 
                 allUsers = userData;
-                if (Object.keys(allShiftTypes).length === 0) {
-                    typeData.forEach(st => allShiftTypes[st.id] = st);
-                }
-
-                loadShortcuts();
+                // allShiftTypes ist bereits gefüllt durch populateStaticElements
 
                 currentShifts = {};
                 shiftPayload.shifts.forEach(s => {
@@ -780,8 +792,9 @@
                     // Ende Farbzuweisung
 
                     cell.dataset.key = key;
-                    // Nur Admins/User dürfen Modal öffnen
-                    if (!isVisitor) {
+
+                    // NEUER FIX: Klick-Handler nur für Admin anhängen (damit das Modal nur für Admins kommt)
+                    if (isAdmin) {
                         cell.onclick = () => {
                             openShiftModal(user.id, dateStr, `${user.vorname} ${user.name}`);
                         };
@@ -797,6 +810,9 @@
                             cell.classList.remove('hovered');
                             hoveredCellContext = null;
                         };
+                    } else {
+                        // Für Nicht-Admins: Cursor auf Default setzen (Bereits durch CSS geregelt, aber hier zur Sicherheit)
+                        cell.style.cursor = 'default';
                     }
                     grid.appendChild(cell);
                 }
@@ -823,8 +839,9 @@
         // --- ENDE NEU: Helligkeitsprüfung ---
 
 
-        // (populateStaticElements - unverändert)
+        // (populateStaticElements - angepasst für Modal/Legende)
         async function populateStaticElements() {
+            // Laden der Schichtarten
             if (Object.keys(allShiftTypes).length === 0) {
                 const typeData = await apiFetch('/api/shifttypes');
                 typeData.forEach(st => allShiftTypes[st.id] = st);
@@ -844,7 +861,12 @@
                     const btn = document.createElement('button');
                     btn.textContent = `${st.abbreviation} (${st.name})`;
                     btn.style.backgroundColor = st.color;
-                    if (st.color === '#5D6D7E') btn.style.color = 'white';
+                    // Wenn die Hintergrundfarbe dunkel ist, Text auf Weiß stellen
+                    if (isColorDark(st.color)) {
+                        btn.style.color = 'white';
+                    } else {
+                        btn.style.color = 'black';
+                    }
                     btn.onclick = () => saveShift(st.id, modalContext.userId, modalContext.dateStr);
                     shiftSelection.appendChild(btn);
                 }
@@ -854,8 +876,8 @@
         // --- DATEN SPEICHERN (Angepasst) ---
         async function saveShift(shifttypeId, userId, dateStr) {
             // <<< WICHTIG: Erneute Backend-Sicherheitsprüfung
-            if (isVisitor) {
-                console.error("Besucher dürfen keine Schichten speichern.");
+            if (!isAdmin) { // Nur Admins dürfen speichern
+                console.error("Nicht-Admins dürfen keine Schichten speichern.");
                 return;
             }
             // >>>
@@ -930,62 +952,82 @@
             renderGrid();
         };
 
-        // --- NEU: Shortcut Ladefunktion (Unverändert, aber WICHTIG für keydown-Logik) ---
+        // --- NEU: Shortcut Ladefunktion (FINAL FIXED) ---
         function loadShortcuts() {
             let savedShortcuts = {};
             try {
+                // 1. Gespeicherte, benutzerdefinierte Shortcuts laden
                 const data = localStorage.getItem(SHORTCUT_STORAGE_KEY);
                 if (data) {
-                    savedShortcuts = JSON.parse(data); // Ergibt { 'T.': 't', 'N.': 'n' }
-                } else {
-                    savedShortcuts = defaultShortcuts;
+                    savedShortcuts = JSON.parse(data);
                 }
             } catch (e) {
-                console.error("Fehler beim Laden der Shortcuts, verwende Standards.", e);
-                savedShortcuts = defaultShortcuts;
+                console.error("Fehler beim Laden der Shortcuts aus localStorage, verwende Standards.", e);
             }
 
-            // Dreht die Map um, damit der TASTENDRUCK (key) die ABKÜRZUNG (value) findet.
-            // Aus { 'T.': 't' } wird { 't': 'T.' }
+            const mergedShortcuts = {};
+            const allAbbrevs = Object.values(allShiftTypes).map(st => st.abbreviation);
+
+            // 2. Gehe alle in der DB existierenden Abkürzungen durch
+            allAbbrevs.forEach(abbrev => {
+                // Priorität: 1. Gespeicherte (LocalStorage) > 2. Standard (hardcoded)
+                const key = savedShortcuts[abbrev] || defaultShortcuts[abbrev];
+
+                // Füge nur hinzu, wenn ein Key definiert ist (um leere Einträge zu vermeiden)
+                if (key) {
+                    mergedShortcuts[abbrev] = key;
+                }
+            });
+
+            // Dreht die Map um: { 't': 'T.' }
+            // Wir mappen den Tastendruck (key) auf die Schicht-Abkürzung (abbrev)
             shortcutMap = Object.fromEntries(
-                Object.entries(savedShortcuts).map(([abbrev, key]) => [key, abbrev])
+                Object.entries(mergedShortcuts).map(([abbrev, key]) => [key, abbrev])
             );
         }
 
         // --- KEYBOARD SHORTCUT LISTENER (Angepasst) ---
         window.addEventListener('keydown', async (event) => {
-            if (isVisitor) return; // <<< NEU: Verbiete Shortcuts für Besucher
+            // FIX: Verbiete Shortcuts für alle, die NICHT Admin sind
+            if (!isAdmin) return;
+
             if (shiftModal.style.display === 'block') return;
             if (!hoveredCellContext || !hoveredCellContext.userId) return;
 
             const key = event.key.toLowerCase();
 
             // NEU: Verwendet die dynamische shortcutMap
-            const abbrev = shortcutMap[key]; // z.B. shortcutMap['t'] -> 'T.'
+            const abbrev = shortcutMap[key]; // z.b. shortcutMap['t'] -> 'T.'
 
             if (abbrev !== undefined) {
                 event.preventDefault();
 
-                // Findet die Schichtart anhand der Abkürzung (z.B. 'T.')
+                // Findet die Schichtart anhand der Abkürzung (z.b. 'T.')
                 const shiftType = Object.values(allShiftTypes).find(st => st.abbreviation === abbrev);
 
                 if (shiftType) {
                     await saveShift(shiftType.id, hoveredCellContext.userId, hoveredCellContext.dateStr);
                 } else {
+                    // Dieser Fall sollte NUR auftreten, wenn eine Abkürzung im localStorage gespeichert ist,
+                    // die aber nicht mehr in der DB existiert.
                     console.warn(`Shortcut "${key}" (Abk.: "${abbrev}") nicht in allShiftTypes gefunden.`);
                 }
             }
         });
 
-        // --- Initialisierung ---
+        // --- Initialisierung (FIX: Load Shortcuts früher) ---
         async function initialize() {
             // MUSS zuerst geladen werden, damit CSS-Variablen für das erste Rendern gesetzt sind
             await loadColorSettings();
 
-            // (populateStaticElements lädt die Schichtarten)
+            // 1. Schichtarten laden & statische Elemente befüllen
+            // WICHTIG: allShiftTypes wird hier gefüllt und ist für loadShortcuts nötig!
             await populateStaticElements();
 
-            // (renderGrid lädt Sondertermine, Shortcuts und rendert)
+            // 2. Shortcuts laden (Karte ist jetzt bereit für Keydown-Events)
+            loadShortcuts();
+
+            // 3. (renderGrid lädt den Rest und rendert)
             await renderGrid();
         }
 
