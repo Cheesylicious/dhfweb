@@ -34,6 +34,20 @@ try {
         throw new Error("Keine Admin-Rechte für Feedback-Verwaltung.");
     }
 
+    // --- KORREKTUR: Robuste Navigationsanpassung für Admin ---
+    const navDashboard = document.getElementById('nav-dashboard');
+    const navUsers = document.getElementById('nav-users');
+    const navFeedback = document.getElementById('nav-feedback');
+
+    // Admin sieht alle Haupt-Navigationspunkte
+    if (isAdmin) {
+        // Überprüfen, ob das Element existiert, bevor der Stil gesetzt wird
+        if (navDashboard) navDashboard.style.display = 'inline-flex';
+        if (navUsers) navUsers.style.display = 'inline-flex';
+        if (navFeedback) navFeedback.style.display = 'inline-flex'; // Meldungen anzeigen (ist aktiv)
+    }
+    // --- ENDE KORREKTUR ---
+
     // (Navigation wird in Schritt 6 global hinzugefügt, hier nur der Logout)
     document.getElementById('logout-btn').onclick = logout;
 

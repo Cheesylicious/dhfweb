@@ -1,23 +1,39 @@
 from flask import Blueprint, request, jsonify, current_app
 # Importe für Shift und GlobalSetting hinzugefügt (Regel 1)
-from .models import User, Role, ShiftType, Shift, GlobalSetting
+from .models import User, Role, ShiftType, Shift, GlobalSetting, UpdateLog
 from .extensions import db, bcrypt
 from flask_login import login_required, current_user
 # --- KORREKTUR: Import aus utils.py (Löst zirkuläre Abhängigkeit) ---
 from .utils import admin_required
 # --- ENDE KORREKTUR ---
 from datetime import datetime
+from sqlalchemy import desc  # <<< desc importiert für Sortierung
 
 # Erstellt einen Blueprint. Alle Routen hier beginnen mit /api
 admin_bp = Blueprint('admin', __name__, url_prefix='/api')
 
 
 # --- Hilfsfunktion ---
+def _log_update_event(area, description):
+    """
+    Erstellt einen Eintrag im UpdateLog.
+    """
+    new_log = UpdateLog(
+        area=area,
+        description=description,
+        updated_at=datetime.utcnow()
+    )
+    db.session.add(new_log)
+    # Wichtig: KEIN db.session.commit() hier, da dies in der aufrufenden Funktion geschieht.
+
+
 def none_if_empty(value):
     return None if value == '' else value
 
 
-# --- 8. BENUTZERVERWALTUNGS-API ---
+# ... (Unveränderte Routen: /users, /roles, /shifttypes) ...
+
+
 @admin_bp.route('/users', methods=['GET'])
 @login_required  # <<< GEÄNDERT: Erlaubt allen eingeloggten Benutzern das Lesen
 def get_users():
@@ -44,6 +60,10 @@ def create_user():
         shift_plan_sort_order=data.get('shift_plan_sort_order', 999)
     )
     db.session.add(new_user)
+
+    # <<< UpdateLog HINZUGEFÜGT >>>
+    _log_update_event("Benutzerverwaltung", f"Neuer Benutzer '{data['vorname']} {data['name']}' erstellt.")
+
     db.session.commit()
     return jsonify(new_user.to_dict()), 201
 
@@ -54,10 +74,14 @@ def update_user(user_id):
     user = db.session.get(User, user_id)
     if not user: return jsonify({"message": "Benutzer nicht gefunden"}), 404
     data = request.get_json()
+
+    # Protokollierung vorbereiten
+    is_password_changed = data.get('passwort') is not None
+
     user.vorname = data.get('vorname', user.vorname)
     user.name = data.get('name', user.name)
     user.role_id = data.get('role_id', user.role_id)
-    if data.get('passwort'):
+    if is_password_changed:
         user.passwort_hash = bcrypt.generate_password_hash(data['passwort']).decode('utf-8')  # <-- Verwendet bcrypt
         user.password_geaendert = datetime.utcnow()
     user.geburtstag = none_if_empty(data.get('geburtstag', user.geburtstag))
@@ -70,6 +94,13 @@ def update_user(user_id):
     user.tutorial_gesehen = data.get('tutorial_gesehen', user.tutorial_gesehen)
     user.shift_plan_visible = data.get('shift_plan_visible', user.shift_plan_visible)
     user.shift_plan_sort_order = data.get('shift_plan_sort_order', user.shift_plan_sort_order)
+
+    # <<< UpdateLog HINZUGEFÜGT >>>
+    desc_msg = f"Benutzer '{user.vorname} {user.name}' aktualisiert."
+    if is_password_changed:
+        desc_msg += " (Passwort geändert)"
+    _log_update_event("Benutzerverwaltung", desc_msg)
+
     db.session.commit()
     return jsonify(user.to_dict()), 200
 
@@ -80,7 +111,14 @@ def delete_user(user_id):
     if user_id == current_user.id: return jsonify({"message": "Sie können sich nicht selbst löschen"}), 400
     user = db.session.get(User, user_id)
     if not user: return jsonify({"message": "Benutzer nicht gefunden"}), 404
+
+    # Protokollierung VOR dem Löschen
+    name = f"{user.vorname} {user.name}"
+
     db.session.delete(user)
+
+    _log_update_event("Benutzerverwaltung", f"Benutzer '{name}' gelöscht.")
+
     db.session.commit()
     return jsonify({"message": "Benutzer erfolgreich gelöscht"}), 200
 
@@ -100,6 +138,10 @@ def update_user_display_settings():
             if user:
                 user.shift_plan_visible = item.get('visible', user.shift_plan_visible)
                 user.shift_plan_sort_order = item.get('order', user.shift_plan_sort_order)
+
+        # <<< UpdateLog HINZUGEFÜGT >>>
+        _log_update_event("Mitarbeiter Sortierung", "Anzeige- und Sortiereinstellungen aktualisiert.")
+
         db.session.commit()
         return jsonify({"message": "Anzeige-Einstellungen gespeichert"}), 200
     except Exception as e:
@@ -124,6 +166,10 @@ def create_role():
     if existing: return jsonify({"message": "Rolle existiert bereits"}), 409
     new_role = Role(name=data['name'], description=data.get('description', ''))
     db.session.add(new_role)
+
+    # <<< UpdateLog HINZUGEFÜGT >>>
+    _log_update_event("Rollenverwaltung", f"Neue Rolle '{data['name']}' erstellt.")
+
     db.session.commit()
     return jsonify(new_role.to_dict()), 201
 
@@ -134,8 +180,13 @@ def update_role(role_id):
     role = db.session.get(Role, role_id)
     if not role: return jsonify({"message": "Rolle nicht gefunden"}), 404
     data = request.get_json()
+
     role.name = data.get('name', role.name)
     role.description = data.get('description', role.description)
+
+    # <<< UpdateLog HINZUGEFÜGT >>>
+    _log_update_event("Rollenverwaltung", f"Rolle '{role.name}' aktualisiert.")
+
     db.session.commit()
     return jsonify(role.to_dict()), 200
 
@@ -147,7 +198,14 @@ def delete_role(role_id):
     if not role: return jsonify({"message": "Rolle nicht gefunden"}), 404
     if role.name == 'admin': return jsonify({"message": "Die Basis-Rolle 'admin' kann nicht gelöscht werden"}), 403
     if role.users: return jsonify({"message": "Rolle wird noch von Benutzern verwendet"}), 400
+
+    # Protokollierung VOR dem Löschen
+    name = role.name
+
     db.session.delete(role)
+
+    _log_update_event("Rollenverwaltung", f"Rolle '{name}' gelöscht.")
+
     db.session.commit()
     return jsonify({"message": "Rolle erfolgreich gelöscht"}), 200
 
@@ -191,6 +249,10 @@ def create_shifttype():
         # --- ENDE NEU ---
     )
     db.session.add(new_type)
+
+    # <<< UpdateLog HINZUGEFÜGT >>>
+    _log_update_event("Schichtarten", f"Neue Schichtart '{data['name']}' erstellt.")
+
     db.session.commit()
     return jsonify(new_type.to_dict()), 201
 
@@ -223,6 +285,9 @@ def update_shifttype(type_id):
     st.staffing_sort_order = data.get('staffing_sort_order', st.staffing_sort_order)
     # --- ENDE NEU ---
 
+    # <<< UpdateLog HINZUGEFÜGT >>>
+    _log_update_event("Schichtarten", f"Schichtart '{st.name}' aktualisiert.")
+
     db.session.commit()
     return jsonify(st.to_dict()), 200
 
@@ -235,8 +300,15 @@ def delete_shifttype(type_id):
     existing_shifts = Shift.query.filter_by(shifttype_id=type_id).first()
     if existing_shifts:
         return jsonify({"message": "Typ wird noch in Schichten verwendet"}), 400
+
+    # Protokollierung VOR dem Löschen
+    name = st.name
+
     db.session.delete(st)
     db.session.commit()
+
+    _log_update_event("Schichtarten", f"Schichtart '{name}' gelöscht.")
+
     return jsonify({"message": "Schicht-Typ gelöscht"}), 200
 
 
@@ -263,6 +335,9 @@ def update_staffing_order():
             order = item.get('order')
             if type_id in type_map:
                 type_map[type_id].staffing_sort_order = order
+
+        # <<< UpdateLog HINZUGEFÜGT >>>
+        _log_update_event("Schichtarten", "Sortierreihenfolge der Besetzung (SOLL/IST) aktualisiert.")
 
         db.session.commit()
         return jsonify({"message": "Sortierreihenfolge der Besetzung gespeichert"}), 200
@@ -307,6 +382,10 @@ def update_global_settings():
                 new_setting = GlobalSetting(key=key, value=value)
                 db.session.add(new_setting)
             updated_count += 1
+
+        # <<< UpdateLog HINZUGEFÜGT >>>
+        _log_update_event("Farbeinstellungen", f"{updated_count} globale Farben/Einstellungen gespeichert.")
+
         db.session.commit()
         return jsonify({"message": f"{updated_count} Einstellungen erfolgreich gespeichert."}), 200
 
@@ -314,3 +393,72 @@ def update_global_settings():
         db.session.rollback()
         current_app.logger.error(f"Fehler beim Speichern der Global Settings: {str(e)}")
         return jsonify({"message": f"Datenbankfehler: {str(e)}"}), 500
+
+
+# <<< NEUE ROUTE FÜR DAS DASHBOARD (LESEN) >>>
+@admin_bp.route('/updatelog', methods=['GET'])
+@login_required  # Für alle eingeloggten Nutzer sichtbar
+def get_updatelog():
+    """
+    Ruft die letzten 20 UpdateLog-Einträge ab.
+    (Regel 2: Limitierung auf 20 für Performance)
+    """
+    try:
+        # Optimale Abfrage: Holen Sie die 20 neuesten Einträge
+        logs = UpdateLog.query.order_by(desc(UpdateLog.updated_at)).limit(20).all()
+        return jsonify([log.to_dict() for log in logs]), 200
+    except Exception as e:
+        current_app.logger.error(f"Fehler beim Abrufen des UpdateLog: {str(e)}")
+        return jsonify({"message": f"Datenbankfehler: {str(e)}"}), 500
+
+
+# <<< NEUE ROUTE FÜR DAS LÖSCHEN VON UPDATE LOGS >>>
+@admin_bp.route('/updatelog/<int:log_id>', methods=['DELETE'])
+@admin_required
+def delete_updatelog_entry(log_id):
+    """
+    Löscht einen einzelnen Eintrag aus dem UpdateLog. Nur für Admins.
+    """
+    log_entry = db.session.get(UpdateLog, log_id)
+    if not log_entry:
+        return jsonify({"message": "Log-Eintrag nicht gefunden"}), 404
+
+    try:
+        # Protokolliert das Löschen des Log-Eintrags im Log (falls das überhaupt notwendig ist,
+        # hier lassen wir es weg, um eine Endlosschleife zu vermeiden)
+
+        db.session.delete(log_entry)
+        db.session.commit()
+        return jsonify({"message": "Log-Eintrag erfolgreich gelöscht"}), 200
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Fehler beim Löschen des Log-Eintrags {log_id}: {str(e)}")
+        return jsonify({"message": f"Datenbankfehler: {str(e)}"}), 500
+
+
+# <<< ENDE NEUE ROUTE >>>
+
+
+# <<< NEUE ROUTE FÜR MANUELLES LOGGING VON CODE-UPDATES >>>
+@admin_bp.route('/manual_update_log', methods=['POST'])
+@admin_required
+def manual_update_log():
+    """
+    Erstellt einen manuellen Eintrag im UpdateLog für Code-Updates.
+    """
+    data = request.get_json()
+    description = data.get('description')
+    area = data.get('area', 'System Update')  # Standardmäßig "System Update"
+
+    if not description:
+        return jsonify({"message": "Beschreibung ist erforderlich"}), 400
+
+    try:
+        _log_update_event(area, description)
+        db.session.commit()
+        return jsonify({"message": "Update erfolgreich protokolliert"}), 201
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Fehler bei manuellem UpdateLog: {str(e)}")
+        return jsonify({"message": f"Datenbankfehler: {str(e)}"}), 500
+# <<< ENDE NEUE ROUTE >>>

@@ -160,6 +160,30 @@ class GlobalSetting(db.Model):
         }
 
 
+class UpdateLog(db.Model):  # <<< NEUES MODELL HINZUGEFÜGT
+    """
+    Protokolliert wichtige administrative Änderungen und System-Updates.
+    """
+    id = db.Column(db.Integer, primary_key=True)
+
+    # Welchen Bereich betrifft das Update (z.B. 'Schichtarten', 'Farbeinstellungen', 'System')
+    area = db.Column(db.String(100), nullable=False, index=True)
+
+    # Eine kurze Beschreibung der Änderung oder Version
+    description = db.Column(db.String(255), nullable=True)
+
+    # Wann fand die Änderung statt
+    updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "area": self.area,
+            "description": self.description,
+            "updated_at": self.updated_at.isoformat()
+        }
+
+
 # --- NEU: Feedback-System (Regel 4) ---
 
 class FeedbackReport(db.Model):

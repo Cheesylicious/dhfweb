@@ -1,8 +1,7 @@
 <!DOCTYPE html>
 <html lang="de">
 <head>
-    <meta charset="UTF-Power-8">
-    <title>Dashboard - DHF-Planer</title>
+    <meta charset="UTF-8">  <title>Dashboard - DHF-Planer</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
     <script>
@@ -24,7 +23,7 @@
         body {
             font-family: 'Poppins', sans-serif;
             margin: 0;
-            background: #1a1a1a;
+            background: #1a1a1a; /* Standard-Textfarbe auf Weiß */
             color: #ffffff; /* Standard-Textfarbe auf Weiß */
             overflow-x: hidden; /* Verhindert horizontales Scrollen */
         }
@@ -147,7 +146,181 @@
             box-shadow: 0 4px 30px rgba(0, 0, 0, 0.2);
             border-radius: 10px;
             padding: 30px;
+            display: grid; /* NEU: Grid für 2-Spalten-Layout */
+            grid-template-columns: 1fr 1fr;
+            gap: 30px;
+            align-items: start;
         }
+
+        /* --- NEU: Update Log Styles --- */
+        .card-section {
+            padding: 0;
+        }
+
+        #update-log-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 5px;
+        }
+        #update-log-header h2 {
+             margin: 0;
+             margin-bottom: 0px !important;
+        }
+        .btn-secondary {
+            background: #6c757d;
+            color: white;
+            padding: 8px 12px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 13px;
+            transition: opacity 0.3s;
+        }
+        .btn-secondary:hover { opacity: 0.8; }
+
+        #update-log-list {
+            list-style: none;
+            padding: 0;
+            margin: 15px 0 0 0;
+            max-height: 400px; /* Begrenzung der Höhe */
+            overflow-y: auto; /* Scrollbar, wenn nötig */
+        }
+
+        .log-item {
+            padding: 10px 0;
+            border-bottom: 1px dashed rgba(255, 255, 255, 0.1);
+            color: #bdc3c7;
+            display: flex; /* NEU: Für Lösch-Button */
+            justify-content: space-between; /* NEU: Für Lösch-Button */
+            align-items: center; /* NEU: Für Lösch-Button */
+        }
+        .log-item:last-child { border-bottom: none; }
+
+        /* NEU: Container für Text und Lösch-Button */
+        .log-content {
+            flex-grow: 1;
+            padding-right: 15px;
+        }
+
+        .log-area {
+            font-weight: 600;
+            color: #3498db;
+            display: block;
+            font-size: 14px;
+        }
+        .log-date {
+            font-size: 12px;
+            color: #777;
+            margin-top: 2px;
+            display: block;
+        }
+
+        /* NEU: Lösch-Button Styling */
+        .delete-log-btn {
+            background: none;
+            border: none;
+            color: #e74c3c; /* Rot */
+            font-size: 18px;
+            cursor: pointer;
+            padding: 0 5px;
+            opacity: 0.5;
+            transition: opacity 0.3s, transform 0.2s;
+            line-height: 1; /* Wichtig für vertikale Ausrichtung */
+        }
+        .delete-log-btn:hover {
+            opacity: 1.0;
+            transform: scale(1.1);
+        }
+        /* --- ENDE NEU: Update Log Styles --- */
+
+        /* --- Modal Styles (Glas-Effekt) --- */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 100;
+            left: 0; top: 0;
+            width: 100%; height: 100%;
+            overflow: auto;
+            background-color: rgba(0,0,0,0.6);
+        }
+
+        .modal-content {
+            background: rgba(30, 30, 30, 0.8); /* Dunkleres Glas */
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+
+            margin: 15% auto;
+            padding: 25px;
+            width: 80%;
+            max-width: 500px;
+            border-radius: 8px;
+            box-shadow: 0 4px 30px rgba(0,0,0,0.4);
+            color: #ffffff;
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 20px;
+            padding-bottom: 15px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .modal-header h2 {
+            margin: 0;
+            color: #ffffff;
+            font-weight: 600;
+        }
+
+        .close {
+            color: #bdc3c7;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: color 0.3s;
+        }
+        .close:hover {
+            color: #ffffff;
+        }
+
+        .form-group { margin-bottom: 15px; }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            color: #bdc3c7;
+            font-weight: 300;
+        }
+
+        .form-group input, .form-group textarea {
+            width: 98%;
+            padding: 10px;
+            box-sizing: border-box;
+            background: rgba(0, 0, 0, 0.2);
+            border: 1px solid #3498db;
+            border-radius: 5px;
+            color: #ffffff;
+            font-family: 'Poppins', sans-serif;
+            font-size: 14px;
+        }
+        .form-group textarea { resize: vertical; min-height: 80px; }
+
+        .btn-primary {
+            background: #007bff;
+            color: white;
+            padding: 10px 15px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 15px;
+            transition: opacity 0.3s;
+        }
+        .btn-primary:hover { opacity: 0.8; }
+        #modal-status { margin-top: 10px; color: #e74c3c; font-weight: 500;}
+        /* --- ENDE Modal Styles --- */
 
         .card h2 {
             color: #ffffff;
@@ -185,11 +358,43 @@
 
     <main>
         <div class="card">
-            <h2 id="welcome-message">Willkommen!</h2>
-            <p>Dies ist das Dashboard.</p>
+            <div class="card-section">
+                <h2 id="welcome-message">Willkommen!</h2>
+                <p>Dies ist das Dashboard. Wählen Sie einen Bereich aus der Navigation oben.</p>
+            </div>
+
+            <div class="card-section">
+                <div id="update-log-header">
+                    <h2>Letzte System-Updates</h2>
+                    <button class="btn-secondary hidden" id="manual-log-btn">Update protokollieren</button>
+                </div>
+                <ul id="update-log-list">
+                    <li>Lade Update-Historie...</li>
+                </ul>
+            </div>
         </div>
     </main>
 
+    <div id="manual-update-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="modal-title">Manuelles System-Update protokollieren</h2>
+                <span class="close" id="close-manual-log-modal">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="log-description">Beschreibung des Updates:</label>
+                    <textarea id="log-description" placeholder="z.B. 'Bugfix im Dashboard (UTF-8)', 'Neue API-Route für Updates'"></textarea>
+                </div>
+                <div class="form-group">
+                    <label for="log-area">Betroffener Bereich (optional):</label>
+                    <input type="text" id="log-area" placeholder="z.B. System Update, Frontend Bugfix">
+                </div>
+                <button class="btn-primary" id="save-manual-log-btn">Protokoll speichern</button>
+                <div id="manual-log-status" style="margin-top: 10px; color: #e74c3c;"></div>
+            </div>
+        </div>
+    </div>
     <script>
         // --- START: PARTIKEL-ANIMATION ---
         const canvas = document.getElementById('particle-canvas');
@@ -217,8 +422,8 @@
             update() {
                 if (this.x > canvas.width || this.x < 0) { this.directionX = -this.directionX; }
                 if (this.y > canvas.height || this.y < 0) { this.directionY = -this.directionY; }
-                this.x += this.directionX; this.y += this.directionY;
-                this.draw();
+                this.x += this.directionX; this.y += self.directionY;
+                self.draw();
             }
         }
 

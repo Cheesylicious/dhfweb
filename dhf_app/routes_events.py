@@ -1,5 +1,5 @@
 from flask import Blueprint, request, jsonify, current_app
-from .models import SpecialDate
+from .models import SpecialDate, UpdateLog  # <<< UpdateLog importiert
 from .extensions import db
 # --- KORREKTUR: Import aus utils.py ---
 from .utils import admin_required
@@ -14,12 +14,29 @@ from datetime import datetime, timedelta
 events_bp = Blueprint('events', __name__, url_prefix='/api')
 
 
+# --- Hilfsfunktion (kopiert von routes_admin zur Vermeidung von Code-Duplizierung und Monolithen-Bildung) ---
+def _log_update_event(area, description):
+    """
+    Erstellt einen Eintrag im UpdateLog.
+    """
+    new_log = UpdateLog(
+        area=area,
+        description=description,
+        updated_at=datetime.utcnow()
+    )
+    db.session.add(new_log)
+    # Wichtig: KEIN db.session.commit() hier, da dies in der aufrufenden Funktion geschieht.
+
+
+# --- ENDE Hilfsfunktion ---
+
+
 def none_if_empty(value):
     return None if value == '' else value
 
 
 @events_bp.route('/special_dates', methods=['GET'])
-@login_required # <<< GEÄNDERT: Erlaubt allen eingeloggten Benutzern das Lesen
+@login_required  # <<< GEÄNDERT: Erlaubt allen eingeloggten Benutzern das Lesen
 def get_special_dates():
     """
     Holt alle Sondertermine, optional gefiltert nach Typ UND JAHR.
@@ -53,7 +70,7 @@ def get_special_dates():
 
 
 @events_bp.route('/special_dates', methods=['POST'])
-@admin_required # <<< Schreibzugriff bleibt Admin-only
+@admin_required  # <<< Schreibzugriff bleibt Admin-only
 def create_special_date():
     """
     Erstellt einen neuen Sondertermin.
@@ -99,6 +116,16 @@ def create_special_date():
 
     try:
         db.session.add(new_date)
+
+        # <<< UpdateLog HINZUGEFÜGT >>>
+        log_area = "Feiertage & Termine"
+        if date_type == 'training':
+            log_area = "Quartals Ausbildung"
+        elif date_type == 'shooting':
+            log_area = "Schießtermine"
+
+        _log_update_event(log_area, f"Neuer Termin '{name}' hinzugefügt am {parsed_date.strftime('%d.%m.%Y')}.")
+
         db.session.commit()
         return jsonify(new_date.to_dict()), 201
     except Exception as e:
@@ -108,7 +135,7 @@ def create_special_date():
 
 
 @events_bp.route('/special_dates/<int:date_id>', methods=['PUT'])
-@admin_required # <<< Schreibzugriff bleibt Admin-only
+@admin_required  # <<< Schreibzugriff bleibt Admin-only
 def update_special_date(date_id):
     """
     Aktualisiert einen Sondertermin (Name oder Datum).
@@ -137,6 +164,15 @@ def update_special_date(date_id):
     event.date = parsed_date
 
     try:
+        # <<< UpdateLog HINZUGEFÜGT >>>
+        log_area = "Feiertage & Termine"
+        if event.type == 'training':
+            log_area = "Quartals Ausbildung"
+        elif event.type == 'shooting':
+            log_area = "Schießtermine"
+
+        _log_update_event(log_area, f"Termin '{event.name}' aktualisiert.")
+
         db.session.commit()
         return jsonify(event.to_dict()), 200
     except Exception as e:
@@ -146,7 +182,7 @@ def update_special_date(date_id):
 
 
 @events_bp.route('/special_dates/<int:date_id>', methods=['DELETE'])
-@admin_required # <<< Schreibzugriff bleibt Admin-only
+@admin_required  # <<< Schreibzugriff bleibt Admin-only
 def delete_special_date(date_id):
     """
     Löscht einen Sondertermin.
@@ -156,8 +192,21 @@ def delete_special_date(date_id):
     if not event:
         return jsonify({"message": "Termin nicht gefunden"}), 404
 
+    # <<< UpdateLog VOR dem Löschen >>>
+    name = event.name
+    event_type = event.type
+
     try:
         db.session.delete(event)
+
+        log_area = "Feiertage & Termine"
+        if event_type == 'training':
+            log_area = "Quartals Ausbildung"
+        elif event_type == 'shooting':
+            log_area = "Schießtermine"
+
+        _log_update_event(log_area, f"Termin '{name}' gelöscht.")
+
         db.session.commit()
         return jsonify({"message": "Termin gelöscht"}), 200
     except Exception as e:
@@ -167,7 +216,7 @@ def delete_special_date(date_id):
 
 
 @events_bp.route('/special_dates/calculate_holidays', methods=['POST'])
-@admin_required # <<< Schreibzugriff bleibt Admin-only
+@admin_required  # <<< Schreibzugriff bleibt Admin-only
 def calculate_holidays():
     """
     Berechnet die Daten für alle MV-Feiertage für ein bestimmtes Jahr.
@@ -208,6 +257,10 @@ def calculate_holidays():
                 new_event = SpecialDate(name=name, date=date, type='holiday')
                 db.session.add(new_event)
                 created_count += 1
+
+        # <<< UpdateLog HINZUGEFÜGT >>>
+        _log_update_event("Feiertage & Termine",
+                          f"Feiertagsdaten für {year} neu berechnet (Akt.: {updated_count}, Neu: {created_count}).")
 
         db.session.commit()
 

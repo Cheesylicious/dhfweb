@@ -7,9 +7,27 @@ from .utils import admin_required
 from flask_login import login_required, current_user
 from sqlalchemy.orm import joinedload
 from datetime import datetime
+from sqlalchemy import func # <<< NEU: func importiert
 
 # Erstellt einen Blueprint. Alle Routen hier beginnen mit /api/feedback
 feedback_bp = Blueprint('feedback', __name__, url_prefix='/api/feedback')
+
+
+@feedback_bp.route('/count_new', methods=['GET']) # <<< NEUE ROUTE
+@admin_required
+def count_new_feedback_reports():
+    """
+    Gibt die Anzahl der Berichte mit dem Status 'neu' zurück. Nur für Admins.
+    (Regel 2: Vermeidet unnötiges Laden aller Daten)
+    """
+    try:
+        count = db.session.query(func.count(FeedbackReport.id)).filter(
+            FeedbackReport.status == 'neu'
+        ).scalar()
+        return jsonify({"count": count}), 200
+    except Exception as e:
+        current_app.logger.error(f"Fehler beim Zählen neuer FeedbackReports: {str(e)}")
+        return jsonify({"message": f"Datenbankfehler: {str(e)}"}), 500
 
 
 @feedback_bp.route('', methods=['POST'])

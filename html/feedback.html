@@ -53,6 +53,7 @@
         header nav {
             display: flex;
             gap: 20px;
+            align-items: center; /* Hinzugefügt für Konsistenz */
         }
 
         header nav a {
@@ -63,6 +64,8 @@
             padding: 10px;
             border-radius: 5px;
             transition: background-color 0.3s, color 0.3s;
+            display: inline-flex; /* Hinzugefügt für Konsistenz */
+            align-items: center; /* Hinzugefügt für Konsistenz */
         }
 
         header nav a.active, header nav a:hover {
@@ -78,8 +81,7 @@
             font-weight: 600;
             padding: 2px 5px;
             border-radius: 5px;
-            margin-left: -8px;
-            margin-top: -10px;
+            margin-left: 8px; /* Korrigiert auf 8px für Konsistenz */
             display: none; /* (Wird per JS angezeigt) */
         }
 
@@ -104,7 +106,7 @@
             background: #c0392b;
         }
 
-        /* (Neuer Report-Button - wird in Schritt 5/6 relevant) */
+        /* (Neuer Report-Button - wird in shared_feedback.js erstellt) */
         .report-btn {
             background: #3498db;
             margin-right: 15px;
@@ -295,10 +297,17 @@
 
     <header>
         <h1>DHF-Planer</h1>
-        <nav id="main-nav">
-            </nav>
+        <nav id="main-nav"> <a href="dashboard.html" id="nav-dashboard" style="display: none;">Dashboard</a>
+            <a href="users.html" id="nav-users" style="display: none;">Benutzerverwaltung</a>
+            <a href="feedback.html" class="active" id="nav-feedback" style="display: none;">
+                Meldungen
+                <span id="feedback-badge" class="nav-badge">0</span>
+            </a>
+            <a href="schichtplan.html">Schichtplan</a>
+        </nav>
         <div id="user-info">
             <span id="welcome-user"></span>
+            <button class="report-btn" id="global-report-btn">🐞 Problem melden</button>
             <button id="logout-btn">Abmelden</button>
         </div>
     </header>

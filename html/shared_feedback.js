@@ -1,9 +1,10 @@
 /**
  * DHF-Planer - Geteiltes Feedback-Modul
  * * Dieses Skript wird auf allen Seiten geladen. Es fügt dynamisch hinzu:
- * 1. Den CSS-Style für das Feedback-Modal.
+ * 1. Den CSS-Style für das Feedback-Modal und die Blink-Animation.
  * 2. Den HTML-Body für das Feedback-Modal.
  * 3. Die Event-Listener für das Öffnen, Schließen und Senden des Modals.
+ * 4. Die Logik zur Anzeige der neuen Meldungen und zur Navigationskorrektur.
  * * (Regel 4: Vermeidet Codeduplizierung in allen HTML-Dateien)
  */
 
@@ -14,8 +15,18 @@
     }
 
     const API_URL = 'http://46.224.63.203:5000';
+    let user;
+    let isAdmin = false;
 
-    // --- 1. CSS-Stile dynamisch injizieren ---
+    // Versuche, den User zu laden und die Admin-Rolle zu bestimmen
+    try {
+        user = JSON.parse(localStorage.getItem('dhf_user'));
+        isAdmin = user && user.role && user.role.name === 'admin';
+    } catch (e) {
+        // Ignoriere Fehler, falls localStorage leer/ungültig
+    }
+
+    // --- 1. CSS-Stile dynamisch injizieren (Inkl. Blink-Animation) ---
     const styles = `
         .feedback-modal {
             display: none;
@@ -149,6 +160,17 @@
         }
         .feedback-btn-primary:hover { opacity: 0.8; }
         .feedback-btn-primary:disabled { background: #555; opacity: 0.7; cursor: not-allowed; }
+
+        /* --- NEU: Blink-Animation --- */
+        @keyframes blink-animation {
+            0%, 100% { background-color: #e74c3c; transform: scale(1); }
+            50% { background-color: #f1c40f; transform: scale(1.1); }
+        }
+        .nav-badge.blinking {
+            animation: blink-animation 1.5s infinite;
+            display: inline-flex !important; /* WICHTIG: Setzt die Sichtbarkeit */
+            transform-origin: center center;
+        }
     `;
 
     const styleSheet = document.createElement("style");
@@ -210,10 +232,85 @@
     // --- 3. Event-Listener und Logik ---
 
     const modal = document.getElementById('feedback-modal');
-    const openBtn = document.getElementById('global-report-btn'); // (Dieser Button wird in Schritt 6 erstellt)
+    const openBtn = document.getElementById('global-report-btn');
     const closeBtn = document.getElementById('feedback-close-btn');
     const submitBtn = document.getElementById('feedback-submit-btn');
     const statusEl = document.getElementById('feedback-modal-status');
+    const navBadge = document.getElementById('feedback-badge');
+
+    // --- NEU: Hilfsfunktion für robusten API-Aufruf ---
+    async function apiFetchNew(endpoint, method = 'GET', body = null) {
+        const options = {
+            method,
+            headers: { 'Content-Type': 'application/json' },
+            credentials: 'include'
+        };
+        if (body) { options.body = JSON.stringify(body); }
+        const response = await fetch(API_URL + endpoint, options);
+        if (!response.ok) {
+            // Wirft einen Fehler, wenn der Status nicht OK ist
+            throw new Error(response.statusText);
+        }
+        return response.json();
+    }
+
+    // --- NEU: Funktion zur Korrektur der Admin-Navigation (Problembehebung) ---
+    function fixAdminNavigation() {
+        if (isAdmin) {
+            const navDashboard = document.getElementById('nav-dashboard');
+            const navUsers = document.getElementById('nav-users');
+            const navFeedback = document.getElementById('nav-feedback');
+
+            // Setzt alle Admin-Nav-Links auf sichtbar und verwendet 'inline-flex' für konsistente Anzeige
+            if (navDashboard) navDashboard.style.display = 'inline-flex';
+            if (navUsers) navUsers.style.display = 'inline-flex';
+            if (navFeedback) navFeedback.style.display = 'inline-flex';
+        }
+    }
+
+    // --- NEU: Funktion zum Abrufen und Aktualisieren der Meldungsanzahl ---
+    async function updateFeedbackCount() {
+        if (!isAdmin || !navBadge) {
+            // Wenn kein Admin oder Badge-Element nicht gefunden, abbrechen
+            return;
+        }
+
+        // Führt die Navigationskorrektur bei jedem Abruf durch
+        fixAdminNavigation();
+
+        try {
+            const data = await apiFetchNew('/api/feedback/count_new', 'GET');
+            const count = data.count || 0;
+
+            if (count > 0) {
+                navBadge.textContent = count;
+                navBadge.classList.add('blinking');
+                navBadge.style.display = 'inline-flex'; // Sicherstellen, dass es sichtbar ist
+            } else {
+                navBadge.textContent = 0;
+                navBadge.classList.remove('blinking');
+                navBadge.style.display = 'none';
+            }
+        } catch (error) {
+            // Bei 401/403 Fehler (z.B. Session abgelaufen) den Badge ausblenden
+            navBadge.style.display = 'none';
+            navBadge.classList.remove('blinking');
+            console.error("Fehler beim Abruf der Meldungsanzahl:", error);
+        }
+    }
+
+    // Initialisierung und Interval-Setup
+    if (isAdmin) {
+        // Erste Ausführung zur sofortigen Anzeige des Badges/Fixes
+        updateFeedbackCount();
+        // Regelmäßiger Check alle 30 Sekunden
+        setInterval(updateFeedbackCount, 30000);
+    } else {
+        // Auch für Nicht-Admins die Navigationskorrektur einmalig ausführen
+        fixAdminNavigation();
+    }
+    // --- ENDE NEU ---
+
 
     // Öffnen
     if (openBtn) {
@@ -241,8 +338,6 @@
         submitBtn.textContent = 'Sende...';
         statusEl.textContent = '';
 
-        let response; // (Variable für Antwort)
-
         try {
             const payload = {
                 report_type: document.querySelector('input[name="feedback_type"]:checked').value,
@@ -255,32 +350,48 @@
                 throw new Error("Bitte geben Sie eine Nachricht ein.");
             }
 
-            // (API-Aufruf - Standard fetch, da apiFetch() hier nicht definiert ist)
-            response = await fetch(API_URL + '/api/feedback', { // (Response zuweisen)
+            // (API-Aufruf)
+            const response = await fetch(API_URL + '/api/feedback', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
-                credentials: 'include' // (Wichtig für Login-Cookie)
+                body: JSON.stringify(payload),
+                credentials: 'include'
             });
 
             if (response.status === 401) { throw new Error("Sitzung abgelaufen. Bitte neu einloggen."); }
 
-            // *** KORREKTUR: Prüfe .ok VOR .json() ***
-            // Prüfen, ob die Antwort erfolgreich war (Status 200-299)
+
+            // *** KORRIGIERTE FEHLERBEHANDLUNG (von vorherigem Schritt) ***
+            let data;
+
             if (!response.ok) {
-                // Versuchen, die Fehler-JSON zu lesen
                 let errorData;
+                let textResponse = await response.text();
+
                 try {
-                    errorData = await response.json();
+                    errorData = JSON.parse(textResponse);
                 } catch (e) {
-                    // Wenn das fehlschlägt (weil es HTML war), nutze den Status-Text
+                    if (textResponse.trim().toLowerCase().startsWith('<!doctype')) {
+                        throw new Error(`Sitzung abgelaufen. Bitte erneut versuchen oder neu einloggen. (Status: ${response.status})`);
+                    }
                     throw new Error(`Serverfehler ${response.status}: ${response.statusText}`);
                 }
-                // Wenn es JSON war, nutze die Server-Nachricht
                 throw new Error(errorData.message || 'Unbekannter API-Fehler');
             }
 
-            // Nur wenn response.ok, versuchen wir, JSON zu lesen
-            const data = await response.json();
+            // Erfolgspfad (response.ok)
+            try {
+                 data = await response.json();
+            } catch (e) {
+                 data = {};
+            }
+            // *** ENDE KORRIGIERTE FEHLERBEHANDLUNG ***
+
+            // --- NEU: Nach erfolgreichem Senden den Zähler aktualisieren ---
+            if (isAdmin) {
+                await updateFeedbackCount();
+            }
+            // --- ENDE NEU ---
 
             // Erfolg
             statusEl.textContent = 'Vielen Dank! Meldung gesendet.';
@@ -294,7 +405,7 @@
             }, 2000);
 
         } catch (error) {
-            // (Fehlerbehandlung für alle Fehler (Netzwerk, Validierung, 404, 500))
+            // (Fehlerbehandlung für alle Fehler)
             statusEl.textContent = `Fehler: ${error.message}`;
             statusEl.style.color = '#e74c3c';
             submitBtn.disabled = false;
