@@ -7,10 +7,9 @@ from sqlalchemy import extract, func
 from sqlalchemy.orm import joinedload
 from sqlalchemy.exc import IntegrityError, OperationalError
 from datetime import datetime, timedelta, date
-# --- NEU ---
-from .violation_manager import ViolationManager  # Importiert den externen Manager
-# --- ENDE NEU ---
-import calendar  # Für Monatslängen
+from .violation_manager import ViolationManager
+import calendar
+from collections import defaultdict
 
 # Blueprint
 shifts_bp = Blueprint('shifts', __name__, url_prefix='/api')
@@ -64,12 +63,63 @@ def _calculate_user_total_hours(user_id, year, month):
     return round(total_hours, 2)
 
 
+# --- KORRIGIERTE HILFSFUNKTION ---
+def _calculate_actual_staffing(shifts_in_month_dicts, shifttypes_dicts, year, month):
+    """
+    Berechnet die IST-Besetzung (tatsächliche Zählung) für alle Schichtarten.
+    (Prüft jetzt die 8 granularen SOLL-Felder, um relevante Schichten zu finden)
+    """
+    days_in_month = calendar.monthrange(year, month)[1]
+
+    # 1. Finde heraus, welche Schicht-IDs überhaupt gezählt werden müssen
+    relevant_shifttype_ids = set()
+    for st in shifttypes_dicts:
+        if (st.get('min_staff_mo', 0) > 0 or
+                st.get('min_staff_di', 0) > 0 or
+                st.get('min_staff_mi', 0) > 0 or
+                st.get('min_staff_do', 0) > 0 or
+                st.get('min_staff_fr', 0) > 0 or
+                st.get('min_staff_sa', 0) > 0 or
+                st.get('min_staff_so', 0) > 0 or
+                st.get('min_staff_holiday', 0) > 0):
+            relevant_shifttype_ids.add(st['id'])
+
+    if not relevant_shifttype_ids:
+        return {}  # (Niemand muss gezählt werden)
+
+    # 2. Initialisiere das Zähl-Dictionary (Struktur: {shifttype_id: {day: 0, ...}})
+    staffing_actual = defaultdict(lambda: defaultdict(int))
+
+    # 3. Zähle die Schichten
+    for s_dict in shifts_in_month_dicts:
+        shifttype_id = s_dict.get('shifttype_id')
+
+        if shifttype_id in relevant_shifttype_ids:
+            try:
+                day_of_month = datetime.fromisoformat(s_dict['date']).day
+                staffing_actual[shifttype_id][day_of_month] += 1
+            except (ValueError, TypeError):
+                pass  # Ignoriere ungültige Datumseinträge
+
+    # 4. Fülle die Nullen für Tage, an denen niemand eingeteilt war
+    final_staffing_actual = {}
+    for shifttype_id in relevant_shifttype_ids:
+        counts_for_type = {}
+        for day in range(1, days_in_month + 1):
+            counts_for_type[day] = staffing_actual[shifttype_id].get(day, 0)
+        final_staffing_actual[shifttype_id] = counts_for_type
+
+    return final_staffing_actual
+
+
+# --- ENDE KORRIGIERTE HILFSFUNKTION ---
+
+
 @shifts_bp.route('/shifts', methods=['GET'])
 @login_required
 def get_shifts():
     """
-    Liefert alle Schichten, Totals UND Konflikte für einen Monat.
-    (Erweitert um Konfliktprüfung und Vormonats-Query für Vollständigkeit)
+    Liefert alle Schichten, Totals, Konflikte UND IST-Besetzung.
     """
     try:
         year = int(request.args.get('year'))
@@ -77,59 +127,52 @@ def get_shifts():
     except (TypeError, ValueError):
         return jsonify({"message": "Jahr und Monat sind erforderlich"}), 400
 
-    # Daten für die Berechnung ermitteln (aktueller Monat + letzter Tag Vormonat)
     current_month_start_date = date(year, month, 1)
     prev_month_end_date = current_month_start_date - timedelta(days=1)
 
-    # Optimierte Abfrage: Holt alle Schichten des Monats + den letzten Tag des Vormonats
     shifts_for_calc = Shift.query.options(joinedload(Shift.shift_type)).filter(
         db.or_(
             db.and_(
                 extract('year', Shift.date) == year,
                 extract('month', Shift.date) == month
             ),
-            Shift.date == prev_month_end_date  # Nur der letzte Tag des Vormonats
+            Shift.date == prev_month_end_date
         )
     ).all()
 
-    # Zusätzliche Daten abrufen
     users = User.query.order_by(User.shift_plan_sort_order, User.name).all()
     shift_types = ShiftType.query.all()
 
-    # Daten für die Übergabe vorbereiten
     shifts_data = [s.to_dict() for s in shifts_for_calc if s.date >= current_month_start_date]
     shifts_all_data = [s.to_dict() for s in shifts_for_calc]
     users_data = [u.to_dict() for u in users]
-    shifttypes_data = [st.to_dict() for st in shift_types]
+    shifttypes_data = [st.to_dict() for st in shift_types]  # (Enthält jetzt die granularen SOLL-Werte)
 
     # 2. Stundensummen berechnen
-
     first_day = datetime(year, month, 1)
     last_day_prev_month = first_day - timedelta(days=1)
-
-    # Ermittle relevante Benutzer für die Berechnung
     user_ids_this_month = {s.user_id for s in shifts_for_calc if s.date >= first_day.date()}
     user_ids_prev_month = {s.user_id for s in shifts_for_calc if s.date == last_day_prev_month.date()}
-
     relevant_user_ids = user_ids_this_month.union(user_ids_prev_month)
 
     totals_dict = {}
     for user_id in relevant_user_ids:
-        # Führt die Berechnung nur für tatsächlich existierende User durch
         if user_id in [u['id'] for u in users_data]:
             totals_dict[user_id] = _calculate_user_total_hours(user_id, year, month)
 
-    # 3. Konflikte berechnen (NEU)
+    # 3. Konflikte berechnen
     violation_manager = ViolationManager(shifttypes_data)
     violations_set = violation_manager.calculate_all_violations(year, month, shifts_all_data, users_data)
-
-    # Konvertiere Set von (user_id, day) zu einer Liste für JSON
     violations_list = list(violations_set)
+
+    # 4. IST-Besetzung berechnen (verwendet jetzt die korrigierte Funktion)
+    staffing_actual = _calculate_actual_staffing(shifts_data, shifttypes_data, year, month)
 
     return jsonify({
         "shifts": shifts_data,
         "totals": totals_dict,
-        "violations": violations_list  # <<< NEU: Konflikte zurückgeben
+        "violations": violations_list,
+        "staffing_actual": staffing_actual
     }), 200
 
 
@@ -138,10 +181,8 @@ def _parse_date_from_payload(data):
     Robustes Parsen von Datumsdaten.
     (Unverändert)
     """
-    # First: explicit 'date' string
     date_str = data.get('date')
     if date_str:
-        # allow already a date object too (occasionally)
         if isinstance(date_str, (date, datetime)):
             return date_str if isinstance(date_str, date) else date_str.date()
         for fmt in ('%Y-%m-%d', '%d.%m.%Y'):
@@ -149,26 +190,21 @@ def _parse_date_from_payload(data):
                 return datetime.strptime(date_str, fmt).date()
             except ValueError:
                 continue
-        # fallback: try ISO parse
         try:
             return datetime.fromisoformat(date_str).date()
         except Exception:
             raise ValueError('Ungültiges Datumsformat in "date". Erwartet YYYY-MM-DD oder TT.MM.YYYY.')
-
-    # Second: separate fields day/month/year
     try:
         day = data.get('day')
         month = data.get('month')
         year = data.get('year')
         if day is None or month is None or year is None:
             raise ValueError('Kein valides Datum gefunden (weder date noch day/month/year).')
-        # cast to int safely (strings like "01" will work)
         day_i = int(day)
         month_i = int(month)
         year_i = int(year)
         return datetime(year_i, month_i, day_i).date()
     except (TypeError, ValueError) as e:
-        # re-raise als ValueError mit klarer Meldung
         raise ValueError(str(e) or 'Ungültige day/month/year Kombination')
 
 
@@ -177,13 +213,12 @@ def _parse_date_from_payload(data):
 def save_shift():
     """
     Speichert oder löscht eine Schicht.
-    (Erweitert um Neuberechnung der Konflikte)
+    (Erweitert um Neuberechnung der Konflikte UND IST-Besetzung)
     """
     data = request.get_json(silent=True)
     if not data:
         return jsonify({"message": "Leere Nutzlast"}), 400
 
-    # user_id kann 'user_id' oder 'userId' heißen, abfangen
     user_id_raw = data.get('user_id') or data.get('userId')
     if user_id_raw is None:
         return jsonify({"message": "user_id erforderlich"}), 400
@@ -193,31 +228,26 @@ def save_shift():
     except (TypeError, ValueError):
         return jsonify({"message": "Ungültige user_id"}), 400
 
-    # robustes Parsen von shifttype_id (kann 'null', '', None oder 0 sein)
     raw_shift_type = data.get('shifttype_id')
     if raw_shift_type is None:
-        raw_shift_type = data.get('shifttypeId')  # alternative key
+        raw_shift_type = data.get('shifttypeId')
     shifttype_id = None
     if raw_shift_type in (None, '', 'null'):
         shifttype_id = None
     else:
         try:
-            # viele frontends senden '0' oder 0 für "FREI" — wir behandeln 0 als None später
             shifttype_id = int(raw_shift_type)
         except (TypeError, ValueError):
             shifttype_id = None
 
-    # Parse date (robust)
     try:
         shift_date = _parse_date_from_payload(data)
     except ValueError as e:
         return jsonify({"message": f"Ungültiges Datum: {str(e)}"}), 400
 
-    # Ermitteln der "FREI"-Schicht (falls vorhanden)
     free_type = ShiftType.query.filter_by(abbreviation='FREI').first()
     free_type_id = free_type.id if free_type else None
 
-    # Interpretiere shifttype_id == free_type_id oder shifttype_id in (None, 0) als 'FREI'
     is_free_payload = False
     if shifttype_id is None:
         is_free_payload = True
@@ -231,39 +261,33 @@ def save_shift():
     saved_shift_id = None
 
     try:
-        # Kurzzeit-Write-Transaction (Unverändert)
         existing_shift = Shift.query.filter_by(user_id=user_id, date=shift_date).first()
 
         if existing_shift:
             saved_shift_id = existing_shift.id
             if is_free_payload:
-                # Lösche vorhandene Schicht (wird zu Frei)
                 db.session.delete(existing_shift)
                 action_taken = 'delete'
             else:
-                # Update vorhandene Schicht
                 existing_shift.shifttype_id = shifttype_id
                 db.session.add(existing_shift)
                 action_taken = 'update'
         else:
             if not is_free_payload:
-                # Erstelle neue Schicht
                 new_shift = Shift(user_id=user_id, shifttype_id=shifttype_id, date=shift_date)
                 db.session.add(new_shift)
-                # flush, um id zu erhalten (ohne Commit)
                 db.session.flush()
                 saved_shift_id = new_shift.id
                 action_taken = 'create'
                 status_code = 201
             else:
-                action_taken = 'none'  # payload wollte "frei", und es gab nichts zum Löschen
+                action_taken = 'none'
 
         db.session.commit()
 
     except (IntegrityError, OperationalError) as e:
         db.session.rollback()
         current_app.logger.warning(f"DB-Fehler beim Speichern der Schicht: {str(e)}")
-        # Best-effort: lade aktuellen Zustand
         existing = Shift.query.filter_by(user_id=user_id, date=shift_date).first()
         if existing:
             saved_shift_id = existing.id
@@ -271,7 +295,6 @@ def save_shift():
         else:
             action_taken = 'none'
         status_code = 200
-
     except Exception as e:
         db.session.rollback()
         current_app.logger.error(f"Unerwarteter Fehler beim Speichern: {str(e)}")
@@ -299,7 +322,6 @@ def save_shift():
     new_total = _calculate_user_total_hours(user_id, shift_date.year, shift_date.month)
     response_data['new_total_hours'] = new_total
 
-    # Falls Änderung Auswirkungen auf nächsten Monat hat (z.B. Spillover), mitliefern
     try:
         next_day = shift_date + timedelta(days=1)
         if next_day.month != shift_date.month:
@@ -308,33 +330,37 @@ def save_shift():
     except Exception as e:
         current_app.logger.warning(f"Fehler beim Berechnen des Folgemonats: {str(e)}")
 
-    # NEU: Vollständige Konfliktprüfung für den aktuellen Monat.
+    # --- NEUBERECHNUNG (Konflikte UND IST-Besetzung) ---
 
-    # Datumsgrenzen für die Abfrage
     month_start = date(shift_date.year, shift_date.month, 1)
     month_end = date(shift_date.year, shift_date.month, calendar.monthrange(shift_date.year, shift_date.month)[1])
     day_before = month_start - timedelta(days=1)
     day_after = month_end + timedelta(days=1)
 
-    # Abfrage aller notwendigen Schichten (Tag vorher bis Tag nachher)
-    shifts_for_violation = Shift.query.options(joinedload(Shift.shift_type)).filter(
+    shifts_for_calc_all = Shift.query.options(joinedload(Shift.shift_type)).filter(
         Shift.date.between(day_before, day_after)
     ).all()
-
-    # Zusätzliche Daten abrufen
     users = User.query.order_by(User.shift_plan_sort_order, User.name).all()
     shift_types = ShiftType.query.all()
 
-    # Daten für den ViolationManager vorbereiten
-    shifts_all_data = [s.to_dict() for s in shifts_for_violation]
+    shifts_all_data = [s.to_dict() for s in shifts_for_calc_all]
     users_data = [u.to_dict() for u in users]
     shifttypes_data = [st.to_dict() for st in shift_types]
 
+    # 3. Konflikte berechnen
     violation_manager = ViolationManager(shifttypes_data)
     violations_set = violation_manager.calculate_all_violations(shift_date.year, shift_date.month, shifts_all_data,
                                                                 users_data)
-
-    # Konvertiere Set von (user_id, day) zu einer Liste für JSON
     response_data['violations'] = list(violations_set)
+
+    # 4. IST-Besetzung berechnen (verwendet jetzt die korrigierte Funktion)
+    shifts_in_month_dicts = [
+        s_dict for s_dict in shifts_all_data
+        if shift_date.year == datetime.fromisoformat(s_dict['date']).year and
+           shift_date.month == datetime.fromisoformat(s_dict['date']).month
+    ]
+    staffing_actual = _calculate_actual_staffing(shifts_in_month_dicts, shifttypes_data, shift_date.year,
+                                                 shift_date.month)
+    response_data['staffing_actual'] = staffing_actual
 
     return jsonify(response_data), status_code

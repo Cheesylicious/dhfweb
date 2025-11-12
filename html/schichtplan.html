@@ -162,7 +162,11 @@
             background: #e0e0e0;
         }
 
-        #schichtplan-grid-container { overflow-x: hidden; }
+        /* (Kein Speicher-Button in dieser Version) */
+        #save-staffing-order-btn { display: none; }
+
+
+        #schichtplan-grid-container { overflow-x: auto; }
         #schichtplan-grid { display: grid; }
 
         .grid-header, .grid-cell, .grid-user-name, .grid-user-total, .grid-user-dog {
@@ -179,11 +183,9 @@
             font-weight: 600; position: sticky; top: 0; z-index: 1;
         }
 
-        /* Standard-Wochenende Farbe */
         .grid-header.weekend { background-color: var(--weekend-bg-color, #fff8f8); color: var(--weekend-text-color, #333); }
         .grid-cell.weekend { background-color: var(--weekend-bg-color, #fff8f8); color: var(--weekend-text-color, #333); }
 
-        /* --- NEU: Dynamische Hintergrundfarben für Termine --- */
         .day-color-holiday { background-color: var(--holiday-bg-color, #ffddaa) !important; color: var(--text-color, #333); }
         .day-color-training { background-color: var(--training-bg-color, #daffdb) !important; color: var(--text-color, #333); }
         .day-color-shooting { background-color: var(--shooting-bg-color, #ffb0b0) !important; color: var(--text-color, #333); }
@@ -204,13 +206,10 @@
         .grid-user-total { font-weight: 600; background: #f8f9fa; text-align: center; }
         .grid-header-total { font-weight: 600; background: #f8f9fa; }
 
-        /* --- STIL ANPASSUNG (3D-Effekt & Hover) --- */
         .grid-cell {
             cursor: pointer;
             font-weight: 500;
-            /* Übergang erweitert */
             transition: background-color 0.2s, transform 0.2s, box-shadow 0.2s;
-            /* Leichter 3D-Inset-Schatten */
             box-shadow: inset 0px 1px 3px rgba(0, 0, 0, 0.2);
             position: relative;
             z-index: 1;
@@ -218,22 +217,19 @@
 
         body:not(.admin-mode) .grid-cell { cursor: default; }
 
-        /* Hover-Effekt (Zoom & Outset-Schatten) */
         .grid-cell.hovered {
             background-color: #d6eaff !important;
-            /* Heller "Outset"-Schatten für den Zoom-Effekt */
             box-shadow: 0px 2px 8px rgba(0, 0, 0, 0.3);
             transform: scale(1.05);
-            z-index: 20; /* Zelle überlappt Nachbarn beim Hover */
+            z-index: 20;
         }
-        /* --- ENDE STIL ANPASSUNG --- */
 
         body.visitor-mode .grid-cell {
             cursor: default;
         }
 
         .grid-cell.violation {
-            box-shadow: inset 0 0 0 3px #e74c3c !important; /* Roter Rand */
+            box-shadow: inset 0 0 0 3px #e74c3c !important;
             border: 1px solid #e74c3c !important;
         }
 
@@ -282,6 +278,86 @@
         body.visitor-mode #shift-modal {
             display: none !important;
         }
+
+        /* --- NEU: STILE FÜR MINDESTBESETZUNG --- */
+        #staffing-grid-container {
+            overflow-x: auto;
+            border-top: 2px solid #3498db;
+            padding-top: 5px;
+            background: #fdfdfd;
+        }
+        #staffing-grid {
+            display: grid;
+        }
+        /* (tbody entfernt, da wir D&D vorerst pausieren) */
+
+        .staffing-header, .staffing-cell, .staffing-label, .staffing-total-header {
+            padding: 8px 10px;
+            border-bottom: 1px solid #eee;
+            border-right: 1px solid #eee;
+            text-align: center;
+            font-size: 13px;
+            line-height: 1.3;
+            white-space: nowrap;
+            color: #333;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        .staffing-label {
+            font-weight: 600;
+            text-align: left;
+            position: sticky;
+            left: 0;
+            background: #fcfcfc;
+            z-index: 4;
+            border-left: 1px solid #eee;
+        }
+        .staffing-total-header {
+            position: sticky;
+            top: auto;
+            z-index: 1;
+            background: #f8f9fa;
+            font-weight: 600;
+        }
+        .staffing-header {
+            background: #fcfcfc;
+            font-weight: 600;
+            position: sticky;
+            top: auto;
+            z-index: 1;
+        }
+        .staffing-cell {
+            font-weight: 500;
+            font-size: 14px;
+        }
+        .staffing-cell.weekend { background-color: var(--weekend-bg-color, #fff8f8); }
+        .staffing-header.weekend { background-color: var(--weekend-bg-color, #fff8f8); }
+
+        .staffing-ok {
+            background-color: #d4edda !important;
+            color: #155724;
+            font-weight: 700;
+        }
+        .staffing-warning {
+            background-color: #fff3cd !important;
+            color: #856404;
+            font-weight: 700;
+        }
+        .staffing-violation {
+            background-color: #ffcccc !important;
+            color: #c00000;
+            font-weight: 700;
+            box-shadow: inset 0 0 0 1px #e74c3c;
+        }
+
+        .staffing-untracked {
+            background-color: #f8f9fa !important;
+            color: #bbb;
+        }
+
+        /* (Drag-Handle in dieser Version entfernt) */
+
+        /* --- ENDE NEUE STILE --- */
     </style>
 </head>
 <body>
@@ -319,7 +395,10 @@
             <div class="plan-nav">
                 <button id="prev-month-btn">&laquo; Vorheriger</button>
                 <h2 id="current-month-label">Lade...</h2>
-                <button id="next-month-btn">Nächster &raquo;</button>
+                <div class="nav-buttons">
+                    <button id="save-staffing-order-btn">Sortierung speichern</button>
+                    <button id="next-month-btn">Nächster &raquo;</button>
+                </div>
             </div>
 
             <div id="schichtplan-grid-container">
@@ -327,6 +406,10 @@
                     </div>
             </div>
 
+            <div id="staffing-grid-container">
+                 <div id="staffing-grid">
+                    </div>
+            </div>
             <div class="plan-legende" id="plan-legende">
                 </div>
         </div>
@@ -347,92 +430,46 @@
 
 
     <script>
-        // --- START: PARTIKEL-ANIMATION ---
+        // --- START: PARTIKEL-ANIMATION (unverändert) ---
         const canvas = document.getElementById('particle-canvas');
         const ctx = canvas.getContext('2d');
         const nodeColor = '#3498db';
-        const lineColor = '#ecf0f1'; // (Angepasst für besseren Kontrast)
+        const lineColor = '#ecf0f1';
         let particlesArray;
-
-        function setCanvasSize() {
-            canvas.width = window.innerWidth;
-            canvas.height = window.innerHeight;
-        }
+        function setCanvasSize() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; }
         setCanvasSize();
-
         class Particle {
-            constructor(x, y, directionX, directionY, size) {
-                this.x = x; this.y = y; this.directionX = directionX; this.directionY = directionY; this.size = size;
-            }
-            draw() {
-                ctx.beginPath();
-                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2, false);
-                ctx.fillStyle = nodeColor;
-                ctx.fill();
-            }
-            update() {
-                if (this.x > canvas.width || this.x < 0) { this.directionX = -this.directionX; }
-                if (this.y > canvas.height || this.y < 0) { this.directionY = -this.directionY; }
-                this.x += this.directionX; this.y += this.directionY;
-                this.draw();
-            }
+            constructor(x, y, directionX, directionY, size) { this.x = x; this.y = y; this.directionX = directionX; this.directionY = directionY; this.size = size; }
+            draw() { ctx.beginPath(); ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2, false); ctx.fillStyle = nodeColor; ctx.fill(); }
+            update() { if (this.x > canvas.width || this.x < 0) { this.directionX = -this.directionX; } if (this.y > canvas.height || this.y < 0) { this.directionY = -this.directionY; } this.x += this.directionX; this.y += this.directionY; this.draw(); }
         }
-
         function init() {
-            particlesArray = [];
-            let numberOfParticles = (canvas.height * canvas.width) / 9000;
-            if (numberOfParticles > 100) numberOfParticles = 100;
-
+            particlesArray = []; let numberOfParticles = (canvas.height * canvas.width) / 9000; if (numberOfParticles > 100) numberOfParticles = 100;
             for (let i = 0; i < numberOfParticles; i++) {
-                let size = (Math.random() * 2) + 1;
-                let x = (Math.random() * ((canvas.width - size * 2) - (size * 2)) + size * 2);
+                let size = (Math.random() * 2) + 1; let x = (Math.random() * ((canvas.width - size * 2) - (size * 2)) + size * 2);
                 let y = (Math.random() * ((canvas.height - size * 2) - (size * 2)) + size * 2);
-                let directionX = (Math.random() * 0.4) - 0.2;
-                let directionY = (Math.random() * 0.4) - 0.2;
+                let directionX = (Math.random() * 0.4) - 0.2; let directionY = (Math.random() * 0.4) - 0.2;
                 particlesArray.push(new Particle(x, y, directionX, directionY, size));
             }
         }
-
         function connect() {
-            let maxDistance = 150;
-            ctx.strokeStyle = lineColor;
+            let maxDistance = 150; ctx.strokeStyle = lineColor;
             for (let a = 0; a < particlesArray.length; a++) {
                 for (let b = a; b < particlesArray.length; b++) {
-                    let distance = ((particlesArray[a].x - particlesArray[b].x) * (particlesArray[a].x - particlesArray[b].x))
-                                 + ((particlesArray[a].y - particlesArray[b].y) * (particlesArray[a].y - particlesArray[b].y));
-                    if (distance < (maxDistance * maxDistance)) {
-                        let opacity = 1 - (distance / (maxDistance * maxDistance));
-                        ctx.globalAlpha = opacity;
-                        ctx.beginPath();
-                        ctx.moveTo(particlesArray[a].x, particlesArray[a].y);
-                        ctx.lineTo(particlesArray[b].x, particlesArray[b].y);
-                        ctx.stroke();
-                    }
+                    let distance = ((particlesArray[a].x - particlesArray[b].x) * (particlesArray[a].x - particlesArray[b].x)) + ((particlesArray[a].y - particlesArray[b].y) * (particlesArray[a].y - particlesArray[b].y));
+                    if (distance < (maxDistance * maxDistance)) { let opacity = 1 - (distance / (maxDistance * maxDistance)); ctx.globalAlpha = opacity; ctx.beginPath(); ctx.moveTo(particlesArray[a].x, particlesArray[a].y); ctx.lineTo(particlesArray[b].x, particlesArray[b].y); ctx.stroke(); }
                 }
             }
             ctx.globalAlpha = 1.0;
         }
-
-        function animate() {
-            requestAnimationFrame(animate);
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            for (let i = 0; i < particlesArray.length; i++) {
-                particlesArray[i].update();
-            }
-            connect();
-        }
-
-        window.addEventListener('resize', () => {
-            setCanvasSize();
-            init();
-        });
-        init();
-        animate();
+        function animate() { requestAnimationFrame(animate); ctx.clearRect(0, 0, canvas.width, canvas.height); for (let i = 0; i < particlesArray.length; i++) { particlesArray[i].update(); } connect(); }
+        window.addEventListener('resize', () => { setCanvasSize(); init(); });
+        init(); animate();
         // --- ENDE: PARTIKEL-ANIMATION ---
     </script>
 
     <script>
-        // --- Globales Setup (unverändert) ---
+        // --- Globales Setup ---
         const API_URL = 'http://46.224.63.203:5000';
         const SHORTCUT_STORAGE_KEY = 'dhf_shortcuts';
         const COLOR_STORAGE_KEY = 'dhf_color_settings';
@@ -449,11 +486,14 @@
         let colorSettings = {};
         let hoveredCellContext = null;
 
-        // --- NEU: Shortcut Map und Rollen-Check Variablen ---
+        let currentStaffingActual = {};
+
         let shortcutMap = {};
         const defaultShortcuts = { 'T.': 't', 'N.': 'n', '6': '6', 'FREI': 'f', 'X': 'x', 'U': 'u' };
-        let isVisitor = false; // <<< NEU
-        let isAdmin = false; // <<< NEU (Global definiert)
+        let isVisitor = false;
+        let isAdmin = false;
+
+        let staffingSortable = null; // (Sortable-Instanz, wird in dieser Version nicht verwendet)
 
         const DEFAULT_COLORS = {
             'weekend_bg_color': '#fff8f8',
@@ -466,10 +506,15 @@
 
         const gridContainer = document.getElementById('schichtplan-grid-container');
         const grid = document.getElementById('schichtplan-grid');
+        const staffingGridContainer = document.getElementById('staffing-grid-container');
+        const staffingGrid = document.getElementById('staffing-grid');
+        // (staffingGridBody wird in dieser Version nicht benötigt)
         const legend = document.getElementById('plan-legende');
         const monthLabel = document.getElementById('current-month-label');
         const prevMonthBtn = document.getElementById('prev-month-btn');
         const nextMonthBtn = document.getElementById('next-month-btn');
+        const saveStaffingOrderBtn = document.getElementById('save-staffing-order-btn');
+
         const shiftModal = document.getElementById('shift-modal');
         const shiftModalTitle = document.getElementById('shift-modal-title');
         const shiftModalInfo = document.getElementById('shift-modal-info');
@@ -477,8 +522,12 @@
         const closeShiftModalBtn = document.getElementById('close-shift-modal');
         let modalContext = { userId: null, dateStr: null };
 
+        const COL_WIDTH_NAME = 'minmax(150px, 1.5fr)';
+        const COL_WIDTH_DETAILS = 'minmax(80px, 1fr)';
+        const COL_WIDTH_TOTAL = 'minmax(60px, 0.5fr)';
 
-        // --- Basis-Funktionen (Logout, Auth-Check) ---
+
+        // --- Basis-Funktionen (Logout, Auth-Check) (unverändert) ---
         async function logout() {
             try { await apiFetch('/api/logout', 'POST'); }
             catch (e) { console.error(e); }
@@ -500,46 +549,29 @@
             const settingsDropdown = document.getElementById('settings-dropdown');
             const settingsDropdownContent = document.getElementById('settings-dropdown-content');
 
-            // --- NEUE LOGIK: Navigationsanpassung (KORRIGIERT für Admin-Sichtbarkeit) ---
-
-            // Dashboard Link nur für Admins/User anzeigen
             if (isAdmin || user.role.name === 'user') {
                  navDashboard.style.display = 'block';
             }
-
-            // Benutzerverwaltung Link nur für Admins anzeigen
             if (isAdmin) {
                 navUsers.style.display = 'block';
             }
-
             if (isVisitor) {
                 isVisitor = true;
                 document.body.classList.add('visitor-mode');
-                // Verstecke Dashboard & Benutzerverwaltung in der Hauptnavigation
                 navDashboard.style.display = 'none';
                 navUsers.style.display = 'none';
             }
-
-            // Verstecke alle admin-only Links für alle, die KEIN Admin sind (User, Besucher)
             if (!isAdmin) {
                 document.querySelectorAll('#settings-dropdown-content .admin-only').forEach(el => {
                     el.style.display = 'none';
                 });
-
-                // ZUSÄTZLICHER FIX: Wenn der Inhalt des Dropdowns leer ist (nur Admin-Only Links da waren),
-                // verstecke das Dropdown selbst (die "Einstellungen" Taste).
                 const visibleLinks = settingsDropdownContent.querySelectorAll('a:not([style*="display: none"])');
                 if (visibleLinks.length === 0) {
                      settingsDropdown.style.display = 'none';
                 }
             } else {
-                 // Wenn Admin, füge die Admin-Klasse zum Body hinzu, um den Cursor zu steuern
                  document.body.classList.add('admin-mode');
             }
-
-
-            // --- ENDE KORRIGIERTE LOGIK ---
-
         } catch (e) {
             logout();
         }
@@ -558,14 +590,11 @@
             return data;
         }
 
-        // --- NEU: Laden der Farbeinstellungen aus der DB (Wichtigste Änderung) ---
+        // --- Laden der Farbeinstellungen (unverändert) ---
         async function loadColorSettings() {
              let fetchedColors = DEFAULT_COLORS;
-
-            // Lade Farben aus der Datenbank
             try {
                 const data = await apiFetch('/api/settings', 'GET');
-                // Überschreibe Defaults nur, wenn Werte in der DB existieren
                 for(const key in DEFAULT_COLORS) {
                     if (data[key] !== undefined && data[key] !== null) {
                         fetchedColors[key] = data[key];
@@ -578,27 +607,18 @@
                  console.error("Fehler beim Laden der globalen Einstellungen:", error.message);
                  colorSettings = DEFAULT_COLORS;
             }
-
-            // Setzt CSS-Variablen, um Farben global anwendbar zu machen
             const root = document.documentElement.style;
             for (const key in colorSettings) {
-                // Ersetze Unterstrich durch Bindestrich für CSS-Variablen (z.b. weekend_bg_color -> --weekend-bg-color)
                 root.setProperty(`--${key.replace(/_/g, '-')}`, colorSettings[key]);
             }
         }
-        // --- ENDE NEU: Laden der Farbeinstellungen aus der DB ---
 
-
-        // --- MODAL-LOGIK (Angepasst) ---
+        // --- MODAL-LOGIK (unverändert) ---
         function closeModal(modalEl) {
             modalEl.style.display = 'none';
         }
         function openShiftModal(userId, dateStr, userName) {
-            // Die Prüfung ist jetzt im onclick-Handler, aber wir lassen diese Prüfung als Sicherheitsnetz
-            if (!isAdmin) {
-                return; // Verbiete das Öffnen des Modals für Nicht-Admins
-            }
-
+            if (!isAdmin) { return; }
             const d = new Date(dateStr);
             const dateDisplay = d.toLocaleDateString('de-DE', { weekday: 'long', day: '2-digit', month: '2-digit' });
             modalContext = { userId, dateStr };
@@ -611,55 +631,49 @@
             if (event.target == shiftModal) closeModal(shiftModal);
         }
 
-        // --- NEU: Laden aller Sondertermine ---
+        // --- Laden aller Sondertermine (unverändert) ---
         async function loadSpecialDates(year) {
              try {
-                // Fügt das Jahr als Filter hinzu
-                const dates = await apiFetch(`/api/special_dates?year=${year}`);
+                const holidays = await apiFetch(`/api/special_dates?type=holiday&year=${year}`);
+                const training = await apiFetch(`/api/special_dates?type=training&year=${year}`);
+                const shooting = await apiFetch(`/api/special_dates?type=shooting&year=${year}`);
+
                 currentSpecialDates = {};
-                dates.forEach(d => {
-                    if (d.date) {
-                        // Key: YYYY-MM-DD
-                        currentSpecialDates[d.date] = d.type;
-                    }
-                });
+                training.forEach(d => { if(d.date) currentSpecialDates[d.date] = d.type; });
+                shooting.forEach(d => { if(d.date) currentSpecialDates[d.date] = d.type; });
+                holidays.forEach(d => { if(d.date) currentSpecialDates[d.date] = 'holiday'; });
+
             } catch (error) {
                  console.error("Fehler beim Laden der Sondertermine:", error.message);
             }
         }
-        // --- ENDE NEU: Laden aller Sondertermine ---
 
 
-        // --- HAUPT-RENDER-LOGIK (Angepasst) ---
+        // --- HAUPT-RENDER-LOGIK (unverändert) ---
         async function renderGrid() {
             monthLabel.textContent = "Lade...";
-            grid.innerHTML = '<div style="padding: 20px; text-align: center; color: #333;">Lade Daten...</div>'; // (Textfarbe angepasst)
+            grid.innerHTML = '<div style="padding: 20px; text-align: center; color: #333;">Lade Daten...</div>';
+            staffingGrid.innerHTML = '';
             try {
-                // Lade Daten parallel
                 const shiftDataPromise = apiFetch(`/api/shifts?year=${currentYear}&month=${currentMonth}`);
                 const userDataPromise = apiFetch('/api/users');
-                // Sondertermine werden pro Jahr geladen
                 const specialDatesPromise = loadSpecialDates(currentYear);
 
-                const [shiftPayload, userData, specialDatesResult] = await Promise.all([shiftDataPromise, userDataPromise, specialDatesPromise]); // typeDataPromise entfernt
+                const [shiftPayload, userData, specialDatesResult] = await Promise.all([shiftDataPromise, userDataPromise, specialDatesPromise]);
 
                 allUsers = userData;
-                // allShiftTypes ist bereits gefüllt durch populateStaticElements
 
                 currentShifts = {};
                 shiftPayload.shifts.forEach(s => {
                     const key = `${s.user_id}-${s.date}`;
-                    // WICHTIG: Wir müssen die vollen Schichtdaten speichern, nicht nur die ID
-                    // (Wir holen sie aus allShiftTypes, das in populateStaticElements geladen wurde)
                     const fullShiftType = allShiftTypes[s.shifttype_id];
                     currentShifts[key] = {
                         ...s,
-                        shift_type: fullShiftType // Füge die vollen Schicht-Typ-Daten hinzu
+                        shift_type: fullShiftType
                     };
                 });
                 currentTotals = shiftPayload.totals;
 
-                // Konflikte speichern
                 currentViolations.clear();
                 if (shiftPayload.violations) {
                     shiftPayload.violations.forEach(v => {
@@ -667,86 +681,87 @@
                     });
                 }
 
+                currentStaffingActual = shiftPayload.staffing_actual || {};
+
                 buildGridDOM();
+                buildStaffingTable();
+
+                // (Sortierung in dieser Version deaktiviert)
+                // initializeSortable();
+
             } catch (error) {
                 grid.innerHTML = `<div style="padding: 20px; text-align: center; color: red;">Fehler beim Laden des Plans: ${error.message}</div>`;
             }
         }
 
+        // --- buildGridDOM (unverändert) ---
         function buildGridDOM() {
             const daysInMonth = new Date(currentYear, currentMonth, 0).getDate();
             const monthName = new Date(currentYear, currentMonth - 1, 1).toLocaleString('de-DE', { month: 'long', year: 'numeric' });
             monthLabel.textContent = monthName;
-            grid.style.gridTemplateColumns = `auto auto repeat(${daysInMonth}, 1fr) auto`;
+
+            grid.style.gridTemplateColumns = `${COL_WIDTH_NAME} ${COL_WIDTH_DETAILS} repeat(${daysInMonth}, 1fr) ${COL_WIDTH_TOTAL}`;
+
             grid.innerHTML = '';
             const weekdays = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'];
-            grid.appendChild(document.createElement('div'));
-            grid.appendChild(document.createElement('div'));
 
-            // --- HILFSFUNKTION ---
             const renderDayHeader = (day, isWeekend, dateStr) => {
                 const eventType = currentSpecialDates[dateStr];
-
                 const headerCell = document.createElement('div');
                 let headerClasses = 'grid-header';
-                let cellColor = ''; // (Wird nicht mehr für Wochenende/Events genutzt)
-                let textColor = '#333';
-
                 if (eventType) {
                     headerClasses += ` day-color-${eventType}`;
                 } else if (isWeekend) {
-                    headerClasses += ' weekend'; // (CSS-Variable wird im Stil angewendet)
-                } else {
-                    cellColor = '#fcfcfc'; // Default normaler Tag
+                    headerClasses += ' weekend';
                 }
-
                 headerCell.className = headerClasses;
-                if (cellColor) headerCell.style.backgroundColor = cellColor;
-                if (textColor && !isWeekend && !eventType) headerCell.style.color = textColor;
-
                 return headerCell;
             };
 
-            // --- Erzeugung der Header-Zeilen 1 (Wochentage) ---
+            // Header-Zeile 1 (Wochentage)
+            let nameHeader1 = document.createElement('div');
+            nameHeader1.className = 'grid-header';
+            grid.appendChild(nameHeader1);
+            let dogHeader1 = document.createElement('div');
+            dogHeader1.className = 'grid-header';
+            grid.appendChild(dogHeader1);
             for (let day = 1; day <= daysInMonth; day++) {
                 const d = new Date(currentYear, currentMonth - 1, day);
                 const dayName = weekdays[d.getDay()];
                 const isWeekend = d.getDay() === 0 || d.getDay() === 6;
-
                 const dateStr = `${currentYear}-${String(currentMonth).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-
                 const headerCell = renderDayHeader(day, isWeekend, dateStr);
                 headerCell.textContent = dayName;
                 grid.appendChild(headerCell);
             }
+            let totalHeader1 = document.createElement('div');
+            totalHeader1.className = 'grid-header-total';
+            grid.appendChild(totalHeader1);
 
-            grid.appendChild(document.createElement('div'));
-            grid.appendChild(document.createElement('div'));
+            // Header-Zeile 2 (Tage)
+            let nameHeader2 = document.createElement('div');
+            nameHeader2.className = 'grid-header-dog';
+            nameHeader2.textContent = 'Mitarbeiter';
+            grid.appendChild(nameHeader2);
             const dogHeader = document.createElement('div');
             dogHeader.className = 'grid-header-dog';
             dogHeader.textContent = 'Diensthund';
             grid.appendChild(dogHeader);
-
-            // --- Erzeugung der Header-Zeilen 2 (Tage des Monats) ---
             for (let day = 1; day <= daysInMonth; day++) {
                 const d = new Date(currentYear, currentMonth - 1, day);
                 const isWeekend = d.getDay() === 0 || d.getDay() === 6;
-
                 const dateStr = `${currentYear}-${String(currentMonth).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-
                 const headerCell = renderDayHeader(day, isWeekend, dateStr);
                 headerCell.textContent = day;
                 grid.appendChild(headerCell);
             }
-
             const totalHeader = document.createElement('div');
             totalHeader.className = 'grid-header-total';
             totalHeader.textContent = 'Std.';
             grid.appendChild(totalHeader);
 
+            // Benutzer-Zellen
             const visibleUsers = allUsers.filter(user => user.shift_plan_visible === true);
-
-            // --- Erzeugung der Benutzer-Zellen ---
             visibleUsers.forEach(user => {
                 const nameCell = document.createElement('div');
                 nameCell.className = 'grid-user-name';
@@ -760,72 +775,48 @@
                 for (let day = 1; day <= daysInMonth; day++) {
                     const d = new Date(currentYear, currentMonth - 1, day);
                     const isWeekend = d.getDay() === 0 || d.getDay() === 6;
-
                     const year = d.getFullYear();
                     const month = String(d.getMonth() + 1).padStart(2, '0');
                     const dayOfMonth = String(d.getDate()).padStart(2, '0');
                     const dateStr = `${year}-${month}-${dayOfMonth}`;
-
                     const key = `${user.id}-${dateStr}`;
                     const violationKey = `${user.id}-${day}`;
                     const eventType = currentSpecialDates[dateStr];
-
                     const shift = currentShifts[key];
-                    // KORREKTUR: shift_type ist jetzt ein volles Objekt
                     const shiftType = shift ? shift.shift_type : null;
                     const cell = document.createElement('div');
-
-                    // --- KORRIGIERTE LOGIK FÜR FARBEN & "---" ---
                     let cellClasses = 'grid-cell';
-                    let cellColor = null; // (Standard: null, damit CSS-Klassen greifen)
-                    let textColor = null; // (Standard: null, damit CSS-Klassen greifen)
+                    let cellColor = null;
+                    let textColor = null;
 
                     if (currentViolations.has(violationKey)) {
                          cellClasses += ' violation';
                     }
-
                     const dayHasSpecialBg = eventType || isWeekend;
 
                     if (shiftType) {
                         cell.textContent = shiftType.abbreviation;
-
-                        // Prüfe die neue Einstellung
                         if (shiftType.prioritize_background && dayHasSpecialBg) {
-                            // PRIORISIERUNG: Nutze Tagesfarbe (Klasse)
                             if (eventType) {
                                 cellClasses += ` day-color-${eventType}`;
                             } else if (isWeekend) {
                                 cellClasses += ' weekend';
                             }
-                            // Textfarbe wird von der Klasse gesteuert
                         } else {
-                            // STANDARD: Nutze Schichtfarbe (Inline Style)
                             cellColor = shiftType.color;
                             textColor = isColorDark(shiftType.color) ? 'white' : 'black';
                         }
-
                     } else {
-                        // KEINE SCHICHT
-                        cell.textContent = ''; // KORREKTUR: "---" entfernt
-
+                        cell.textContent = '';
                         if (eventType) {
                              cellClasses += ` day-color-${eventType}`;
                         } else if (isWeekend) {
                             cellClasses += ' weekend';
                         }
-                        // Textfarbe wird von der Klasse gesteuert
                     }
-                    // --- ENDE KORRIGIERTE LOGIK ---
-
                     cell.className = cellClasses;
-                    // Wende Inline-Stile nur an, wenn sie explizit gesetzt wurden (d.h. Schichtfarbe hat Prio)
-                    if (cellColor) {
-                        cell.style.backgroundColor = cellColor;
-                    }
-                    if (textColor) {
-                        cell.style.color = textColor;
-                    }
-
+                    if (cellColor) { cell.style.backgroundColor = cellColor; }
+                    if (textColor) { cell.style.color = textColor; }
                     cell.dataset.key = key;
 
                     if (isAdmin) {
@@ -858,55 +849,175 @@
             });
         }
 
-        // --- NEU: Helligkeitsprüfung für Textfarbe (innovativ) ---
+        // --- KORRIGIERT: buildStaffingTable (mit granularer Logik & Feedback) ---
+        function buildStaffingTable() {
+            const daysInMonth = new Date(currentYear, currentMonth, 0).getDate();
+
+            // 1. Finde relevante Schichtarten (SOLL > 0 an irgendeinem Tag)
+            const relevantShiftTypes = Object.values(allShiftTypes).filter(st =>
+                (st.min_staff_mo || 0) > 0 || (st.min_staff_di || 0) > 0 ||
+                (st.min_staff_mi || 0) > 0 || (st.min_staff_do || 0) > 0 ||
+                (st.min_staff_fr || 0) > 0 || (st.min_staff_sa || 0) > 0 ||
+                (st.min_staff_so || 0) > 0 || (st.min_staff_holiday || 0) > 0
+            );
+
+            if (relevantShiftTypes.length === 0) {
+                staffingGridContainer.style.display = 'none';
+                return;
+            }
+
+            staffingGridContainer.style.display = 'block';
+
+            staffingGrid.style.gridTemplateColumns = `${COL_WIDTH_NAME} ${COL_WIDTH_DETAILS} repeat(${daysInMonth}, 1fr) ${COL_WIDTH_TOTAL}`;
+            staffingGrid.innerHTML = ''; // (Grid leeren, nicht den Body)
+
+            // Map für Wochentage (JS: 0=So, 1=Mo... 6=Sa) zu unseren DB-Feldern
+            const dayKeyMap = [
+                'min_staff_so', // 0
+                'min_staff_mo', // 1
+                'min_staff_di', // 2
+                'min_staff_mi', // 3
+                'min_staff_do', // 4
+                'min_staff_fr', // 5
+                'min_staff_sa'  // 6
+            ];
+
+            // NEU (Feedback 3): Sortiere die Zeilen alphabetisch nach Kürzel
+            // (Wir pausieren die D&D-Sortierung, bis die Basis funktioniert)
+            relevantShiftTypes.sort((a, b) => a.abbreviation.localeCompare(b.abbreviation));
+
+            // --- Daten-Zeilen (pro Schichtart) ---
+            relevantShiftTypes.forEach(st => {
+                const st_id = st.id;
+
+                // 1. Label-Zelle
+                let labelCell = document.createElement('div');
+                labelCell.className = 'staffing-label';
+
+                // NEU (Feedback 1): Bessere Beschriftung
+                labelCell.textContent = `${st.abbreviation} (${st.name})`;
+                labelCell.style.fontWeight = '700';
+                labelCell.style.color = '#333';
+                staffingGrid.appendChild(labelCell);
+
+                // 2. Leere Zelle (für Bündigkeit)
+                let emptyCell = document.createElement('div');
+                emptyCell.className = 'staffing-cell staffing-untracked';
+                staffingGrid.appendChild(emptyCell);
+
+                let totalIst = 0;
+                let totalSoll = 0;
+
+                // 3. Tages-Zellen
+                for (let day = 1; day <= daysInMonth; day++) {
+                    const d = new Date(currentYear, currentMonth - 1, day);
+                    const dayOfWeek = d.getDay();
+                    const dateStr = `${currentYear}-${String(currentMonth).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+                    const isHoliday = currentSpecialDates[dateStr] === 'holiday';
+
+                    let sollValue = 0;
+
+                    if (isHoliday) {
+                        sollValue = st.min_staff_holiday || 0;
+                    } else {
+                        const dayKey = dayKeyMap[dayOfWeek];
+                        sollValue = st[dayKey] || 0;
+                    }
+                    totalSoll += sollValue;
+
+                    const istValue = (currentStaffingActual[st_id] && currentStaffingActual[st_id][day] !== undefined)
+                                     ? currentStaffingActual[st_id][day]
+                                     : 0;
+                    totalIst += istValue;
+
+                    const istCell = document.createElement('div');
+                    let cellClasses = 'staffing-cell';
+
+                    const eventType = currentSpecialDates[dateStr];
+                    if (eventType && !isHoliday) {
+                        cellClasses += ` day-color-${eventType}`;
+                    } else if (dayOfWeek === 0 || dayOfWeek === 6) {
+                        cellClasses += ' weekend';
+                    }
+
+                    // --- NEUE AMPEL-LOGIK + AUSBLENDEN (Feedback 1 & 4) ---
+                    if (sollValue === 0) {
+                        istCell.textContent = '';
+                        cellClasses += ' staffing-untracked'; // Grau
+                    } else {
+                        istCell.textContent = istValue;
+                        if (istValue === sollValue) {
+                            cellClasses += ' staffing-ok'; // Grün
+                        } else if (istValue > sollValue) {
+                             cellClasses += ' staffing-warning'; // Gelb (Überbesetzt)
+                        } else if (istValue > 0) {
+                            cellClasses += ' staffing-warning'; // Gelb (Unterbesetzt)
+                        } else {
+                            cellClasses += ' staffing-violation'; // Rot
+                        }
+                    }
+                    // --- ENDE NEUE AMPEL-LOGIK ---
+
+                    istCell.className = cellClasses;
+                    staffingGrid.appendChild(istCell);
+                }
+
+                // 4. Total-Zelle
+                let totalIstCell = document.createElement('div');
+                totalIstCell.className = 'staffing-total-header';
+                totalIstCell.textContent = totalIst;
+                if (totalIst < totalSoll) {
+                    totalIstCell.style.color = '#c00000';
+                } else if (totalIst > totalSoll && totalSoll > 0) {
+                     totalIstCell.style.color = '#856404';
+                }
+                staffingGrid.appendChild(totalIstCell);
+            });
+        }
+        // --- ENDE KORREKTUR ---
+
+        // --- (SortableJS-Funktionen in dieser Version entfernt) ---
+
+        // --- Helligkeitsprüfung (unverändert) ---
         function isColorDark(hexColor) {
-            if (!hexColor) return false; // Fallback
-            // Konvertiert RGB in Dezimal
+            if (!hexColor) return false;
             const hex = hexColor.replace('#', '');
-            // (Robustheits-Check für ungültige Farben)
             if (hex.length !== 6) return false;
             try {
                 const r = parseInt(hex.substring(0, 2), 16);
                 const g = parseInt(hex.substring(2, 4), 16);
                 const b = parseInt(hex.substring(4, 6), 16);
-                // Berechne Luminanz
                 const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
                 return luminance < 0.5;
             } catch (e) {
                 return false;
             }
         }
-        // --- ENDE NEU: Helligkeitsprüfung ---
 
-
-        // (populateStaticElements - angepasst für Modal/Legende)
-        async function populateStaticElements() {
-            // Laden der Schichtarten
-            if (Object.keys(allShiftTypes).length === 0) {
+        // --- populateStaticElements (ANGEPASST, Sortierung entfernt) ---
+        async function populateStaticElements(forceReload = false) {
+            if (Object.keys(allShiftTypes).length === 0 || forceReload) {
                 const typeData = await apiFetch('/api/shifttypes');
-                // KORREKTUR: Sicherstellen, dass alle Daten (inkl. prioritize_background) hier gespeichert werden
+                allShiftTypes = {};
                 typeData.forEach(st => allShiftTypes[st.id] = st);
             }
 
             legend.innerHTML = '<b>Legende:</b>';
             shiftSelection.innerHTML = '';
 
-            Object.values(allShiftTypes).forEach(st => {
+            // (Verwendet jetzt die unsortierte Objekt-Reihenfolge)
+            const sortedTypes = Object.values(allShiftTypes);
+
+            sortedTypes.forEach(st => {
                 const item = document.createElement('div');
                 item.className = 'legende-item';
-
-                // NEU: Fügt Indikator hinzu, wenn Hintergrund priorisiert wird
                 const priorityIndicator = st.prioritize_background ? ' (Hintergrund prior.)' : '';
-
                 item.innerHTML = `<div class="legende-color" style="background-color: ${st.color};"></div> ${st.abbreviation} (${st.name}${priorityIndicator})`;
                 legend.appendChild(item);
-
-                // Füge nur Buttons hinzu, wenn es kein Besucher ist
                 if (!isVisitor) {
                     const btn = document.createElement('button');
                     btn.textContent = `${st.abbreviation} (${st.name})`;
                     btn.style.backgroundColor = st.color;
-                    // Wenn die Hintergrundfarbe dunkel ist, Text auf Weiß stellen
                     if (isColorDark(st.color)) {
                         btn.style.color = 'white';
                     } else {
@@ -918,15 +1029,12 @@
             });
         }
 
-        // --- DATEN SPEICHERN (Angepasst) ---
+        // --- DATEN SPEICHERN (unverändert) ---
         async function saveShift(shifttypeId, userId, dateStr) {
-            // <<< WICHTIG: Erneute Backend-Sicherheitsprüfung
-            if (!isAdmin) { // Nur Admins dürfen speichern
+            if (!isAdmin) {
                 console.error("Nicht-Admins dürfen keine Schichten speichern.");
                 return;
             }
-            // >>>
-
             if (!userId || !dateStr) return;
             const key = `${userId}-${dateStr}`;
             const cell = findCellByKey(key);
@@ -939,36 +1047,32 @@
                 });
                 closeModal(shiftModal);
 
-                // 1. Schicht-Daten im Frontend-Cache aktualisieren
-                // (Hole die vollen Schichtdaten aus dem Cache)
                 const shiftType = allShiftTypes[savedData.shifttype_id];
                 const shiftWasDeleted = savedData.message && (savedData.message.includes("gelöscht") || savedData.message.includes("bereits Frei"));
 
                 if (shiftWasDeleted) {
                     currentShifts[key] = null;
                 } else if (shiftType) {
-                    // KORREKTUR: Speichere das volle Schicht-Objekt, damit buildGridDOM es lesen kann
                     currentShifts[key] = {
                         ...savedData,
                         shift_type: shiftType
                     };
                 } else {
-                     currentShifts[key] = savedData; // Fallback
+                     currentShifts[key] = savedData;
                 }
 
-                // 2. Konflikt-Set komplett neu setzen
                 currentViolations.clear();
                 if (savedData.violations) {
-                    // Konvertiere Liste von [user_id, day] zu Set von "user_id-day"
                     savedData.violations.forEach(v => {
                         currentViolations.add(`${v[0]}-${v[1]}`);
                     });
                 }
 
-                // 3. Grid neu zeichnen, um alle Konflikt-Ränder und Farben korrekt darzustellen
-                buildGridDOM();
+                currentStaffingActual = savedData.staffing_actual || {};
 
-                // 4. Stunden aktualisieren (unverändert)
+                buildGridDOM();
+                buildStaffingTable();
+
                 const totalCell = document.getElementById(`total-hours-${userId}`);
                 if (totalCell) {
                     totalCell.textContent = (savedData.new_total_hours || 0.0).toFixed(1);
@@ -992,26 +1096,20 @@
         prevMonthBtn.onclick = () => {
             currentMonth--;
             if (currentMonth < 1) { currentMonth = 12; currentYear--; }
-            // Lade Farben und rendere
             loadColorSettings();
-            // KORREKTUR: Muss Schichtarten neu laden, falls sie sich geändert haben
-            // (Sicherer, aber langsamer)
-            // Besser: Nur renderGrid() aufrufen.
             renderGrid();
         };
         nextMonthBtn.onclick = () => {
             currentMonth++;
             if (currentMonth > 12) { currentMonth = 1; currentYear++; }
-            // Lade Farben und rendere
             loadColorSettings();
             renderGrid();
         };
 
-        // --- NEU: Shortcut Ladefunktion (FINAL FIXED) ---
+        // --- Shortcut Ladefunktion (unverändert) ---
         function loadShortcuts() {
             let savedShortcuts = {};
             try {
-                // 1. Gespeicherte, benutzerdefinierte Shortcuts laden
                 const data = localStorage.getItem(SHORTCUT_STORAGE_KEY);
                 if (data) {
                     savedShortcuts = JSON.parse(data);
@@ -1019,70 +1117,42 @@
             } catch (e) {
                 console.error("Fehler beim Laden der Shortcuts aus localStorage, verwende Standards.", e);
             }
-
             const mergedShortcuts = {};
             const allAbbrevs = Object.values(allShiftTypes).map(st => st.abbreviation);
-
-            // 2. Gehe alle in der DB existierenden Abkürzungen durch
             allAbbrevs.forEach(abbrev => {
-                // Priorität: 1. Gespeicherte (LocalStorage) > 2. Standard (hardcoded)
                 const key = savedShortcuts[abbrev] || defaultShortcuts[abbrev];
-
-                // Füge nur hinzu, wenn ein Key definiert ist (um leere Einträge zu vermeiden)
                 if (key) {
                     mergedShortcuts[abbrev] = key;
                 }
             });
-
-            // Dreht die Map um: { 't': 'T.' }
-            // Wir mappen den Tastendruck (key) auf die Schicht-Abkürzung (abbrev)
             shortcutMap = Object.fromEntries(
                 Object.entries(mergedShortcuts).map(([abbrev, key]) => [key, abbrev])
             );
         }
 
-        // --- KEYBOARD SHORTCUT LISTENER (Angepasst) ---
+        // --- KEYBOARD SHORTCUT LISTENER (unverändert) ---
         window.addEventListener('keydown', async (event) => {
-            // FIX: Verbiete Shortcuts für alle, die NICHT Admin sind
             if (!isAdmin) return;
-
             if (shiftModal.style.display === 'block') return;
             if (!hoveredCellContext || !hoveredCellContext.userId) return;
-
             const key = event.key.toLowerCase();
-
-            // NEU: Verwendet die dynamische shortcutMap
-            const abbrev = shortcutMap[key]; // z.b. shortcutMap['t'] -> 'T.'
-
+            const abbrev = shortcutMap[key];
             if (abbrev !== undefined) {
                 event.preventDefault();
-
-                // Findet die Schichtart anhand der Abkürzung (z.b. 'T.')
                 const shiftType = Object.values(allShiftTypes).find(st => st.abbreviation === abbrev);
-
                 if (shiftType) {
                     await saveShift(shiftType.id, hoveredCellContext.userId, hoveredCellContext.dateStr);
                 } else {
-                    // Dieser Fall sollte NUR auftreten, wenn eine Abkürzung im localStorage gespeichert ist,
-                    // die aber nicht mehr in der DB existiert.
                     console.warn(`Shortcut "${key}" (Abk.: "${abbrev}") nicht in allShiftTypes gefunden.`);
                 }
             }
         });
 
-        // --- Initialisierung (FIX: Load Shortcuts früher) ---
+        // --- Initialisierung (unverändert) ---
         async function initialize() {
-            // MUSS zuerst geladen werden, damit CSS-Variablen für das erste Rendern gesetzt sind
             await loadColorSettings();
-
-            // 1. Schichtarten laden & statische Elemente befüllen
-            // WICHTIG: allShiftTypes wird hier gefüllt und ist für loadShortcuts UND renderGrid nötig!
             await populateStaticElements();
-
-            // 2. Shortcuts laden (Karte ist jetzt bereit für Keydown-Events)
             loadShortcuts();
-
-            // 3. (renderGrid lädt den Rest und rendert)
             await renderGrid();
         }
 

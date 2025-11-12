@@ -89,7 +89,7 @@
 
         main {
             padding: 30px;
-            max-width: 1200px;
+            max-width: 1400px;
             margin: auto;
         }
 
@@ -130,6 +130,7 @@
             padding: 15px 20px;
             border-bottom: 1px solid rgba(255, 255, 255, 0.1);
             color: #bdc3c7;
+            white-space: nowrap; /* (Verhindert Zeilenumbruch in Zellen) */
         }
 
         th {
@@ -187,7 +188,8 @@
             margin: 10% auto;
             padding: 0;
             width: 80%;
-            max-width: 550px;
+            /* --- NEU: Breiteres Modal --- */
+            max-width: 750px;
             border-radius: 8px;
             box-shadow: 0 4px 10px rgba(0,0,0,0.2);
         }
@@ -229,9 +231,18 @@
 
         .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
         .form-grid-hours { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px; }
-        /* --- NEU: Grid für Zeiten --- */
         .form-grid-times { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+
+        /* --- NEU: Grid für 4 Spalten (Besetzung) --- */
+        .form-grid-staffing {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr 1fr;
+            gap: 20px;
+            border-top: 1px solid rgba(255,255,255,0.1);
+            padding-top: 15px; margin-top: 15px;
+        }
         /* --- ENDE NEU --- */
+
 
         .form-group { margin-bottom: 15px; }
 
@@ -399,7 +410,8 @@
                                 <th>Startzeit</th>
                                 <th>Endzeit</th>
                                 <th>Zählt als Arbeitszeit</th>
-                                <th>Hintergrund Priorität?</th> <th>Aktionen</th>
+                                <th>Hintergrund Priorität?</th>
+                                <th>Aktionen</th>
                             </tr>
                         </thead>
                         <tbody id="type-table-body">
@@ -456,14 +468,46 @@
                     </div>
                 </div>
 
-                <div class="form-group" style="margin-top: 20px;">
+                <div class="form-grid-staffing">
+                    <div class="form-group">
+                        <label for="type-min-staff-mo">SOLL (Mo):</label>
+                        <input type="number" id="type-min-staff-mo" step="1" value="0" min="0">
+                    </div>
+                    <div class="form-group">
+                        <label for="type-min-staff-di">SOLL (Di):</label>
+                        <input type="number" id="type-min-staff-di" step="1" value="0" min="0">
+                    </div>
+                    <div class="form-group">
+                        <label for="type-min-staff-mi">SOLL (Mi):</label>
+                        <input type="number" id="type-min-staff-mi" step="1" value="0" min="0">
+                    </div>
+                    <div class="form-group">
+                        <label for="type-min-staff-do">SOLL (Do):</label>
+                        <input type="number" id="type-min-staff-do" step="1" value="0" min="0">
+                    </div>
+                    <div class="form-group">
+                        <label for="type-min-staff-fr">SOLL (Fr):</label>
+                        <input type="number" id="type-min-staff-fr" step="1" value="0" min="0">
+                    </div>
+                    <div class="form-group">
+                        <label for="type-min-staff-sa">SOLL (Sa):</label>
+                        <input type="number" id="type-min-staff-sa" step="1" value="0" min="0">
+                    </div>
+                    <div class="form-group">
+                        <label for="type-min-staff-so">SOLL (So):</label>
+                        <input type="number" id="type-min-staff-so" step="1" value="0" min="0">
+                    </div>
+                    <div class="form-group">
+                        <label for="type-min-staff-holiday" style="color: #3498db; font-weight: 600;">SOLL (Feiertag):</label>
+                        <input type="number" id="type-min-staff-holiday" step="1" value="0" min="0">
+                    </div>
+                </div>
+                <div class="form-group" style="margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.1);">
                     <input type="checkbox" id="type-is-work-shift">
                     <label for="type-is-work-shift" style="display: inline-block;">Zählt als Arbeitszeit (für Stundensumme)</label>
-                </div>
 
-                <div class="form-group" style="margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.1);">
-                    <input type="checkbox" id="type-prioritize-background">
-                    <label for="type-prioritize-background" style="display: inline-block;">Tages-Hintergrundfarbe priorisieren (z.B. für Wochenende/Feiertag)</label>
+                    <input type="checkbox" id="type-prioritize-background" style="margin-left: 20px;">
+                    <label for="type-prioritize-background" style="display: inline-block;">Hintergrund priorisieren</label>
                 </div>
                 </div>
             <div class="modal-footer">
@@ -477,83 +521,33 @@
         const canvas = document.getElementById('particle-canvas');
         const ctx = canvas.getContext('2d');
         const nodeColor = '#3498db';
-        const lineColor = '#ecf0f1'; // (Angepasst für besseren Kontrast)
+        const lineColor = '#ecf0f1';
         let particlesArray;
-
-        function setCanvasSize() {
-            canvas.width = window.innerWidth;
-            canvas.height = window.innerHeight;
-        }
+        function setCanvasSize() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; }
         setCanvasSize();
-
-        class Particle {
-            constructor(x, y, directionX, directionY, size) {
-                this.x = x; this.y = y; this.directionX = directionX; this.directionY = directionY; this.size = size;
-            }
-            draw() {
-                ctx.beginPath();
-                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2, false);
-                ctx.fillStyle = nodeColor;
-                ctx.fill();
-            }
-            update() {
-                if (this.x > canvas.width || this.x < 0) { this.directionX = -this.directionX; }
-                if (this.y > canvas.height || this.y < 0) { this.directionY = -this.directionY; }
-                this.x += this.directionX; this.y += this.directionY;
-                this.draw();
-            }
-        }
-
+        class Particle { constructor(x, y, directionX, directionY, size) { this.x = x; this.y = y; this.directionX = directionX; this.directionY = directionY; this.size = size; } draw() { ctx.beginPath(); ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2, false); ctx.fillStyle = nodeColor; ctx.fill(); } update() { if (this.x > canvas.width || this.x < 0) { this.directionX = -this.directionX; } if (this.y > canvas.height || this.y < 0) { this.directionY = -this.directionY; } this.x += this.directionX; this.y += this.directionY; this.draw(); } }
         function init() {
-            particlesArray = [];
-            let numberOfParticles = (canvas.height * canvas.width) / 9000;
-            if (numberOfParticles > 100) numberOfParticles = 100;
-
+            particlesArray = []; let numberOfParticles = (canvas.height * canvas.width) / 9000; if (numberOfParticles > 100) numberOfParticles = 100;
             for (let i = 0; i < numberOfParticles; i++) {
-                let size = (Math.random() * 2) + 1;
-                let x = (Math.random() * ((canvas.width - size * 2) - (size * 2)) + size * 2);
+                let size = (Math.random() * 2) + 1; let x = (Math.random() * ((canvas.width - size * 2) - (size * 2)) + size * 2);
                 let y = (Math.random() * ((canvas.height - size * 2) - (size * 2)) + size * 2);
-                let directionX = (Math.random() * 0.4) - 0.2;
-                let directionY = (Math.random() * 0.4) - 0.2;
+                let directionX = (Math.random() * 0.4) - 0.2; let directionY = (Math.random() * 0.4) - 0.2;
                 particlesArray.push(new Particle(x, y, directionX, directionY, size));
             }
         }
-
         function connect() {
-            let maxDistance = 150;
-            ctx.strokeStyle = lineColor;
+            let maxDistance = 150; ctx.strokeStyle = lineColor;
             for (let a = 0; a < particlesArray.length; a++) {
                 for (let b = a; b < particlesArray.length; b++) {
-                    let distance = ((particlesArray[a].x - particlesArray[b].x) * (particlesArray[a].x - particlesArray[b].x))
-                                 + ((particlesArray[a].y - particlesArray[b].y) * (particlesArray[a].y - particlesArray[b].y));
-                    if (distance < (maxDistance * maxDistance)) {
-                        let opacity = 1 - (distance / (maxDistance * maxDistance));
-                        ctx.globalAlpha = opacity;
-                        ctx.beginPath();
-                        ctx.moveTo(particlesArray[a].x, particlesArray[a].y);
-                        ctx.lineTo(particlesArray[b].x, particlesArray[b].y);
-                        ctx.stroke();
-                    }
+                    let distance = ((particlesArray[a].x - particlesArray[b].x) * (particlesArray[a].x - particlesArray[b].x)) + ((particlesArray[a].y - particlesArray[b].y) * (particlesArray[a].y - particlesArray[b].y));
+                    if (distance < (maxDistance * maxDistance)) { let opacity = 1 - (distance / (maxDistance * maxDistance)); ctx.globalAlpha = opacity; ctx.beginPath(); ctx.moveTo(particlesArray[a].x, particlesArray[a].y); ctx.lineTo(particlesArray[b].x, particlesArray[b].y); ctx.stroke(); }
                 }
             }
             ctx.globalAlpha = 1.0;
         }
-
-        function animate() {
-            requestAnimationFrame(animate);
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            for (let i = 0; i < particlesArray.length; i++) {
-                particlesArray[i].update();
-            }
-            connect();
-        }
-
-        window.addEventListener('resize', () => {
-            setCanvasSize();
-            init();
-        });
-        init();
-        animate();
+        function animate() { requestAnimationFrame(animate); ctx.clearRect(0, 0, canvas.width, canvas.height); for (let i = 0; i < particlesArray.length; i++) { particlesArray[i].update(); } connect(); }
+        window.addEventListener('resize', () => { setCanvasSize(); init(); });
+        init(); animate();
         // --- ENDE: PARTIKEL-ANIMATION ---
     </script>
 
@@ -561,7 +555,7 @@
         // --- Globales Setup ---
         const API_URL = 'http://46.224.63.203:5000';
         let user;
-        let isAdmin = false; // <<< NEU
+        let isAdmin = false;
 
         async function logout() {
             try { await apiFetch('/api/logout', 'POST'); }
@@ -577,17 +571,14 @@
             if (!user || !user.vorname || !user.role) { throw new Error("Kein User oder fehlende Rolle"); }
             document.getElementById('welcome-user').textContent = `Willkommen, ${user.vorname}!`;
 
-            // --- NEUE LOGIK: Rollenprüfung und UI-Anpassung ---
             isAdmin = user.role.name === 'admin';
             const isVisitor = user.role.name === 'Besucher';
             const isUser = user.role.name === 'user';
 
-            // 1. Haupt-Navigationsanpassung
             document.getElementById('nav-dashboard').style.display = isVisitor ? 'none' : 'block';
             document.getElementById('nav-users').style.display = isAdmin ? 'block' : 'none';
 
             if (isVisitor || isUser) {
-                // Nur Admins dürfen auf die Schichtarten-Verwaltung zugreifen
                 document.getElementById('content-wrapper').innerHTML = `
                     <div class="restricted-view">
                         <h2 style="color: #e74c3c;">Zugriff verweigert</h2>
@@ -599,15 +590,11 @@
                  throw new Error("Keine Admin-Rechte für Schichtarten-Verwaltung.");
             }
 
-            // 2. Dropdown-Anpassung (Nur für Admins relevant, da Nicht-Admins oben geblockt werden)
             if (isAdmin) {
-                // (Korrektur: JavaScript muss die 'admin-only' Links anzeigen, nicht 'user-only')
                 document.querySelectorAll('#settings-dropdown-content .admin-only').forEach(el => {
                     el.style.display = 'block';
                 });
             }
-            // --- ENDE NEUE LOGIK ---
-
         } catch (e) {
              if (!e.message.includes("Admin-Rechte")) {
                  logout();
@@ -615,7 +602,6 @@
         }
         document.getElementById('logout-btn').onclick = logout;
 
-        // --- Globale API-Funktion (unverändert) ---
         async function apiFetch(endpoint, method = 'GET', body = null) {
             const options = {
                 method,
@@ -659,8 +645,19 @@
         const typeIsWorkShiftField = document.getElementById('type-is-work-shift');
         const typeStartTimeField = document.getElementById('type-start-time');
         const typeEndTimeField = document.getElementById('type-end-time');
-        // NEUES FELD
         const typePrioritizeBackgroundField = document.getElementById('type-prioritize-background');
+
+        // --- NEUE FELDER ---
+        const typeMinStaffMo = document.getElementById('type-min-staff-mo');
+        const typeMinStaffDi = document.getElementById('type-min-staff-di');
+        const typeMinStaffMi = document.getElementById('type-min-staff-mi');
+        const typeMinStaffDo = document.getElementById('type-min-staff-do');
+        const typeMinStaffFr = document.getElementById('type-min-staff-fr');
+        const typeMinStaffSa = document.getElementById('type-min-staff-sa');
+        const typeMinStaffSo = document.getElementById('type-min-staff-so');
+        const typeMinStaffHoliday = document.getElementById('type-min-staff-holiday');
+        // --- ENDE NEU ---
+
 
         function openModal() { modal.style.display = 'block'; modalStatus.textContent = ''; }
         function closeModal() { modal.style.display = 'none'; }
@@ -675,12 +672,9 @@
                 types.forEach(st => {
                     const row = document.createElement('tr');
                     const isWorkShiftText = st.is_work_shift ? 'Ja' : 'Nein';
-                    // NEU: Text für prioritize_background
                     const prioritizeBgText = st.prioritize_background ? 'Ja' : 'Nein';
                     const colorPreview = `<div style="width: 20px; height: 20px; background-color: ${st.color}; border: 1px solid #555; display: inline-block; vertical-align: middle; margin-right: 5px;"></div> ${st.color}`;
-
                     const stJsonString = JSON.stringify(st).replace(/'/g, "\\'");
-
                     const hours = (st.hours || 0.0).toFixed(1);
                     const spillover = (st.hours_spillover || 0.0).toFixed(1);
                     const startTime = st.start_time || '---';
@@ -696,7 +690,8 @@
                         <td>${startTime}</td>
                         <td>${endTime}</td>
                         <td>${isWorkShiftText}</td>
-                        <td>${prioritizeBgText}</td> <td class="actions">
+                        <td>${prioritizeBgText}</td>
+                        <td class="actions">
                             <button class="btn-edit" onclick='openEditModal(${stJsonString})'>Bearbeiten</button>
                             <button class="btn-delete" onclick="deleteShiftType(${st.id})">Löschen</button>
                         </td>
@@ -720,7 +715,17 @@
             typeIsWorkShiftField.checked = false;
             typeStartTimeField.value = '';
             typeEndTimeField.value = '';
-            typePrioritizeBackgroundField.checked = false; // NEU
+            typePrioritizeBackgroundField.checked = false;
+            // --- NEU ---
+            typeMinStaffMo.value = 0;
+            typeMinStaffDi.value = 0;
+            typeMinStaffMi.value = 0;
+            typeMinStaffDo.value = 0;
+            typeMinStaffFr.value = 0;
+            typeMinStaffSa.value = 0;
+            typeMinStaffSo.value = 0;
+            typeMinStaffHoliday.value = 0;
+            // --- ENDE NEU ---
             openModal();
         };
 
@@ -736,7 +741,17 @@
             typeIsWorkShiftField.checked = st.is_work_shift;
             typeStartTimeField.value = st.start_time || '';
             typeEndTimeField.value = st.end_time || '';
-            typePrioritizeBackgroundField.checked = st.prioritize_background; // NEU
+            typePrioritizeBackgroundField.checked = st.prioritize_background;
+            // --- NEU ---
+            typeMinStaffMo.value = st.min_staff_mo || 0;
+            typeMinStaffDi.value = st.min_staff_di || 0;
+            typeMinStaffMi.value = st.min_staff_mi || 0;
+            typeMinStaffDo.value = st.min_staff_do || 0;
+            typeMinStaffFr.value = st.min_staff_fr || 0;
+            typeMinStaffSa.value = st.min_staff_sa || 0;
+            typeMinStaffSo.value = st.min_staff_so || 0;
+            typeMinStaffHoliday.value = st.min_staff_holiday || 0;
+            // --- ENDE NEU ---
             openModal();
         }
 
@@ -752,7 +767,17 @@
                 is_work_shift: typeIsWorkShiftField.checked,
                 start_time: typeStartTimeField.value || null,
                 end_time: typeEndTimeField.value || null,
-                prioritize_background: typePrioritizeBackgroundField.checked // NEU
+                prioritize_background: typePrioritizeBackgroundField.checked,
+                // --- NEU ---
+                min_staff_mo: parseInt(typeMinStaffMo.value) || 0,
+                min_staff_di: parseInt(typeMinStaffDi.value) || 0,
+                min_staff_mi: parseInt(typeMinStaffMi.value) || 0,
+                min_staff_do: parseInt(typeMinStaffDo.value) || 0,
+                min_staff_fr: parseInt(typeMinStaffFr.value) || 0,
+                min_staff_sa: parseInt(typeMinStaffSa.value) || 0,
+                min_staff_so: parseInt(typeMinStaffSo.value) || 0,
+                min_staff_holiday: parseInt(typeMinStaffHoliday.value) || 0
+                // --- ENDE NEU ---
             };
 
             if (!payload.name || !payload.abbreviation) {

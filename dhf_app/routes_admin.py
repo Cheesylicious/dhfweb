@@ -2,7 +2,7 @@ from flask import Blueprint, request, jsonify, current_app
 # Importe für Shift und GlobalSetting hinzugefügt (Regel 1)
 from .models import User, Role, ShiftType, Shift, GlobalSetting
 from .extensions import db, bcrypt
-from flask_login import login_required, current_user # <<< login_required HINZUGEFÜGT
+from flask_login import login_required, current_user  # <<< login_required HINZUGEFÜGT
 from functools import wraps
 from datetime import datetime
 
@@ -29,7 +29,7 @@ def none_if_empty(value):
 
 # --- 8. BENUTZERVERWALTUNGS-API ---
 @admin_bp.route('/users', methods=['GET'])
-@login_required # <<< GEÄNDERT: Erlaubt allen eingeloggten Benutzern das Lesen
+@login_required  # <<< GEÄNDERT: Erlaubt allen eingeloggten Benutzern das Lesen
 def get_users():
     users = User.query.order_by(User.shift_plan_sort_order, User.name).all()
     return jsonify([user.to_dict() for user in users]), 200
@@ -163,9 +163,10 @@ def delete_role(role_id):
 
 
 @admin_bp.route('/shifttypes', methods=['GET'])
-@login_required # <<< GEÄNDERT: Erlaubt allen eingeloggten Benutzern das Lesen
+@login_required
 def get_shifttypes():
-    types = ShiftType.query.all()
+    # --- NEU: Sortierung anwenden ---
+    types = ShiftType.query.order_by(ShiftType.staffing_sort_order, ShiftType.abbreviation).all()
     return jsonify([st.to_dict() for st in types]), 200
 
 
@@ -184,12 +185,19 @@ def create_shifttype():
         hours=data.get('hours', 0.0),
         is_work_shift=data.get('is_work_shift', False),
         hours_spillover=data.get('hours_spillover', 0.0),
-        # --- NEU: Zeiten speichern ---
         start_time=data.get('start_time'),
         end_time=data.get('end_time'),
-        # --- ENDE NEU ---
-        # --- NEU: Hintergrund-Priorisierung speichern ---
-        prioritize_background=data.get('prioritize_background', False)
+        prioritize_background=data.get('prioritize_background', False),
+        min_staff_mo=data.get('min_staff_mo', 0),
+        min_staff_di=data.get('min_staff_di', 0),
+        min_staff_mi=data.get('min_staff_mi', 0),
+        min_staff_do=data.get('min_staff_do', 0),
+        min_staff_fr=data.get('min_staff_fr', 0),
+        min_staff_sa=data.get('min_staff_sa', 0),
+        min_staff_so=data.get('min_staff_so', 0),
+        min_staff_holiday=data.get('min_staff_holiday', 0),
+        # --- NEU: Sortierung beim Erstellen (Standard 999) ---
+        staffing_sort_order=data.get('staffing_sort_order', 999)
         # --- ENDE NEU ---
     )
     db.session.add(new_type)
@@ -210,12 +218,19 @@ def update_shifttype(type_id):
     st.hours = data.get('hours', st.hours)
     st.is_work_shift = data.get('is_work_shift', st.is_work_shift)
     st.hours_spillover = data.get('hours_spillover', st.hours_spillover)
-    # --- NEU: Zeiten aktualisieren ---
     st.start_time = data.get('start_time', st.start_time)
     st.end_time = data.get('end_time', st.end_time)
-    # --- ENDE NEU ---
-    # --- NEU: Hintergrund-Priorisierung aktualisieren ---
     st.prioritize_background = data.get('prioritize_background', st.prioritize_background)
+    st.min_staff_mo = data.get('min_staff_mo', st.min_staff_mo)
+    st.min_staff_di = data.get('min_staff_di', st.min_staff_di)
+    st.min_staff_mi = data.get('min_staff_mi', st.min_staff_mi)
+    st.min_staff_do = data.get('min_staff_do', st.min_staff_do)
+    st.min_staff_fr = data.get('min_staff_fr', st.min_staff_fr)
+    st.min_staff_sa = data.get('min_staff_sa', st.min_staff_sa)
+    st.min_staff_so = data.get('min_staff_so', st.min_staff_so)
+    st.min_staff_holiday = data.get('min_staff_holiday', st.min_staff_holiday)
+    # --- NEU: Sortierung aktualisieren ---
+    st.staffing_sort_order = data.get('staffing_sort_order', st.staffing_sort_order)
     # --- ENDE NEU ---
 
     db.session.commit()
@@ -235,16 +250,48 @@ def delete_shifttype(type_id):
     return jsonify({"message": "Schicht-Typ gelöscht"}), 200
 
 
-# --- NEUE ROUTEN: GLOBALE EINSTELLUNGEN ---
+# --- NEUE ROUTE ZUM SPEICHERN DER SOLL/IST-SORTIERUNG ---
+@admin_bp.route('/shifttypes/staffing_order', methods=['PUT'])
+@admin_required
+def update_staffing_order():
+    """
+    Nimmt eine Liste von Schichtart-IDs in der gewünschten Sortierreihenfolge entgegen.
+    """
+    data = request.get_json()
+    if not isinstance(data, list):
+        return jsonify({"message": "Eine Liste von IDs wurde erwartet"}), 400
+
+    try:
+        # Lade alle Schichtarten, die in der Liste vorkommen
+        type_ids = [item['id'] for item in data]
+        types = ShiftType.query.filter(ShiftType.id.in_(type_ids)).all()
+        type_map = {t.id: t for t in types}
+
+        # Aktualisiere die Sortierreihenfolge basierend auf dem Index in der Liste
+        for item in data:
+            type_id = item.get('id')
+            order = item.get('order')
+            if type_id in type_map:
+                type_map[type_id].staffing_sort_order = order
+
+        db.session.commit()
+        return jsonify({"message": "Sortierreihenfolge der Besetzung gespeichert"}), 200
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Fehler bei update_staffing_order: {str(e)}")
+        return jsonify({"message": f"Datenbankfehler: {str(e)}"}), 500
+
+
+# --- ENDE NEUE ROUTE ---
+
 
 @admin_bp.route('/settings', methods=['GET'])
-@login_required # <<< GEÄNDERT: Erlaubt allen eingeloggten Benutzern das Lesen
+@login_required
 def get_global_settings():
     """
     Ruft alle globalen Schlüssel-Wert-Paare (GlobalSetting) ab und gibt sie als Dictionary zurück.
     """
     settings = GlobalSetting.query.all()
-    # Konvertiert [GlobalSetting(key='k', value='v'), ...] zu {'k': 'v', ...}
     settings_dict = {s.key: s.value for s in settings}
     return jsonify(settings_dict), 200
 
@@ -262,20 +309,14 @@ def update_global_settings():
     updated_count = 0
     try:
         for key, value in data.items():
-            # Versucht, bestehende Einstellung zu finden
             setting = GlobalSetting.query.filter_by(key=key).first()
-
             if setting:
-                # Aktualisieren
                 setting.value = value
                 db.session.add(setting)
             else:
-                # Neu erstellen
                 new_setting = GlobalSetting(key=key, value=value)
                 db.session.add(new_setting)
-
             updated_count += 1
-
         db.session.commit()
         return jsonify({"message": f"{updated_count} Einstellungen erfolgreich gespeichert."}), 200
 

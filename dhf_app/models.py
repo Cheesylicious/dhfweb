@@ -4,8 +4,8 @@ from datetime import datetime
 
 
 # --- 5. Datenbank-Modelle ---
-# (Modelle User, Role, ShiftType, Shift bleiben unverändert)
-# ... (Code für User, Role, ShiftType, Shift) ...
+# (Modelle User, Role, Shift bleiben unverändert)
+# ... (Code für User, Role) ...
 
 class Role(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -65,12 +65,21 @@ class ShiftType(db.Model):
     hours = db.Column(db.Float, default=0.0)
     is_work_shift = db.Column(db.Boolean, default=False)
     hours_spillover = db.Column(db.Float, default=0.0)
-    # --- Start- und Endzeit für Konfliktprüfung ---
     start_time = db.Column(db.String(5), nullable=True)  # Format 'HH:MM'
     end_time = db.Column(db.String(5), nullable=True)  # Format 'HH:MM'
-
-    # --- NEU: Hintergrund-Priorisierung ---
     prioritize_background = db.Column(db.Boolean, default=False, nullable=False)
+
+    min_staff_mo = db.Column(db.Integer, default=0, nullable=False)
+    min_staff_di = db.Column(db.Integer, default=0, nullable=False)
+    min_staff_mi = db.Column(db.Integer, default=0, nullable=False)
+    min_staff_do = db.Column(db.Integer, default=0, nullable=False)
+    min_staff_fr = db.Column(db.Integer, default=0, nullable=False)
+    min_staff_sa = db.Column(db.Integer, default=0, nullable=False)
+    min_staff_so = db.Column(db.Integer, default=0, nullable=False)
+    min_staff_holiday = db.Column(db.Integer, default=0, nullable=False)
+
+    # --- NEU: Sortierung für SOLL/IST-Tabelle ---
+    staffing_sort_order = db.Column(db.Integer, default=999)
 
     # --- ENDE NEU ---
 
@@ -81,8 +90,17 @@ class ShiftType(db.Model):
                 "hours_spillover": self.hours_spillover,
                 "start_time": self.start_time,
                 "end_time": self.end_time,
-                # --- NEU: Rückgabe des Feldes ---
-                "prioritize_background": self.prioritize_background
+                "prioritize_background": self.prioritize_background,
+                "min_staff_mo": self.min_staff_mo,
+                "min_staff_di": self.min_staff_di,
+                "min_staff_mi": self.min_staff_mi,
+                "min_staff_do": self.min_staff_do,
+                "min_staff_fr": self.min_staff_fr,
+                "min_staff_sa": self.min_staff_sa,
+                "min_staff_so": self.min_staff_so,
+                "min_staff_holiday": self.min_staff_holiday,
+                # --- NEU: Rückgabe der Sortierung ---
+                "staffing_sort_order": self.staffing_sort_order
                 # --- ENDE NEU ---
                 }
 
@@ -105,16 +123,13 @@ class Shift(db.Model):
                 "shifttype_abbreviation": abbr}
 
 
-# --- NEUES MODELL ---
 class SpecialDate(db.Model):
     """
     Speichert Feiertage, Ausbildungstermine und Schießtermine.
     """
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(100), nullable=False)
-    date = db.Column(db.Date, nullable=True)  # (Datum kann für Vorlagen (MV-Feiertage) null sein)
-
-    # 'holiday', 'training', 'shooting'
+    date = db.Column(db.Date, nullable=True)
     type = db.Column(db.String(20), nullable=False, index=True)
 
     def safe_date_iso(self, date_obj):
@@ -130,7 +145,6 @@ class SpecialDate(db.Model):
         }
 
 
-# --- NEUES MODELL: Globale Einstellungen (Farben etc.) ---
 class GlobalSetting(db.Model):
     """
     Speichert globale Schlüssel-Wert-Paare für Einstellungen (z.B. Farben).
@@ -144,4 +158,3 @@ class GlobalSetting(db.Model):
             "key": self.key,
             "value": self.value
         }
-# --- ENDE NEUES MODELL ---
