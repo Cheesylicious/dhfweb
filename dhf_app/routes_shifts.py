@@ -1,3 +1,5 @@
+# cheesylicious/dhfweb/dhfweb-8c61769a1d719fb2f6c9f14a71dc863ec0e0b9b5/dhf_app/routes_shifts.py
+
 from flask import Blueprint, request, jsonify, current_app
 from .models import Shift, ShiftType, User
 from .extensions import db
@@ -23,6 +25,12 @@ def _calculate_user_total_hours(user_id, year, month):
     try:
         first_day_of_current_month = datetime(year, month, 1)
         last_day_of_previous_month = first_day_of_current_month - timedelta(days=1)
+
+        # --- KORREKTUR (aus vorherigem Schritt) ---
+        days_in_month = calendar.monthrange(year, month)[1]
+        last_day_of_current_month = date(year, month, days_in_month)
+        # --- ENDE KORREKTUR ---
+
     except ValueError:
         current_app.logger.error(f"Ungültiges Datum in _calculate_user_total_hours: {year}-{month}")
         return 0.0
@@ -39,13 +47,23 @@ def _calculate_user_total_hours(user_id, year, month):
     for shift in shifts_in_this_month:
         if shift.shift_type and shift.shift_type.is_work_shift:
             try:
-                # Fügt Robustheit beim Parsen hinzu
+                # --- KORREKTUR V2 (aus vorherigem Schritt) ---
+
+                # 1. Addiere IMMER die Stunden des Tages (z.B. 6)
                 total_hours += float(shift.shift_type.hours or 0.0)
+
+                # 2. Addiere den Übertrag (z.B. 6), ABER NUR,
+                #    wenn die Schicht NICHT am letzten Tag des Monats stattfindet.
+                if shift.date != last_day_of_current_month:
+                    total_hours += float(shift.shift_type.hours_spillover or 0.0)
+
+                # --- ENDE KORREKTUR V2 ---
             except Exception:
                 current_app.logger.warning(
                     f"Ungültiger hours-Wert für ShiftType id={getattr(shift.shift_type, 'id', None)}")
 
     # Spillover vom letzten Tag des Vormonats
+    # (Diese Logik ist KORREKT und bleibt unverändert)
     shifts_on_last_day_prev_month = Shift.query.options(joinedload(Shift.shift_type)).filter(
         Shift.user_id == user_id,
         Shift.date == last_day_of_previous_month.date()
@@ -143,16 +161,32 @@ def get_shifts():
     users = User.query.order_by(User.shift_plan_sort_order, User.name).all()
     shift_types = ShiftType.query.all()
 
-    shifts_data = [s.to_dict() for s in shifts_for_calc if s.date >= current_month_start_date]
-    shifts_all_data = [s.to_dict() for s in shifts_for_calc]
+    # --- ANPASSUNG (Regel 1) ---
+    # Trenne die Schichten des aktuellen Monats von denen des Vormonats
+    shifts_data = []
+    shifts_last_month_data = []
+
+    for s in shifts_for_calc:
+        s_dict = s.to_dict()  # Konvertiere einmal
+        if s.date >= current_month_start_date:
+            shifts_data.append(s_dict)
+        else:
+            shifts_last_month_data.append(s_dict)
+
+    # (shifts_all_data wird für die Konfliktberechnung benötigt und muss alle enthalten)
+    shifts_all_data = shifts_data + shifts_last_month_data
+    # --- ENDE ANPASSUNG ---
+
     users_data = [u.to_dict() for u in users]
     shifttypes_data = [st.to_dict() for st in shift_types]  # (Enthält jetzt die granularen SOLL-Werte)
 
     # 2. Stundensummen berechnen
     first_day = datetime(year, month, 1)
     last_day_prev_month = first_day - timedelta(days=1)
-    user_ids_this_month = {s.user_id for s in shifts_for_calc if s.date >= first_day.date()}
-    user_ids_prev_month = {s.user_id for s in shifts_for_calc if s.date == last_day_prev_month.date()}
+
+    # (Logik zur Ermittlung relevanter User-IDs kann vereinfacht werden)
+    user_ids_this_month = {s['user_id'] for s in shifts_data}
+    user_ids_prev_month = {s['user_id'] for s in shifts_last_month_data}
     relevant_user_ids = user_ids_this_month.union(user_ids_prev_month)
 
     totals_dict = {}
@@ -172,7 +206,8 @@ def get_shifts():
         "shifts": shifts_data,
         "totals": totals_dict,
         "violations": violations_list,
-        "staffing_actual": staffing_actual
+        "staffing_actual": staffing_actual,
+        "shifts_last_month": shifts_last_month_data  # <-- NEU HINZUGEFÜGT
     }), 200
 
 
@@ -318,13 +353,14 @@ def save_shift():
     else:
         response_data = {"message": "Keine Aktion erforderlich (bereits Frei oder kein payload)."}
 
-    # Totals
+    # Totals (Ruft die KORRIGIERTE Funktion auf)
     new_total = _calculate_user_total_hours(user_id, shift_date.year, shift_date.month)
     response_data['new_total_hours'] = new_total
 
     try:
         next_day = shift_date + timedelta(days=1)
         if next_day.month != shift_date.month:
+            # Neuberechnung des Folgemonats (falls der geänderte Tag der Monatsletzte war)
             response_data['new_total_hours_next_month'] = _calculate_user_total_hours(user_id, next_day.year,
                                                                                       next_day.month)
     except Exception as e:

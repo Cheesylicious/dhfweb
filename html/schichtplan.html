@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <title>Schichtplan - DHF-Planer</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=1200">
     <style>
         /* Import einer modernen Schriftart */
         @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap');
@@ -166,10 +166,23 @@
         #save-staffing-order-btn { display: none; }
 
 
-        #schichtplan-grid-container { overflow-x: auto; }
-        #schichtplan-grid { display: grid; }
+        /* --- ANPASSUNG (Regel 1): Wrapper übernimmt Scrollen --- */
+        #unified-grid-wrapper {
+            overflow-x: auto;
+        }
 
-        .grid-header, .grid-cell, .grid-user-name, .grid-user-total, .grid-user-dog {
+        /* ALT: Container scrollt nicht mehr selbst */
+        #schichtplan-grid-container {
+            /* overflow-x: auto; */ /* <-- ENTFERNT */
+        }
+        #schichtplan-grid {
+            display: grid;
+        }
+        /* --- ENDE ANPASSUNG --- */
+
+
+        /* --- ANPASSUNG: "Ü"-Spalten hinzugefügt --- */
+        .grid-header, .grid-cell, .grid-user-name, .grid-user-total, .grid-user-dog, .grid-header-uebertrag, .grid-user-uebertrag {
             padding: 10px;
             border-bottom: 1px solid #eee;
             border-right: 1px solid #eee;
@@ -186,12 +199,15 @@
         .grid-header.weekend { background-color: var(--weekend-bg-color, #fff8f8); color: var(--weekend-text-color, #333); }
         .grid-cell.weekend { background-color: var(--weekend-bg-color, #fff8f8); color: var(--weekend-text-color, #333); }
 
+        /* --- ANPASSUNG (Regel 1) --- */
+        /* Feiertag (Holiday) färbt die GESAMTE Spalte (Header + Zellen) */
         .day-color-holiday { background-color: var(--holiday-bg-color, #ffddaa) !important; color: var(--text-color, #333); }
-        .day-color-training { background-color: var(--training-bg-color, #daffdb) !important; color: var(--text-color, #333); }
-        .day-color-shooting { background-color: var(--shooting-bg-color, #ffb0b0) !important; color: var(--text-color, #333); }
         .grid-header.day-color-holiday { color: var(--text-color, #333); }
-        .grid-header.day-color-training { color: var(--text-color, #333); }
-        .grid-header.day-color-shooting { color: var(--text-color, #333); }
+
+        /* Training/Schießen färbt NUR den Header */
+        .grid-header.day-color-training { background-color: var(--training-bg-color, #daffdb) !important; color: var(--text-color, #333); }
+        .grid-header.day-color-shooting { background-color: var(--shooting-bg-color, #ffb0b0) !important; color: var(--text-color, #333); }
+        /* --- ENDE ANPASSUNG --- */
 
         .grid-user-name {
             font-weight: 600; text-align: left;
@@ -203,6 +219,27 @@
 
         .grid-user-dog { font-weight: 500; text-align: left; background: #fcfcfc; color: #555; }
         .grid-header-dog { font-weight: 600; background: #fcfcfc; }
+
+        /* --- NEU: Stile für "Ü"-Spalte --- */
+        .grid-header-uebertrag {
+            font-weight: 600;
+            background: #ffe8cc; /* Orange-Hintergrund */
+            color: #8c5a00; /* Dunklerer Text für Kontrast */
+            position: sticky;
+            top: 0;
+            z-index: 1;
+            border-right: 1px solid #ffcc99;
+        }
+        .grid-user-uebertrag {
+            font-weight: 500;
+            text-align: center;
+            background: #fff3e6; /* Helleres Orange */
+            color: #333;
+            box-shadow: inset 0px 1px 3px rgba(0, 0, 0, 0.1);
+            border-right: 1px solid #ffcc99; /* Akzent-Rand */
+        }
+        /* --- ENDE NEU --- */
+
         .grid-user-total { font-weight: 600; background: #f8f9fa; text-align: center; }
         .grid-header-total { font-weight: 600; background: #f8f9fa; }
 
@@ -280,16 +317,19 @@
         }
 
         /* --- NEU: STILE FÜR MINDESTBESETZUNG --- */
+
+        /* --- ANPASSUNG (Regel 1): Wrapper übernimmt Scrollen --- */
         #staffing-grid-container {
-            overflow-x: auto;
+            /* overflow-x: auto; */ /* <-- ENTFERNT */
             border-top: 2px solid #3498db;
             padding-top: 5px;
             background: #fdfdfd;
         }
+        /* --- ENDE ANPASSUNG --- */
+
         #staffing-grid {
             display: grid;
         }
-        /* (tbody entfernt, da wir D&D vorerst pausieren) */
 
         .staffing-header, .staffing-cell, .staffing-label, .staffing-total-header {
             padding: 8px 10px;
@@ -354,10 +394,43 @@
             background-color: #f8f9fa !important;
             color: #bbb;
         }
-
-        /* (Drag-Handle in dieser Version entfernt) */
-
         /* --- ENDE NEUE STILE --- */
+
+
+        /* --- KORREKTUR: Hervorhebung für den eigenen Benutzer --- */
+
+        /* Die Info-Zellen (Name, Hund, Ü, Total) bekommen einen blauen Hintergrund */
+        .grid-user-name.current-user-row {
+            /* !important wird benötigt, um .fcfcfc (sticky bg) zu überschreiben */
+            background-color: #eaf2ff !important;
+            border-left: 2px solid #3498db; /* Linker Rahmen */
+        }
+        .grid-user-dog.current-user-row {
+            background-color: #f4f8ff !important;
+        }
+        .grid-user-uebertrag.current-user-row {
+            /* !important wird benötigt, um .fff3e6 (orange) zu überschreiben */
+            background-color: #eaf2ff !important;
+        }
+        .grid-user-total.current-user-row {
+            background-color: #eaf2ff !important;
+            border-right: 2px solid #3498db; /* Rechter Rahmen */
+        }
+
+        /* ALLE Zellen der Zeile (auch die .grid-cell) bekommen den "Spalt"-Rahmen */
+        .grid-user-name.current-user-row,
+        .grid-user-dog.current-user-row,
+        .grid-user-uebertrag.current-user-row,
+        .grid-cell.current-user-row,
+        .grid-user-total.current-user-row {
+            border-top: 2px solid #3498db;
+            border-bottom: 2px solid #3498db;
+            /* (Justierung, damit die Zelle nicht höher wird als andere) */
+            padding-top: 8px;
+            padding-bottom: 8px;
+        }
+        /* --- ENDE KORREKTUR --- */
+
     </style>
 </head>
 <body>
@@ -401,16 +474,19 @@
                 </div>
             </div>
 
-            <div id="schichtplan-grid-container">
-                <div id="schichtplan-grid">
-                    </div>
-            </div>
+            <div id="unified-grid-wrapper">
 
-            <div id="staffing-grid-container">
-                 <div id="staffing-grid">
-                    </div>
-            </div>
-            <div class="plan-legende" id="plan-legende">
+                <div id="schichtplan-grid-container">
+                    <div id="schichtplan-grid">
+                        </div>
+                </div>
+
+                <div id="staffing-grid-container">
+                     <div id="staffing-grid">
+                        </div>
+                </div>
+
+            </div> <div class="plan-legende" id="plan-legende">
                 </div>
         </div>
     </main>
@@ -473,13 +549,14 @@
         const API_URL = 'http://46.224.63.203:5000';
         const SHORTCUT_STORAGE_KEY = 'dhf_shortcuts';
         const COLOR_STORAGE_KEY = 'dhf_color_settings';
-        let user;
+        let loggedInUser; // <-- ANPASSUNG (Regel 2): Umbenannt von 'user'
         let currentDate = new Date();
         let currentYear = currentDate.getFullYear();
         let currentMonth = currentDate.getMonth() + 1;
         let allUsers = [];
         let allShiftTypes = {};
         let currentShifts = {};
+        let currentShiftsLastMonth = {};
         let currentTotals = {};
         let currentViolations = new Set();
         let currentSpecialDates = {};
@@ -493,7 +570,7 @@
         let isVisitor = false;
         let isAdmin = false;
 
-        let staffingSortable = null; // (Sortable-Instanz, wird in dieser Version nicht verwendet)
+        let staffingSortable = null;
 
         const DEFAULT_COLORS = {
             'weekend_bg_color': '#fff8f8',
@@ -508,7 +585,6 @@
         const grid = document.getElementById('schichtplan-grid');
         const staffingGridContainer = document.getElementById('staffing-grid-container');
         const staffingGrid = document.getElementById('staffing-grid');
-        // (staffingGridBody wird in dieser Version nicht benötigt)
         const legend = document.getElementById('plan-legende');
         const monthLabel = document.getElementById('current-month-label');
         const prevMonthBtn = document.getElementById('prev-month-btn');
@@ -524,10 +600,12 @@
 
         const COL_WIDTH_NAME = 'minmax(150px, 1.5fr)';
         const COL_WIDTH_DETAILS = 'minmax(80px, 1fr)';
+        const COL_WIDTH_UEBERTRAG = 'minmax(50px, 0.5fr)';
+        const COL_WIDTH_DAY = 'minmax(45px, 1fr)';
         const COL_WIDTH_TOTAL = 'minmax(60px, 0.5fr)';
 
 
-        // --- Basis-Funktionen (Logout, Auth-Check) (unverändert) ---
+        // --- Basis-Funktionen (Logout, Auth-Check) (ANGEPASST) ---
         async function logout() {
             try { await apiFetch('/api/logout', 'POST'); }
             catch (e) { console.error(e); }
@@ -537,21 +615,25 @@
             }
         }
         try {
-            user = JSON.parse(localStorage.getItem('dhf_user'));
-            if (!user || !user.vorname || !user.role) { throw new Error("Kein User"); }
-            document.getElementById('welcome-user').textContent = `Willkommen, ${user.vorname}!`;
+            // --- ANPASSUNG (Regel 2): 'user' -> 'loggedInUser' ---
+            loggedInUser = JSON.parse(localStorage.getItem('dhf_user'));
+            if (!loggedInUser || !loggedInUser.vorname || !loggedInUser.role) { throw new Error("Kein User"); }
+            document.getElementById('welcome-user').textContent = `Willkommen, ${loggedInUser.vorname}!`;
 
-            isAdmin = user.role.name === 'admin';
-            isVisitor = user.role.name === 'Besucher';
+            isAdmin = loggedInUser.role.name === 'admin';
+            isVisitor = loggedInUser.role.name === 'Besucher';
+            // --- ENDE ANPASSUNG ---
 
             const navDashboard = document.getElementById('nav-dashboard');
             const navUsers = document.getElementById('nav-users');
             const settingsDropdown = document.getElementById('settings-dropdown');
             const settingsDropdownContent = document.getElementById('settings-dropdown-content');
 
-            if (isAdmin || user.role.name === 'user') {
+            // --- ANPASSUNG (Regel 2): 'user' -> 'loggedInUser' ---
+            if (isAdmin || loggedInUser.role.name === 'user') {
                  navDashboard.style.display = 'block';
             }
+            // --- ENDE ANPASSUNG ---
             if (isAdmin) {
                 navUsers.style.display = 'block';
             }
@@ -649,7 +731,7 @@
         }
 
 
-        // --- HAUPT-RENDER-LOGIK (unverändert) ---
+        // --- HAUPT-RENDER-LOGIK (ANGEPASST) ---
         async function renderGrid() {
             monthLabel.textContent = "Lade...";
             grid.innerHTML = '<div style="padding: 20px; text-align: center; color: #333;">Lade Daten...</div>';
@@ -663,6 +745,7 @@
 
                 allUsers = userData;
 
+                // Schichten DIESES Monats
                 currentShifts = {};
                 shiftPayload.shifts.forEach(s => {
                     const key = `${s.user_id}-${s.date}`;
@@ -672,6 +755,21 @@
                         shift_type: fullShiftType
                     };
                 });
+
+                // --- NEU: Schichten VORMONAT (Übertrag) ---
+                currentShiftsLastMonth = {};
+                if (shiftPayload.shifts_last_month) {
+                    shiftPayload.shifts_last_month.forEach(s => {
+                        // Wir brauchen nur eine Schicht pro User (die letzte)
+                        const fullShiftType = allShiftTypes[s.shifttype_id];
+                        currentShiftsLastMonth[s.user_id] = {
+                            ...s,
+                            shift_type: fullShiftType
+                        };
+                    });
+                }
+                // --- ENDE NEU ---
+
                 currentTotals = shiftPayload.totals;
 
                 currentViolations.clear();
@@ -694,13 +792,14 @@
             }
         }
 
-        // --- buildGridDOM (unverändert) ---
+        // --- buildGridDOM (ANGEPASST) ---
         function buildGridDOM() {
             const daysInMonth = new Date(currentYear, currentMonth, 0).getDate();
             const monthName = new Date(currentYear, currentMonth - 1, 1).toLocaleString('de-DE', { month: 'long', year: 'numeric' });
             monthLabel.textContent = monthName;
 
-            grid.style.gridTemplateColumns = `${COL_WIDTH_NAME} ${COL_WIDTH_DETAILS} repeat(${daysInMonth}, 1fr) ${COL_WIDTH_TOTAL}`;
+            // --- ANPASSUNG (Regel 2): gridTemplateColumns ---
+            grid.style.gridTemplateColumns = `${COL_WIDTH_NAME} ${COL_WIDTH_DETAILS} ${COL_WIDTH_UEBERTRAG} repeat(${daysInMonth}, ${COL_WIDTH_DAY}) ${COL_WIDTH_TOTAL}`;
 
             grid.innerHTML = '';
             const weekdays = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'];
@@ -718,13 +817,19 @@
                 return headerCell;
             };
 
-            // Header-Zeile 1 (Wochentage)
+            // --- ANPASSUNG: Header-Zeile 1 (Wochentage) ---
             let nameHeader1 = document.createElement('div');
             nameHeader1.className = 'grid-header';
             grid.appendChild(nameHeader1);
             let dogHeader1 = document.createElement('div');
             dogHeader1.className = 'grid-header';
             grid.appendChild(dogHeader1);
+
+            // NEU: Header 1 für Übertrag
+            let uebertragHeader1 = document.createElement('div');
+            uebertragHeader1.className = 'grid-header-uebertrag';
+            grid.appendChild(uebertragHeader1);
+
             for (let day = 1; day <= daysInMonth; day++) {
                 const d = new Date(currentYear, currentMonth - 1, day);
                 const dayName = weekdays[d.getDay()];
@@ -738,7 +843,7 @@
             totalHeader1.className = 'grid-header-total';
             grid.appendChild(totalHeader1);
 
-            // Header-Zeile 2 (Tage)
+            // --- ANPASSUNG: Header-Zeile 2 (Tage) ---
             let nameHeader2 = document.createElement('div');
             nameHeader2.className = 'grid-header-dog';
             nameHeader2.textContent = 'Mitarbeiter';
@@ -747,6 +852,14 @@
             dogHeader.className = 'grid-header-dog';
             dogHeader.textContent = 'Diensthund';
             grid.appendChild(dogHeader);
+
+            // NEU: Header 2 für Übertrag
+            const uebertragHeader = document.createElement('div');
+            uebertragHeader.className = 'grid-header-uebertrag';
+            uebertragHeader.textContent = 'Ü';
+            uebertragHeader.title = 'Übertrag Vormonat';
+            grid.appendChild(uebertragHeader);
+
             for (let day = 1; day <= daysInMonth; day++) {
                 const d = new Date(currentYear, currentMonth - 1, day);
                 const isWeekend = d.getDay() === 0 || d.getDay() === 6;
@@ -760,17 +873,40 @@
             totalHeader.textContent = 'Std.';
             grid.appendChild(totalHeader);
 
-            // Benutzer-Zellen
+            // --- ANPASSUNG: Benutzer-Zellen ---
             const visibleUsers = allUsers.filter(user => user.shift_plan_visible === true);
-            visibleUsers.forEach(user => {
+            visibleUsers.forEach(user => { // 'user' hier ist der gerenderte Benutzer
+
+                // --- NEU (Regel 3): Prüfen, ob dies der eingeloggte Benutzer ist ---
+                const isCurrentUser = (loggedInUser && loggedInUser.id === user.id);
+                const currentUserClass = isCurrentUser ? ' current-user-row' : '';
+                // --- ENDE NEU ---
+
                 const nameCell = document.createElement('div');
-                nameCell.className = 'grid-user-name';
+                // --- ANPASSUNG ---
+                nameCell.className = 'grid-user-name' + currentUserClass;
                 nameCell.textContent = `${user.vorname} ${user.name}`;
                 grid.appendChild(nameCell);
+
                 const dogCell = document.createElement('div');
-                dogCell.className = 'grid-user-dog';
+                // --- ANPASSUNG ---
+                dogCell.className = 'grid-user-dog' + currentUserClass;
                 dogCell.textContent = user.diensthund || '---';
                 grid.appendChild(dogCell);
+
+                // NEU: Übertrag-Zelle
+                const uebertragCell = document.createElement('div');
+                // --- ANPASSUNG ---
+                uebertragCell.className = 'grid-user-uebertrag' + currentUserClass;
+                const lastMonthShift = currentShiftsLastMonth[user.id];
+                if (lastMonthShift && lastMonthShift.shift_type) {
+                    uebertragCell.textContent = lastMonthShift.shift_type.abbreviation;
+                    uebertragCell.title = `Schicht am Vormonat: ${lastMonthShift.shift_type.name}`;
+                } else {
+                    uebertragCell.textContent = '---';
+                }
+                grid.appendChild(uebertragCell);
+                // --- ENDE NEU ---
 
                 for (let day = 1; day <= daysInMonth; day++) {
                     const d = new Date(currentYear, currentMonth - 1, day);
@@ -797,7 +933,8 @@
                     if (shiftType) {
                         cell.textContent = shiftType.abbreviation;
                         if (shiftType.prioritize_background && dayHasSpecialBg) {
-                            if (eventType) {
+
+                            if (eventType === 'holiday') {
                                 cellClasses += ` day-color-${eventType}`;
                             } else if (isWeekend) {
                                 cellClasses += ' weekend';
@@ -808,13 +945,17 @@
                         }
                     } else {
                         cell.textContent = '';
-                        if (eventType) {
+                        if (eventType === 'holiday') {
                              cellClasses += ` day-color-${eventType}`;
                         } else if (isWeekend) {
                             cellClasses += ' weekend';
                         }
                     }
-                    cell.className = cellClasses;
+
+                    // --- ANPASSUNG (Regel 3) ---
+                    cell.className = cellClasses + currentUserClass;
+                    // --- ENDE ANPASSUNG ---
+
                     if (cellColor) { cell.style.backgroundColor = cellColor; }
                     if (textColor) { cell.style.color = textColor; }
                     cell.dataset.key = key;
@@ -841,7 +982,9 @@
                     grid.appendChild(cell);
                 }
                 const totalCell = document.createElement('div');
-                totalCell.className = 'grid-user-total';
+                // --- ANPASSUNG (Regel 3) ---
+                totalCell.className = 'grid-user-total' + currentUserClass;
+                // --- ENDE ANPASSUNG ---
                 totalCell.id = `total-hours-${user.id}`;
                 const userTotalHours = currentTotals[user.id] || 0.0;
                 totalCell.textContent = userTotalHours.toFixed(1);
@@ -849,7 +992,7 @@
             });
         }
 
-        // --- KORRIGIERT: buildStaffingTable (mit granularer Logik & Feedback) ---
+        // --- buildStaffingTable (ANGEPASST) ---
         function buildStaffingTable() {
             const daysInMonth = new Date(currentYear, currentMonth, 0).getDate();
 
@@ -868,7 +1011,8 @@
 
             staffingGridContainer.style.display = 'block';
 
-            staffingGrid.style.gridTemplateColumns = `${COL_WIDTH_NAME} ${COL_WIDTH_DETAILS} repeat(${daysInMonth}, 1fr) ${COL_WIDTH_TOTAL}`;
+            // --- ANPASSUNG (Regel 2): gridTemplateColumns ---
+            staffingGrid.style.gridTemplateColumns = `${COL_WIDTH_NAME} ${COL_WIDTH_DETAILS} ${COL_WIDTH_UEBERTRAG} repeat(${daysInMonth}, ${COL_WIDTH_DAY}) ${COL_WIDTH_TOTAL}`;
             staffingGrid.innerHTML = ''; // (Grid leeren, nicht den Body)
 
             // Map für Wochentage (JS: 0=So, 1=Mo... 6=Sa) zu unseren DB-Feldern
@@ -900,10 +1044,17 @@
                 labelCell.style.color = '#333';
                 staffingGrid.appendChild(labelCell);
 
-                // 2. Leere Zelle (für Bündigkeit)
+                // 2. Leere Zelle (für Bündigkeit "Diensthund")
                 let emptyCell = document.createElement('div');
                 emptyCell.className = 'staffing-cell staffing-untracked';
                 staffingGrid.appendChild(emptyCell);
+
+                // --- NEU: Leere Zelle (für Bündigkeit "Ü") ---
+                let emptyCellUebertrag = document.createElement('div');
+                emptyCellUebertrag.className = 'staffing-cell staffing-untracked';
+                emptyCellUebertrag.style.borderRight = '1px solid #ffcc99'; // (Passt zur orangen Spalte)
+                staffingGrid.appendChild(emptyCellUebertrag);
+                // --- ENDE NEU ---
 
                 let totalIst = 0;
                 let totalSoll = 0;
@@ -933,12 +1084,16 @@
                     const istCell = document.createElement('div');
                     let cellClasses = 'staffing-cell';
 
+                    // --- ANPASSUNG (Regel 4) ---
+                    // Die eventType-Färbung (training/shooting) wird hier entfernt,
+                    // da sie nur noch den Header betrifft (der hier nicht existiert).
+                    // Feiertags-Färbung ist auch nicht nötig, da sie durch die Haupttabelle abgedeckt wird.
                     const eventType = currentSpecialDates[dateStr];
-                    if (eventType && !isHoliday) {
-                        cellClasses += ` day-color-${eventType}`;
-                    } else if (dayOfWeek === 0 || dayOfWeek === 6) {
+                    if (dayOfWeek === 0 || dayOfWeek === 6) {
                         cellClasses += ' weekend';
                     }
+                    // --- ENDE ANPASSUNG ---
+
 
                     // --- NEUE AMPEL-LOGIK + AUSBLENDEN (Feedback 1 & 4) ---
                     if (sollValue === 0) {
