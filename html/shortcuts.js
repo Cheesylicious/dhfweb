@@ -31,8 +31,8 @@ try {
     // --- NEU: Feedback-Link ---
     const navFeedback = document.getElementById('nav-feedback');
 
-    // (Angepasst an die Logik der anderen Seiten)
-    navDashboard.style.display = (isAdmin || user.role.name === 'user') ? 'block' : 'none';
+    // KORRIGIERTE LOGIK: Dashboard ist für alle NICHT-Besucher sichtbar
+    navDashboard.style.display = isVisitor ? 'none' : 'block';
 
     if (isAdmin) {
         navUsers.style.display = 'block';

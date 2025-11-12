@@ -49,12 +49,9 @@ try {
 
         document.querySelector('.card-section p').textContent = "Dies ist das Admin-Dashboard. Wählen Sie einen Bereich aus der Navigation oben.";
     } else {
-         // Wir müssen das Layout anpassen, wenn der Update-Log nicht angezeigt wird
-         const card = document.querySelector('.card');
-         if(card) card.style.gridTemplateColumns = '1fr';
-
-         const updateLogSection = document.querySelector('.card-section:last-child');
-         if(updateLogSection) updateLogSection.style.display = 'none';
+         // Standard-User Logik: Update-Log bleibt sichtbar (durch Entfernen des Ausblend-Codes)
+         navUsers.style.display = 'none';
+         navFeedback.style.display = 'none'; // Feedback-Link nur für Admins (Konsistenz)
 
          document.querySelector('.card-section p').textContent = "Dies ist das Dashboard. Wählen Sie einen Bereich aus der Navigation oben.";
     }

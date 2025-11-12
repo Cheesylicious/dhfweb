@@ -32,7 +32,7 @@ try {
     // --- NEU: Feedback-Link ---
     const navFeedback = document.getElementById('nav-feedback');
 
-    // Globale Konsistenz: Verstecke Dashboard für Besucher
+    // KORRIGIERTE LOGIK: Dashboard ist für alle NICHT-Besucher sichtbar
     navDashboard.style.display = isVisitor ? 'none' : 'block';
 
     // --- NEU: Admin-Links anzeigen ---

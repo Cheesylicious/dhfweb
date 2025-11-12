@@ -85,11 +85,14 @@ try {
     // --- NEU: Feedback-Link ---
     const navFeedback = document.getElementById('nav-feedback');
 
-    // --- ANPASSUNG (Regel 2): 'user' -> 'loggedInUser' ---
-    if (isAdmin || loggedInUser.role.name === 'user') {
+    // KORRIGIERTE LOGIK: Dashboard ist für alle NICHT-Besucher sichtbar
+    if (!isVisitor) {
          navDashboard.style.display = 'block';
+    } else {
+         // Dies wird später durch die isVisitor-Prüfung überschrieben, aber für Konsistenz hier beibehalten.
+         navDashboard.style.display = 'none';
     }
-    // --- ENDE ANPASSUNG ---
+
     if (isAdmin) {
         navUsers.style.display = 'block';
         navFeedback.style.display = 'inline-flex'; // (NEU)

@@ -47,7 +47,7 @@
             width: 90%;
             max-width: 550px;
             border-radius: 8px;
-            box-shadow: 0 4px 30px rgba(0,0,0,0.4);
+            box-shadow: 0 4px 30px rgba(0, 0, 0, 0.4);
             color: #ffffff;
         }
         .feedback-modal-header {
@@ -178,6 +178,44 @@
     styleSheet.innerText = styles;
     document.head.appendChild(styleSheet);
 
+    // --- NEUE HILFSFUNKTION: Generiert Kategorien dynamisch ---
+    function generateDynamicCategories() {
+        // 1. Initialisiere die Standard-Option
+        let optionsHtml = '<option value="Allgemein">Allgemein / Sonstiges</option>';
+
+        // 2. Füge den aktuellen Seitenkontext hinzu, falls es eine Einstellungsseite ist
+        const subNav = document.querySelector('.sub-nav');
+        if (subNav) {
+            const activeLink = subNav.querySelector('a.active, .dropdown .dropbtn.active');
+            if (activeLink) {
+                 const currentContextName = activeLink.textContent.trim().replace(/\s*&raquo;$/, '');
+                 optionsHtml += `<option value="${currentContextName}" selected>Aktueller Kontext: ${currentContextName}</option>`;
+            }
+        }
+
+        // 3. Durchlaufe die Hauptnavigation, um verfügbare Bereiche zu finden
+        const mainNav = document.querySelector('header nav');
+        if (mainNav) {
+            mainNav.querySelectorAll('a').forEach(link => {
+                // Nur wenn der Link sichtbar ist (kein 'display: none')
+                if (link.style.display !== 'none' && link.offsetWidth > 0 && link.offsetHeight > 0) {
+                    // Verwende den Text des Links als Kategorie
+                    const categoryName = link.textContent.trim().replace('Meldungen', '').trim();
+                    // Ignoriere den Schichtplan, wenn er bereits der aktive Kontext ist (siehe 2.)
+                    if (categoryName && categoryName !== 'Schichtplan' && categoryName !== 'Dashboard' && categoryName !== 'Benutzerverwaltung') {
+                         optionsHtml += `<option value="${categoryName}">${categoryName}</option>`;
+                    }
+                }
+            });
+
+            // Fügen die wichtigsten statischen Bereiche hinzu, falls sie nicht in der Nav sind (z.B. Login)
+            optionsHtml += '<option value="Login">Login / Dashboard (Falls nicht sichtbar)</option>';
+        }
+
+        return optionsHtml;
+    }
+    // --- ENDE NEUE HILFSFUNKTION ---
+
     // --- 2. HTML-Struktur dynamisch injizieren ---
     const modalHTML = `
         <div id="feedback-modal" class="feedback-modal">
@@ -205,12 +243,7 @@
                     <div class="feedback-form-group">
                         <label for="feedback-category">Welchen Bereich betrifft es?</label>
                         <select id="feedback-category">
-                            <option value="Allgemein">Allgemein / Sonstiges</option>
-                            <option value="Schichtplan">Schichtplan</option>
-                            <option value="Benutzerverwaltung">Benutzerverwaltung</option>
-                            <option value="Login">Login / Dashboard</option>
-                            <option value="Einstellungen">Einstellungen</option>
-                        </select>
+                            </select>
                     </div>
 
                     <div class="feedback-form-group">
@@ -228,6 +261,9 @@
     `;
 
     document.body.insertAdjacentHTML('beforeend', modalHTML);
+    // Nach dem Einfügen: Die Dropdown-Liste sofort befüllen
+    document.getElementById('feedback-category').innerHTML = generateDynamicCategories();
+
 
     // --- 3. Event-Listener und Logik ---
 
@@ -319,6 +355,9 @@
             statusEl.textContent = '';
             statusEl.style.color = '';
             document.getElementById('feedback-message').value = ''; // (Immer leeren)
+
+            // NEU: Kategorien beim Öffnen neu laden, um dynamische Links zu erfassen
+            document.getElementById('feedback-category').innerHTML = generateDynamicCategories();
         };
     }
 

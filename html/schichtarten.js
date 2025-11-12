@@ -21,6 +21,7 @@ try {
     const isVisitor = user.role.name === 'Besucher';
     const isUser = user.role.name === 'user';
 
+    // KORRIGIERTE LOGIK: Dashboard ist für alle NICHT-Besucher sichtbar
     document.getElementById('nav-dashboard').style.display = isVisitor ? 'none' : 'block';
 
     // --- NEU: Admin-Links (Users & Feedback) ---
