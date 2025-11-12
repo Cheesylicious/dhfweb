@@ -47,6 +47,11 @@ def create_app(config_name='default'):
     from .routes_events import events_bp
     app.register_blueprint(events_bp)
 
+    # --- *** DIESE ZEILEN SIND ENTSCHEIDEND *** ---
+    from .routes_feedback import feedback_bp
+    app.register_blueprint(feedback_bp)
+    # --- *** ENDE *** ---
+
     # 5. Startup-Logik (Defaults erstellen)
     with app.app_context():
         db.create_all()
@@ -61,6 +66,7 @@ def create_app(config_name='default'):
 
 
 # --- Startup-Funktionen ---
+# (Rest der Datei bleibt unverändert) ...
 
 def create_default_roles(db_instance):
     """
@@ -85,12 +91,6 @@ def create_default_roles(db_instance):
     except Exception as e:
         db_instance.session.rollback()
         print(f"Fehler beim Erstellen der Standard-Rollen: {e}")
-
-
-# --- ENTFERNT ---
-# def create_default_shifttypes(db_instance):
-#     ... (Funktion wurde komplett entfernt) ...
-# --- ENDE ENTFERNT ---
 
 
 def create_default_holidays(db_instance):

@@ -1,8 +1,10 @@
 from flask import Blueprint, request, jsonify, current_app
 from .models import SpecialDate
 from .extensions import db
-from .routes_admin import admin_required  # Wir nutzen den Admin-Decorator
-from flask_login import login_required # <<< login_required ist bereits importiert
+# --- KORREKTUR: Import aus utils.py ---
+from .utils import admin_required
+# --- ENDE KORREKTUR ---
+from flask_login import login_required
 from datetime import datetime
 from sqlalchemy import extract
 from dateutil.easter import easter

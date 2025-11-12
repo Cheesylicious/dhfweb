@@ -1,7 +1,7 @@
 <!DOCTYPE html>
 <html lang="de">
 <head>
-    <meta charset="UTF-8">
+    <meta charset="UTF-Power-8">
     <title>Dashboard - DHF-Planer</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
@@ -62,6 +62,7 @@
         header nav {
             display: flex;
             gap: 20px;
+            align-items: center; /* (NEU: Für Badge-Ausrichtung) */
         }
 
         header nav a {
@@ -72,6 +73,8 @@
             padding: 10px;
             border-radius: 5px;
             transition: background-color 0.3s, color 0.3s;
+            display: inline-flex; /* (NEU: Für Badge-Ausrichtung) */
+            align-items: center;
         }
 
         header nav a.active, header nav a:hover {
@@ -100,6 +103,34 @@
         #logout-btn:hover {
             background: #c0392b;
         }
+
+        /* --- NEU: Feedback Button Styles --- */
+        .report-btn {
+            background: #3498db;
+            color: white;
+            padding: 10px 15px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 15px;
+            transition: background-color 0.3s;
+            margin-right: 15px;
+        }
+        .report-btn:hover {
+            background: #2980b9;
+        }
+
+        .nav-badge {
+            background: #e74c3c;
+            color: white;
+            font-size: 10px;
+            font-weight: 600;
+            padding: 2px 5px;
+            border-radius: 5px;
+            margin-left: 8px; /* (Angepasst für besseren Abstand) */
+            display: none; /* (Wird per JS angezeigt) */
+        }
+        /* --- ENDE NEU --- */
 
         main {
             padding: 30px;
@@ -139,10 +170,15 @@
         <nav id="main-nav">
             <a href="dashboard.html" class="active" id="nav-dashboard" style="display: none;">Dashboard</a>
             <a href="users.html" id="nav-users" style="display: none;">Benutzerverwaltung</a>
+            <a href="feedback.html" id="nav-feedback" style="display: none;">
+                Meldungen
+                <span id="feedback-badge" class="nav-badge">0</span>
+            </a>
             <a href="schichtplan.html">Schichtplan</a>
         </nav>
         <div id="user-info">
             <span id="welcome-user"></span>
+            <button class="report-btn" id="global-report-btn">🐞 Problem melden</button>
             <button id="logout-btn">Abmelden</button>
         </div>
     </header>
@@ -240,77 +276,8 @@
     </script>
 
 
-    <script>
-        const API_URL = 'http://46.224.63.203:5000'; // Ersetzen Sie dies ggf. durch Ihre Domain
-        let user;
+    <script src="dashboard.js" defer></script>
 
-        async function logout() {
-            try {
-                await apiFetch('/api/logout', 'POST');
-            } catch (error) {
-                console.error("Logout-Fehler:", error.message);
-            } finally {
-                localStorage.removeItem('dhf_user');
-                window.location.href = 'index.html?logout=true';
-            }
-        }
-
-        // --- NEUE LOGIK: Benutzerrollen-Check und Navigation anpassen ---
-        try {
-            user = JSON.parse(localStorage.getItem('dhf_user'));
-            if (!user || !user.vorname || !user.role) { throw new Error("Kein User oder fehlende Rolle"); }
-
-            const isAdmin = user.role.name === 'admin';
-            // Die isVisitor Prüfung ist dank des Head-Skripts nicht mehr nötig,
-            // da Besucher bereits umgeleitet werden, bevor dieser Teil ausgeführt wird.
-
-            document.getElementById('welcome-user').textContent = `Willkommen, ${user.vorname}!`;
-            document.getElementById('welcome-message').textContent = `Willkommen, ${user.vorname}!`;
-
-            const navDashboard = document.getElementById('nav-dashboard');
-            const navUsers = document.getElementById('nav-users');
-
-            // Sichtbarkeit der Links für Nicht-Besucher (Admins und Standard-User)
-
-            // Dashboard Link ist für Nicht-Besucher sichtbar
-            navDashboard.style.display = 'block';
-
-            // Benutzerverwaltung Link ist nur für Admins sichtbar
-            if (isAdmin) {
-                navUsers.style.display = 'block';
-                 document.querySelector('.card p').textContent = "Dies ist das Admin-Dashboard. Wählen Sie einen Bereich aus der Navigation oben.";
-            } else {
-                 document.querySelector('.card p').textContent = "Dies ist das Dashboard. Wählen Sie einen Bereich aus der Navigation oben.";
-            }
-
-
-        } catch (e) {
-            // Wenn der User nicht da ist oder ungültig, leite um
-            window.location.href = 'index.html?logout=true';
-        }
-
-        document.getElementById('logout-btn').onclick = logout;
-
-        async function apiFetch(endpoint, method = 'GET', body = null) {
-            const options = {
-                method,
-                headers: { 'Content-Type': 'application/json' },
-                credentials: 'include'
-            };
-            if (body) { options.body = JSON.stringify(body); }
-            const response = await fetch(API_URL + endpoint, options);
-            if (response.status === 401 || response.status === 403) {
-                logout();
-                throw new Error('Sitzung ungültig');
-            }
-            if (!response.ok) {
-                const data = await response.json();
-                throw new Error(data.message || 'API-Fehler');
-            }
-            if (response.status !== 204) {
-                try { return await response.json(); } catch(e) { return {}; }
-            }
-        }
-    </script>
+    <script src="shared_feedback.js" defer></script>
 </body>
 </html>

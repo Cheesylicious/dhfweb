@@ -158,3 +158,48 @@ class GlobalSetting(db.Model):
             "key": self.key,
             "value": self.value
         }
+
+
+# --- NEU: Feedback-System (Regel 4) ---
+
+class FeedbackReport(db.Model):
+    """
+    Speichert Bug-Reports und Verbesserungsvorschläge von Benutzern.
+    """
+    id = db.Column(db.Integer, primary_key=True)
+
+    # Wer hat es gemeldet?
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+
+    # --- KORREKTUR: 'backref' entfernt, um Ladefehler zu beheben ---
+    user = db.relationship('User')
+    # --- ENDE KORREKTUR ---
+
+    # Was wurde gemeldet?
+    report_type = db.Column(db.String(50), nullable=False)  # z.B. 'bug', 'improvement'
+    category = db.Column(db.String(100), nullable=False)  # z.B. 'Schichtplan', 'Login', 'Allgemein'
+    message = db.Column(db.Text, nullable=False)
+    page_context = db.Column(db.String(255), nullable=True)  # z.B. '/schichtplan.html'
+
+    # Status (für Admin-Verwaltung)
+    # 'neu', 'gesehen', 'archiviert'
+    status = db.Column(db.String(50), nullable=False, default='neu', index=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+
+    def to_dict(self):
+        """
+        Serialisiert das Objekt.
+        (Regel 2: Liefert user_name direkt mit, um Frontend-Lookups zu sparen)
+        """
+        return {
+            "id": self.id,
+            "user_id": self.user_id,
+            "user_name": f"{self.user.vorname} {self.user.name}" if self.user else "Unbekannt",
+            "report_type": self.report_type,
+            "category": self.category,
+            "message": self.message,
+            "page_context": self.page_context,
+            "status": self.status,
+            "created_at": self.created_at.isoformat()
+        }
+# --- ENDE NEU ---

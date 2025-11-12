@@ -3,7 +3,9 @@
 from flask import Blueprint, request, jsonify, current_app
 from .models import Shift, ShiftType, User
 from .extensions import db
-from .routes_admin import admin_required
+# --- KORREKTUR: Import aus utils.py ---
+from .utils import admin_required
+# --- ENDE KORREKTUR ---
 from flask_login import login_required
 from sqlalchemy import extract, func
 from sqlalchemy.orm import joinedload

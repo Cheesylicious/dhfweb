@@ -2,24 +2,14 @@ from flask import Blueprint, request, jsonify, current_app
 # Importe für Shift und GlobalSetting hinzugefügt (Regel 1)
 from .models import User, Role, ShiftType, Shift, GlobalSetting
 from .extensions import db, bcrypt
-from flask_login import login_required, current_user  # <<< login_required HINZUGEFÜGT
-from functools import wraps
+from flask_login import login_required, current_user
+# --- KORREKTUR: Import aus utils.py (Löst zirkuläre Abhängigkeit) ---
+from .utils import admin_required
+# --- ENDE KORREKTUR ---
 from datetime import datetime
 
 # Erstellt einen Blueprint. Alle Routen hier beginnen mit /api
 admin_bp = Blueprint('admin', __name__, url_prefix='/api')
-
-
-# --- 6. Admin-Check Decorator (Hier definiert) ---
-def admin_required(fn):
-    @wraps(fn)
-    @login_required
-    def decorator(*args, **kwargs):
-        if not current_user.role or current_user.role.name != 'admin':
-            return jsonify({"message": "Admin-Rechte erforderlich"}), 403
-        return fn(*args, **kwargs)
-
-    return decorator
 
 
 # --- Hilfsfunktion ---
@@ -72,7 +62,7 @@ def update_user(user_id):
         user.password_geaendert = datetime.utcnow()
     user.geburtstag = none_if_empty(data.get('geburtstag', user.geburtstag))
     user.telefon = data.get('telefon', user.telefon)
-    user.eintrittsdatum = none_if_empty(data.get('eintrittsdatum', user.eintrittsdatum))
+    user.eintrittsdatum = data.get('eintrittsdatum', user.eintrittsdatum)
     user.aktiv_ab_datum = none_if_empty(data.get('aktiv_ab_datum', user.aktiv_ab_datum))
     user.urlaub_gesamt = data.get('urlaub_gesamt', user.urlaub_gesamt)
     user.urlaub_rest = data.get('urlaub_rest', user.urlaub_rest)
