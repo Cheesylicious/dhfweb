@@ -178,43 +178,60 @@
     styleSheet.innerText = styles;
     document.head.appendChild(styleSheet);
 
-    // --- NEUE HILFSFUNKTION: Generiert Kategorien dynamisch ---
+    // --- GEÄNDERTE HILFSFUNKTION: Generiert Kategorien dynamisch ---
     function generateDynamicCategories() {
-        // 1. Initialisiere die Standard-Option
-        let optionsHtml = '<option value="Allgemein">Allgemein / Sonstiges</option>';
+        // Set zur Verfolgung bereits hinzugefügter Kategorien (vermeidet Duplikate)
+        const addedCategories = new Set();
+        let optionsHtml = '';
+        let activeContextName = null;
+        let mainCategoriesHtml = '';
 
-        // 2. Füge den aktuellen Seitenkontext hinzu, falls es eine Einstellungsseite ist
+        // 1. Finde den aktuellen, aktiven Seitenkontext (Unter- oder Hauptnavigation)
+        // Prüfe zuerst den Sub-Nav (einstellungen.html, roles.html, schichtarten.html etc.)
         const subNav = document.querySelector('.sub-nav');
         if (subNav) {
             const activeLink = subNav.querySelector('a.active, .dropdown .dropbtn.active');
             if (activeLink) {
-                 const currentContextName = activeLink.textContent.trim().replace(/\s*&raquo;$/, '');
-                 optionsHtml += `<option value="${currentContextName}" selected>Aktueller Kontext: ${currentContextName}</option>`;
+                 // Entfernt "&raquo;" und Leerzeichen, um den reinen Namen zu erhalten
+                 activeContextName = activeLink.textContent.trim().replace(/\s*&raquo;$/, '');
+                 optionsHtml += `<option value="${activeContextName}" selected>Aktueller Kontext: ${activeContextName}</option>`;
+                 addedCategories.add(activeContextName);
             }
         }
 
-        // 3. Durchlaufe die Hauptnavigation, um verfügbare Bereiche zu finden
+        // 2. Durchlaufe die Hauptnavigation, um VERFÜGBARE Bereiche zu finden
         const mainNav = document.querySelector('header nav');
         if (mainNav) {
             mainNav.querySelectorAll('a').forEach(link => {
-                // Nur wenn der Link sichtbar ist (kein 'display: none')
-                if (link.style.display !== 'none' && link.offsetWidth > 0 && link.offsetHeight > 0) {
-                    // Verwende den Text des Links als Kategorie
+                // Nur wenn der Link VISUELL sichtbar ist (offsetWidth > 0)
+                // Dies ist robuster als nur link.style.display
+                if (link.offsetWidth > 0 && link.offsetHeight > 0) {
+                    // Verwende den Text des Links als Kategorie und bereinige ihn
                     const categoryName = link.textContent.trim().replace('Meldungen', '').trim();
-                    // Ignoriere den Schichtplan, wenn er bereits der aktive Kontext ist (siehe 2.)
-                    if (categoryName && categoryName !== 'Schichtplan' && categoryName !== 'Dashboard' && categoryName !== 'Benutzerverwaltung') {
-                         optionsHtml += `<option value="${categoryName}">${categoryName}</option>`;
+
+                    if (categoryName && !addedCategories.has(categoryName)) {
+                        const isSelected = categoryName === activeContextName ? 'selected' : ''; // Sollte nur bei Fehlen von Schritt 1 greifen
+                        mainCategoriesHtml += `<option value="${categoryName}" ${isSelected}>${categoryName}</option>`;
+                        addedCategories.add(categoryName);
                     }
                 }
             });
-
-            // Fügen die wichtigsten statischen Bereiche hinzu, falls sie nicht in der Nav sind (z.B. Login)
-            optionsHtml += '<option value="Login">Login / Dashboard (Falls nicht sichtbar)</option>';
         }
 
-        return optionsHtml;
+        // 3. Füge statische Kategorien hinzu
+        let staticOptionsHtml = '';
+        // Füge Dashboard hinzu, falls es nicht in der sichtbaren Navigation erkannt wurde (z.B. weil es die aktive Seite ist oder nicht im Haupt-Nav-Block)
+        if (!addedCategories.has('Dashboard')) {
+             staticOptionsHtml += '<option value="Dashboard">Dashboard</option>';
+        }
+        staticOptionsHtml += '<option value="Login">Login / Startseite</option>';
+        staticOptionsHtml += '<option value="Allgemein">Allgemein / Sonstiges</option>';
+
+
+        // 4. Kombiniere und returniere
+        return optionsHtml + mainCategoriesHtml + staticOptionsHtml;
     }
-    // --- ENDE NEUE HILFSFUNKTION ---
+    // --- ENDE GEÄNDERTE HILFSFUNKTION ---
 
     // --- 2. HTML-Struktur dynamisch injizieren ---
     const modalHTML = `
