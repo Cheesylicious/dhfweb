@@ -350,6 +350,7 @@
             <button class="dropbtn active" id="settings-dropbtn">Einstellungen &raquo;</button>
             <div class="dropdown-content" id="settings-dropdown-content">
                 <a href="einstellungen.html" class="admin-only active">Mitarbeiter Sortierung</a>
+                <a href="schichtartensortierung.html" class="admin-only">Schichtarten Sortierung</a>
                 <a href="schichtarten.html" class="admin-only">Schichtarten</a>
                 <a href="shortcuts.html" class="admin-only">Shortcuts</a>
                 <a href="feiertage.html" class="admin-only">Feiertage & Sondertermine</a>
@@ -403,8 +404,8 @@
             update() {
                 if (this.x > canvas.width || this.x < 0) { this.directionX = -this.directionX; }
                 if (this.y > canvas.height || this.y < 0) { this.directionY = -this.directionY; }
-                this.x += this.directionX; this.y += this.directionY;
-                this.draw();
+                this.x += this.directionX; this.y += self.directionY;
+                self.draw();
             }
         }
 

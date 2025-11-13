@@ -83,7 +83,6 @@ def _calculate_user_total_hours(user_id, year, month):
     return round(total_hours, 2)
 
 
-# --- KORRIGIERTE HILFSFUNKTION ---
 def _calculate_actual_staffing(shifts_in_month_dicts, shifttypes_dicts, year, month):
     """
     Berechnet die IST-Besetzung (tatsächliche Zählung) für alle Schichtarten.
@@ -161,7 +160,9 @@ def get_shifts():
     ).all()
 
     users = User.query.order_by(User.shift_plan_sort_order, User.name).all()
-    shift_types = ShiftType.query.all()
+
+    # NEU: ShiftType-Liste nach Sortierfeld für Besetzung sortieren
+    shift_types = ShiftType.query.order_by(ShiftType.staffing_sort_order, ShiftType.abbreviation).all()  # <<< GEÄNDERT
 
     # --- ANPASSUNG (Regel 1) ---
     # Trenne die Schichten des aktuellen Monats von denen des Vormonats
@@ -379,7 +380,9 @@ def save_shift():
         Shift.date.between(day_before, day_after)
     ).all()
     users = User.query.order_by(User.shift_plan_sort_order, User.name).all()
-    shift_types = ShiftType.query.all()
+
+    # NEU: ShiftType-Liste nach Sortierfeld für Besetzung sortieren
+    shift_types = ShiftType.query.order_by(ShiftType.staffing_sort_order, ShiftType.abbreviation).all()  # <<< GEÄNDERT
 
     shifts_all_data = [s.to_dict() for s in shifts_for_calc_all]
     users_data = [u.to_dict() for u in users]

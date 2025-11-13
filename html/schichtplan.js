@@ -8,6 +8,7 @@ let currentYear = currentDate.getFullYear();
 let currentMonth = currentDate.getMonth() + 1;
 let allUsers = [];
 let allShiftTypes = {};
+let allShiftTypesList = []; // <<< NEU: Speichert die sortierte Liste für die Besetzung
 let currentShifts = {};
 let currentShiftsLastMonth = {};
 let currentTotals = {};
@@ -452,12 +453,13 @@ function buildGridDOM() {
     });
 }
 
-// --- buildStaffingTable (ANGEPASST) ---
+// --- buildStaffingTable (ANGEPASST FÜR SORTIERUNG) ---
 function buildStaffingTable() {
     const daysInMonth = new Date(currentYear, currentMonth, 0).getDate();
 
-    // 1. Finde relevante Schichtarten (SOLL > 0 an irgendeinem Tag)
-    const relevantShiftTypes = Object.values(allShiftTypes).filter(st =>
+    // 1. Finde relevante Schichtarten (Verwendet jetzt die VOM API SORTIERTE LISTE)
+    // Die Sortierung ist bereits im Backend nach staffing_sort_order erfolgt.
+    const relevantShiftTypes = allShiftTypesList.filter(st =>
         (st.min_staff_mo || 0) > 0 || (st.min_staff_di || 0) > 0 ||
         (st.min_staff_mi || 0) > 0 || (st.min_staff_do || 0) > 0 ||
         (st.min_staff_fr || 0) > 0 || (st.min_staff_sa || 0) > 0 ||
@@ -486,11 +488,8 @@ function buildStaffingTable() {
         'min_staff_sa'  // 6
     ];
 
-    // NEU (Feedback 3): Sortiere die Zeilen alphabetisch nach Kürzel
-    // (Wir pausieren die D&D-Sortierung, bis die Basis funktioniert)
-    relevantShiftTypes.sort((a, b) => a.abbreviation.localeCompare(b.abbreviation));
-
     // --- Daten-Zeilen (pro Schichtart) ---
+    // WICHTIG: Iteriert über die VOM API SORTIERTE Liste
     relevantShiftTypes.forEach(st => {
         const st_id = st.id;
 
@@ -545,9 +544,6 @@ function buildStaffingTable() {
             let cellClasses = 'staffing-cell';
 
             // --- ANPASSUNG (Regel 4) ---
-            // Die eventType-Färbung (training/shooting) wird hier entfernt,
-            // da sie nur noch den Header betrifft (der hier nicht existiert).
-            // Feiertags-Färbung ist auch nicht nötig, da sie durch die Haupttabelle abgedeckt wird.
             const eventType = currentSpecialDates[dateStr];
             if (dayOfWeek === 0 || dayOfWeek === 6) {
                 cellClasses += ' weekend';
@@ -591,8 +587,6 @@ function buildStaffingTable() {
 }
 // --- ENDE KORREKTUR ---
 
-// --- (SortableJS-Funktionen in dieser Version entfernt) ---
-
 // --- Helligkeitsprüfung (unverändert) ---
 function isColorDark(hexColor) {
     if (!hexColor) return false;
@@ -609,10 +603,15 @@ function isColorDark(hexColor) {
     }
 }
 
-// --- populateStaticElements (ANGEPASST, Sortierung entfernt) ---
+// --- populateStaticElements (ANGEPASST FÜR SORTIERUNG) ---
 async function populateStaticElements(forceReload = false) {
     if (Object.keys(allShiftTypes).length === 0 || forceReload) {
-        const typeData = await apiFetch('/api/shifttypes');
+        const typeData = await apiFetch('/api/shifttypes'); // <-- Liefert sortiert
+
+        // 1. Sortierte Liste speichern
+        allShiftTypesList = typeData;
+
+        // 2. Map erstellen (nötig für schnellen Lookup nach ID)
         allShiftTypes = {};
         typeData.forEach(st => allShiftTypes[st.id] = st);
     }
@@ -620,8 +619,8 @@ async function populateStaticElements(forceReload = false) {
     legend.innerHTML = '<b>Legende:</b>';
     shiftSelection.innerHTML = '';
 
-    // (Verwendet jetzt die unsortierte Objekt-Reihenfolge)
-    const sortedTypes = Object.values(allShiftTypes);
+    // (Verwendet jetzt die sortierte Liste für die Legende und die Modalauswahl)
+    const sortedTypes = allShiftTypesList; // <<< WICHTIG: Nutzt die sortierte Liste
 
     sortedTypes.forEach(st => {
         const item = document.createElement('div');
@@ -646,6 +645,7 @@ async function populateStaticElements(forceReload = false) {
 
 // --- DATEN SPEICHERN (unverändert) ---
 async function saveShift(shifttypeId, userId, dateStr) {
+// ... (Funktion bleibt unverändert) ...
     if (!isAdmin) {
         console.error("Nicht-Admins dürfen keine Schichten speichern.");
         return;
