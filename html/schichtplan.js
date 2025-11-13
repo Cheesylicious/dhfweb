@@ -2,13 +2,13 @@
 const API_URL = 'http://46.224.63.203:5000';
 const SHORTCUT_STORAGE_KEY = 'dhf_shortcuts';
 const COLOR_STORAGE_KEY = 'dhf_color_settings';
-let loggedInUser; // <-- ANPASSUNG (Regel 2): Umbenannt von 'user'
+let loggedInUser;
 let currentDate = new Date();
 let currentYear = currentDate.getFullYear();
 let currentMonth = currentDate.getMonth() + 1;
 let allUsers = [];
 let allShiftTypes = {};
-let allShiftTypesList = []; // <<< NEU: Speichert die sortierte Liste für die Besetzung
+let allShiftTypesList = [];
 let currentShifts = {};
 let currentShiftsLastMonth = {};
 let currentTotals = {};
@@ -24,7 +24,8 @@ const defaultShortcuts = { 'T.': 't', 'N.': 'n', '6': '6', 'FREI': 'f', 'X': 'x'
 let isVisitor = false;
 let isAdmin = false;
 
-let staffingSortable = null;
+let isStaffingSortingMode = false;
+let sortableStaffingInstance = null;
 
 const DEFAULT_COLORS = {
     'weekend_bg_color': '#fff8f8',
@@ -43,7 +44,7 @@ const legend = document.getElementById('plan-legende');
 const monthLabel = document.getElementById('current-month-label');
 const prevMonthBtn = document.getElementById('prev-month-btn');
 const nextMonthBtn = document.getElementById('next-month-btn');
-const saveStaffingOrderBtn = document.getElementById('save-staffing-order-btn');
+const staffingSortToggleBtn = document.getElementById('staffing-sort-toggle');
 
 const shiftModal = document.getElementById('shift-modal');
 const shiftModalTitle = document.getElementById('shift-modal-title');
@@ -59,7 +60,7 @@ const COL_WIDTH_DAY = 'minmax(45px, 1fr)';
 const COL_WIDTH_TOTAL = 'minmax(60px, 0.5fr)';
 
 
-// --- Basis-Funktionen (Logout, Auth-Check) (ANGEPASST) ---
+// --- Basis-Funktionen ---
 async function logout() {
     try { await apiFetch('/api/logout', 'POST'); }
     catch (e) { console.error(e); }
@@ -69,58 +70,57 @@ async function logout() {
     }
 }
 try {
-    // --- ANPASSUNG (Regel 2): 'user' -> 'loggedInUser' ---
     loggedInUser = JSON.parse(localStorage.getItem('dhf_user'));
     if (!loggedInUser || !loggedInUser.vorname || !loggedInUser.role) { throw new Error("Kein User"); }
     document.getElementById('welcome-user').textContent = `Willkommen, ${loggedInUser.vorname}!`;
 
     isAdmin = loggedInUser.role.name === 'admin';
     isVisitor = loggedInUser.role.name === 'Besucher';
-    // --- ENDE ANPASSUNG ---
 
     const navDashboard = document.getElementById('nav-dashboard');
     const navUsers = document.getElementById('nav-users');
     const settingsDropdown = document.getElementById('settings-dropdown');
     const settingsDropdownContent = document.getElementById('settings-dropdown-content');
-
-    // --- NEU: Feedback-Link ---
     const navFeedback = document.getElementById('nav-feedback');
 
-    // KORRIGIERTE LOGIK: Dashboard ist für alle NICHT-Besucher sichtbar
-    if (!isVisitor) {
-         navDashboard.style.display = 'block';
-    } else {
-         // Dies wird später durch die isVisitor-Prüfung überschrieben, aber für Konsistenz hier beibehalten.
-         navDashboard.style.display = 'none';
-    }
+    if (!isVisitor) navDashboard.style.display = 'block';
+    else navDashboard.style.display = 'none';
 
     if (isAdmin) {
         navUsers.style.display = 'block';
-        navFeedback.style.display = 'inline-flex'; // (NEU)
+        navFeedback.style.display = 'inline-flex';
+        if (staffingSortToggleBtn) staffingSortToggleBtn.style.display = 'inline-block';
+    } else {
+        if (staffingSortToggleBtn) staffingSortToggleBtn.style.display = 'none';
     }
+
     if (isVisitor) {
         isVisitor = true;
         document.body.classList.add('visitor-mode');
         navDashboard.style.display = 'none';
         navUsers.style.display = 'none';
     }
-    if (!isAdmin) {
-        document.querySelectorAll('#settings-dropdown-content .admin-only').forEach(el => {
-            el.style.display = 'none';
-        });
-        const visibleLinks = settingsDropdownContent.querySelectorAll('a:not([style*="display: none"])');
-        if (visibleLinks.length === 0) {
-             settingsDropdown.style.display = 'none';
+
+    if (settingsDropdownContent) {
+        const sortingLink = settingsDropdownContent.querySelector('a[href="schichtartensortierung.html"]');
+        if (sortingLink) sortingLink.remove();
+
+        if (!isAdmin) {
+            document.querySelectorAll('#settings-dropdown-content .admin-only').forEach(el => {
+                el.style.display = 'none';
+            });
+            const visibleLinks = settingsDropdownContent.querySelectorAll('a:not([style*="display: none"])');
+            if (visibleLinks.length === 0) {
+                 if (settingsDropdown) settingsDropdown.style.display = 'none';
+            }
         }
-    } else {
-         document.body.classList.add('admin-mode');
     }
+
 } catch (e) {
     logout();
 }
 document.getElementById('logout-btn').onclick = logout;
 
-// --- Globale API-Funktion (unverändert) ---
 async function apiFetch(endpoint, method = 'GET', body = null) {
     const options = { method, headers: { 'Content-Type': 'application/json' }, credentials: 'include' };
     if (body) { options.body = JSON.stringify(body); }
@@ -133,7 +133,6 @@ async function apiFetch(endpoint, method = 'GET', body = null) {
     return data;
 }
 
-// --- Laden der Farbeinstellungen (unverändert) ---
 async function loadColorSettings() {
      let fetchedColors = DEFAULT_COLORS;
     try {
@@ -156,10 +155,7 @@ async function loadColorSettings() {
     }
 }
 
-// --- MODAL-LOGIK (unverändert) ---
-function closeModal(modalEl) {
-    modalEl.style.display = 'none';
-}
+function closeModal(modalEl) { modalEl.style.display = 'none'; }
 function openShiftModal(userId, dateStr, userName) {
     if (!isAdmin) { return; }
     const d = new Date(dateStr);
@@ -170,11 +166,8 @@ function openShiftModal(userId, dateStr, userName) {
     shiftModal.style.display = 'block';
 }
 closeShiftModalBtn.onclick = () => closeModal(shiftModal);
-window.onclick = (event) => {
-    if (event.target == shiftModal) closeModal(shiftModal);
-}
+window.onclick = (event) => { if (event.target == shiftModal) closeModal(shiftModal); }
 
-// --- Laden aller Sondertermine (unverändert) ---
 async function loadSpecialDates(year) {
      try {
         const holidays = await apiFetch(`/api/special_dates?type=holiday&year=${year}`);
@@ -192,11 +185,20 @@ async function loadSpecialDates(year) {
 }
 
 
-// --- HAUPT-RENDER-LOGIK (ANGEPASST) ---
 async function renderGrid() {
     monthLabel.textContent = "Lade...";
     grid.innerHTML = '<div style="padding: 20px; text-align: center; color: #333;">Lade Daten...</div>';
     staffingGrid.innerHTML = '';
+
+    isStaffingSortingMode = false;
+    if (staffingSortToggleBtn) {
+        staffingSortToggleBtn.textContent = 'Besetzung sortieren';
+        staffingSortToggleBtn.classList.remove('btn-secondary');
+        staffingSortToggleBtn.classList.add('btn-primary');
+    }
+    if (sortableStaffingInstance) sortableStaffingInstance.destroy();
+
+
     try {
         const shiftDataPromise = apiFetch(`/api/shifts?year=${currentYear}&month=${currentMonth}`);
         const userDataPromise = apiFetch('/api/users');
@@ -206,7 +208,6 @@ async function renderGrid() {
 
         allUsers = userData;
 
-        // Schichten DIESES Monats
         currentShifts = {};
         shiftPayload.shifts.forEach(s => {
             const key = `${s.user_id}-${s.date}`;
@@ -217,11 +218,9 @@ async function renderGrid() {
             };
         });
 
-        // --- NEU: Schichten VORMONAT (Übertrag) ---
         currentShiftsLastMonth = {};
         if (shiftPayload.shifts_last_month) {
             shiftPayload.shifts_last_month.forEach(s => {
-                // Wir brauchen nur eine Schicht pro User (die letzte)
                 const fullShiftType = allShiftTypes[s.shifttype_id];
                 currentShiftsLastMonth[s.user_id] = {
                     ...s,
@@ -229,7 +228,6 @@ async function renderGrid() {
                 };
             });
         }
-        // --- ENDE NEU ---
 
         currentTotals = shiftPayload.totals;
 
@@ -245,21 +243,16 @@ async function renderGrid() {
         buildGridDOM();
         buildStaffingTable();
 
-        // (Sortierung in dieser Version deaktiviert)
-        // initializeSortable();
-
     } catch (error) {
         grid.innerHTML = `<div style="padding: 20px; text-align: center; color: red;">Fehler beim Laden des Plans: ${error.message}</div>`;
     }
 }
 
-// --- buildGridDOM (ANGEPASST) ---
 function buildGridDOM() {
     const daysInMonth = new Date(currentYear, currentMonth, 0).getDate();
     const monthName = new Date(currentYear, currentMonth - 1, 1).toLocaleString('de-DE', { month: 'long', year: 'numeric' });
     monthLabel.textContent = monthName;
 
-    // --- ANPASSUNG (Regel 2): gridTemplateColumns ---
     grid.style.gridTemplateColumns = `${COL_WIDTH_NAME} ${COL_WIDTH_DETAILS} ${COL_WIDTH_UEBERTRAG} repeat(${daysInMonth}, ${COL_WIDTH_DAY}) ${COL_WIDTH_TOTAL}`;
 
     grid.innerHTML = '';
@@ -278,7 +271,6 @@ function buildGridDOM() {
         return headerCell;
     };
 
-    // --- ANPASSUNG: Header-Zeile 1 (Wochentage) ---
     let nameHeader1 = document.createElement('div');
     nameHeader1.className = 'grid-header';
     grid.appendChild(nameHeader1);
@@ -286,7 +278,6 @@ function buildGridDOM() {
     dogHeader1.className = 'grid-header';
     grid.appendChild(dogHeader1);
 
-    // NEU: Header 1 für Übertrag
     let uebertragHeader1 = document.createElement('div');
     uebertragHeader1.className = 'grid-header-uebertrag';
     grid.appendChild(uebertragHeader1);
@@ -304,7 +295,6 @@ function buildGridDOM() {
     totalHeader1.className = 'grid-header-total';
     grid.appendChild(totalHeader1);
 
-    // --- ANPASSUNG: Header-Zeile 2 (Tage) ---
     let nameHeader2 = document.createElement('div');
     nameHeader2.className = 'grid-header-dog';
     nameHeader2.textContent = 'Mitarbeiter';
@@ -314,7 +304,6 @@ function buildGridDOM() {
     dogHeader.textContent = 'Diensthund';
     grid.appendChild(dogHeader);
 
-    // NEU: Header 2 für Übertrag
     const uebertragHeader = document.createElement('div');
     uebertragHeader.className = 'grid-header-uebertrag';
     uebertragHeader.textContent = 'Ü';
@@ -334,30 +323,23 @@ function buildGridDOM() {
     totalHeader.textContent = 'Std.';
     grid.appendChild(totalHeader);
 
-    // --- ANPASSUNG: Benutzer-Zellen ---
     const visibleUsers = allUsers.filter(user => user.shift_plan_visible === true);
-    visibleUsers.forEach(user => { // 'user' hier ist der gerenderte Benutzer
+    visibleUsers.forEach(user => {
 
-        // --- NEU (Regel 3): Prüfen, ob dies der eingeloggte Benutzer ist ---
         const isCurrentUser = (loggedInUser && loggedInUser.id === user.id);
         const currentUserClass = isCurrentUser ? ' current-user-row' : '';
-        // --- ENDE NEU ---
 
         const nameCell = document.createElement('div');
-        // --- ANPASSUNG ---
         nameCell.className = 'grid-user-name' + currentUserClass;
         nameCell.textContent = `${user.vorname} ${user.name}`;
         grid.appendChild(nameCell);
 
         const dogCell = document.createElement('div');
-        // --- ANPASSUNG ---
         dogCell.className = 'grid-user-dog' + currentUserClass;
         dogCell.textContent = user.diensthund || '---';
         grid.appendChild(dogCell);
 
-        // NEU: Übertrag-Zelle
         const uebertragCell = document.createElement('div');
-        // --- ANPASSUNG ---
         uebertragCell.className = 'grid-user-uebertrag' + currentUserClass;
         const lastMonthShift = currentShiftsLastMonth[user.id];
         if (lastMonthShift && lastMonthShift.shift_type) {
@@ -367,7 +349,6 @@ function buildGridDOM() {
             uebertragCell.textContent = '---';
         }
         grid.appendChild(uebertragCell);
-        // --- ENDE NEU ---
 
         for (let day = 1; day <= daysInMonth; day++) {
             const d = new Date(currentYear, currentMonth - 1, day);
@@ -413,9 +394,7 @@ function buildGridDOM() {
                 }
             }
 
-            // --- ANPASSUNG (Regel 3) ---
             cell.className = cellClasses + currentUserClass;
-            // --- ENDE ANPASSUNG ---
 
             if (cellColor) { cell.style.backgroundColor = cellColor; }
             if (textColor) { cell.style.color = textColor; }
@@ -443,9 +422,7 @@ function buildGridDOM() {
             grid.appendChild(cell);
         }
         const totalCell = document.createElement('div');
-        // --- ANPASSUNG (Regel 3) ---
         totalCell.className = 'grid-user-total' + currentUserClass;
-        // --- ENDE ANPASSUNG ---
         totalCell.id = `total-hours-${user.id}`;
         const userTotalHours = currentTotals[user.id] || 0.0;
         totalCell.textContent = userTotalHours.toFixed(1);
@@ -453,12 +430,10 @@ function buildGridDOM() {
     });
 }
 
-// --- buildStaffingTable (ANGEPASST FÜR SORTIERUNG) ---
+// --- buildStaffingTable (FIXED: Jede Zeile ist ein eigenes Grid) ---
 function buildStaffingTable() {
     const daysInMonth = new Date(currentYear, currentMonth, 0).getDate();
 
-    // 1. Finde relevante Schichtarten (Verwendet jetzt die VOM API SORTIERTE LISTE)
-    // Die Sortierung ist bereits im Backend nach staffing_sort_order erfolgt.
     const relevantShiftTypes = allShiftTypesList.filter(st =>
         (st.min_staff_mo || 0) > 0 || (st.min_staff_di || 0) > 0 ||
         (st.min_staff_mi || 0) > 0 || (st.min_staff_do || 0) > 0 ||
@@ -472,12 +447,11 @@ function buildStaffingTable() {
     }
 
     staffingGridContainer.style.display = 'block';
+    staffingGrid.innerHTML = '';
 
-    // --- ANPASSUNG (Regel 2): gridTemplateColumns ---
-    staffingGrid.style.gridTemplateColumns = `${COL_WIDTH_NAME} ${COL_WIDTH_DETAILS} ${COL_WIDTH_UEBERTRAG} repeat(${daysInMonth}, ${COL_WIDTH_DAY}) ${COL_WIDTH_TOTAL}`;
-    staffingGrid.innerHTML = ''; // (Grid leeren, nicht den Body)
+    // Wir definieren das Template, das jede Zeile (als eigenes Grid) nutzen wird
+    const gridTemplateColumns = `${COL_WIDTH_NAME} ${COL_WIDTH_DETAILS} ${COL_WIDTH_UEBERTRAG} repeat(${daysInMonth}, ${COL_WIDTH_DAY}) ${COL_WIDTH_TOTAL}`;
 
-    // Map für Wochentage (JS: 0=So, 1=Mo... 6=Sa) zu unseren DB-Feldern
     const dayKeyMap = [
         'min_staff_so', // 0
         'min_staff_mo', // 1
@@ -488,37 +462,46 @@ function buildStaffingTable() {
         'min_staff_sa'  // 6
     ];
 
-    // --- Daten-Zeilen (pro Schichtart) ---
-    // WICHTIG: Iteriert über die VOM API SORTIERTE Liste
     relevantShiftTypes.forEach(st => {
         const st_id = st.id;
 
-        // 1. Label-Zelle
+        // Jede Zeile ist jetzt ein DIV mit display:grid (durch CSS .staffing-row)
+        const row = document.createElement('div');
+        row.className = 'staffing-row';
+        row.dataset.id = st_id;
+        // Das Inline-Style überschreibt das CSS, falls nötig, und sorgt für korrekte Spalten
+        row.style.gridTemplateColumns = gridTemplateColumns;
+
         let labelCell = document.createElement('div');
         labelCell.className = 'staffing-label';
 
-        // NEU (Feedback 1): Bessere Beschriftung
-        labelCell.textContent = `${st.abbreviation} (${st.name})`;
+        const dragHandle = document.createElement('span');
+        dragHandle.className = 'staffing-drag-handle';
+        dragHandle.innerHTML = '☰';
+        dragHandle.style.display = isStaffingSortingMode ? 'inline-block' : 'none';
+
+        labelCell.appendChild(dragHandle);
+
+        const labelText = document.createElement('span');
+        labelText.textContent = `${st.abbreviation} (${st.name})`;
+        labelCell.appendChild(labelText);
+
         labelCell.style.fontWeight = '700';
         labelCell.style.color = '#333';
-        staffingGrid.appendChild(labelCell);
+        row.appendChild(labelCell);
 
-        // 2. Leere Zelle (für Bündigkeit "Diensthund")
         let emptyCell = document.createElement('div');
         emptyCell.className = 'staffing-cell staffing-untracked';
-        staffingGrid.appendChild(emptyCell);
+        row.appendChild(emptyCell);
 
-        // --- NEU: Leere Zelle (für Bündigkeit "Ü") ---
         let emptyCellUebertrag = document.createElement('div');
         emptyCellUebertrag.className = 'staffing-cell staffing-untracked';
-        emptyCellUebertrag.style.borderRight = '1px solid #ffcc99'; // (Passt zur orangen Spalte)
-        staffingGrid.appendChild(emptyCellUebertrag);
-        // --- ENDE NEU ---
+        emptyCellUebertrag.style.borderRight = '1px solid #ffcc99';
+        row.appendChild(emptyCellUebertrag);
 
         let totalIst = 0;
         let totalSoll = 0;
 
-        // 3. Tages-Zellen
         for (let day = 1; day <= daysInMonth; day++) {
             const d = new Date(currentYear, currentMonth - 1, day);
             const dayOfWeek = d.getDay();
@@ -543,37 +526,31 @@ function buildStaffingTable() {
             const istCell = document.createElement('div');
             let cellClasses = 'staffing-cell';
 
-            // --- ANPASSUNG (Regel 4) ---
             const eventType = currentSpecialDates[dateStr];
             if (dayOfWeek === 0 || dayOfWeek === 6) {
                 cellClasses += ' weekend';
             }
-            // --- ENDE ANPASSUNG ---
 
-
-            // --- NEUE AMPEL-LOGIK + AUSBLENDEN (Feedback 1 & 4) ---
             if (sollValue === 0) {
                 istCell.textContent = '';
-                cellClasses += ' staffing-untracked'; // Grau
+                cellClasses += ' staffing-untracked';
             } else {
                 istCell.textContent = istValue;
                 if (istValue === sollValue) {
-                    cellClasses += ' staffing-ok'; // Grün
+                    cellClasses += ' staffing-ok';
                 } else if (istValue > sollValue) {
-                     cellClasses += ' staffing-warning'; // Gelb (Überbesetzt)
+                     cellClasses += ' staffing-warning';
                 } else if (istValue > 0) {
-                    cellClasses += ' staffing-warning'; // Gelb (Unterbesetzt)
+                    cellClasses += ' staffing-warning';
                 } else {
-                    cellClasses += ' staffing-violation'; // Rot
+                    cellClasses += ' staffing-violation';
                 }
             }
-            // --- ENDE NEUE AMPEL-LOGIK ---
 
             istCell.className = cellClasses;
-            staffingGrid.appendChild(istCell);
+            row.appendChild(istCell);
         }
 
-        // 4. Total-Zelle
         let totalIstCell = document.createElement('div');
         totalIstCell.className = 'staffing-total-header';
         totalIstCell.textContent = totalIst;
@@ -582,10 +559,134 @@ function buildStaffingTable() {
         } else if (totalIst > totalSoll && totalSoll > 0) {
              totalIstCell.style.color = '#856404';
         }
-        staffingGrid.appendChild(totalIstCell);
+        row.appendChild(totalIstCell);
+
+        staffingGrid.appendChild(row);
+    });
+
+    if (isAdmin && isStaffingSortingMode) {
+        initializeSortableStaffing(staffingGrid);
+    }
+}
+
+function initializeSortableStaffing(container) {
+    if (sortableStaffingInstance) {
+        sortableStaffingInstance.destroy();
+    }
+
+    sortableStaffingInstance = new Sortable(container, {
+        group: 'staffing',
+        handle: '.staffing-drag-handle',
+        animation: 150,
+        // <<< KORREKTUR: forceFallback: true + CSS-Grid im Fallback >>>
+        forceFallback: true,
+        fallbackClass: 'sortable-fallback',
+        fallbackOnBody: true,
+        swapThreshold: 0.65,
+        invertSwap: true, // Wichtig für Hoch/Runter Tausch
+        direction: 'vertical',
+
+        // Events für das CSS 'dragging' auf dem Body
+        onStart: function (evt) {
+            document.body.classList.add('dragging');
+            // Wir müssen sicherstellen, dass der "Ghost" (die Kopie) auch das Grid-Layout behält
+            // Da die Kopie in den Body appended wird, kopieren wir die Spalten-Definition
+            const originalRow = evt.item;
+            const ghostRow = document.querySelector('.sortable-fallback');
+            if (ghostRow) {
+                ghostRow.style.gridTemplateColumns = originalRow.style.gridTemplateColumns;
+                ghostRow.style.width = originalRow.offsetWidth + 'px'; // Breite fixieren
+            }
+        },
+        onEnd: function () {
+            document.body.classList.remove('dragging');
+        },
+
+        filter: (e) => {
+            return !e.target.classList.contains('staffing-drag-handle');
+        },
+        draggable: '.staffing-row',
+        ghostClass: 'sortable-ghost'
     });
 }
-// --- ENDE KORREKTUR ---
+
+async function toggleStaffingSortMode() {
+    if (!isAdmin) return;
+
+    if (isStaffingSortingMode) {
+        const success = await saveStaffingOrder();
+        if (success) {
+            isStaffingSortingMode = false;
+            if (sortableStaffingInstance) sortableStaffingInstance.destroy();
+
+            staffingSortToggleBtn.textContent = 'Besetzung sortieren';
+            staffingSortToggleBtn.classList.remove('btn-secondary');
+            staffingSortToggleBtn.classList.add('btn-primary');
+
+            document.querySelectorAll('.staffing-drag-handle').forEach(h => h.style.display = 'none');
+
+            // Klasse entfernen (zur Sicherheit)
+            document.querySelectorAll('.staffing-row').forEach(r => r.classList.remove('sort-mode-active'));
+        }
+
+    } else {
+        isStaffingSortingMode = true;
+
+        staffingSortToggleBtn.textContent = 'Reihenfolge speichern';
+        staffingSortToggleBtn.classList.remove('btn-primary');
+        staffingSortToggleBtn.classList.add('btn-secondary');
+
+        document.querySelectorAll('.staffing-drag-handle').forEach(h => h.style.display = 'inline-block');
+
+        // Klasse für CSS (user-select: none) hinzufügen
+        document.querySelectorAll('.staffing-row').forEach(r => r.classList.add('sort-mode-active'));
+
+        if (staffingGrid) {
+            initializeSortableStaffing(staffingGrid);
+        }
+    }
+}
+
+async function saveStaffingOrder() {
+    // Selektor auf die neuen Klassen angepasst
+    const rows = document.querySelectorAll('#staffing-grid .staffing-row');
+    const payload = [];
+
+    rows.forEach((row, index) => {
+        payload.push({
+            id: parseInt(row.dataset.id),
+            order: index
+        });
+    });
+
+    staffingSortToggleBtn.textContent = 'Speichere...';
+    staffingSortToggleBtn.disabled = true;
+
+    try {
+        await apiFetch('/api/shifttypes/staffing_order', 'PUT', payload);
+
+        const newOrderMap = payload.reduce((acc, item) => {
+            acc[item.id] = item.order;
+            return acc;
+        }, {});
+
+        allShiftTypesList.sort((a, b) => newOrderMap[a.id] - newOrderMap[b.id]);
+
+        staffingSortToggleBtn.disabled = false;
+        return true;
+
+    } catch (error) {
+        alert('Fehler beim Speichern der Sortierung: ' + error.message);
+        staffingSortToggleBtn.textContent = 'Fehler!';
+        staffingSortToggleBtn.disabled = false;
+        return false;
+    }
+}
+
+if (staffingSortToggleBtn) {
+    staffingSortToggleBtn.onclick = toggleStaffingSortMode;
+}
+
 
 // --- Helligkeitsprüfung (unverändert) ---
 function isColorDark(hexColor) {
@@ -603,15 +704,11 @@ function isColorDark(hexColor) {
     }
 }
 
-// --- populateStaticElements (ANGEPASST FÜR SORTIERUNG) ---
+// --- populateStaticElements ---
 async function populateStaticElements(forceReload = false) {
     if (Object.keys(allShiftTypes).length === 0 || forceReload) {
-        const typeData = await apiFetch('/api/shifttypes'); // <-- Liefert sortiert
-
-        // 1. Sortierte Liste speichern
+        const typeData = await apiFetch('/api/shifttypes');
         allShiftTypesList = typeData;
-
-        // 2. Map erstellen (nötig für schnellen Lookup nach ID)
         allShiftTypes = {};
         typeData.forEach(st => allShiftTypes[st.id] = st);
     }
@@ -619,8 +716,7 @@ async function populateStaticElements(forceReload = false) {
     legend.innerHTML = '<b>Legende:</b>';
     shiftSelection.innerHTML = '';
 
-    // (Verwendet jetzt die sortierte Liste für die Legende und die Modalauswahl)
-    const sortedTypes = allShiftTypesList; // <<< WICHTIG: Nutzt die sortierte Liste
+    const sortedTypes = allShiftTypesList;
 
     sortedTypes.forEach(st => {
         const item = document.createElement('div');
@@ -643,9 +739,8 @@ async function populateStaticElements(forceReload = false) {
     });
 }
 
-// --- DATEN SPEICHERN (unverändert) ---
+// --- DATEN SPEICHERN ---
 async function saveShift(shifttypeId, userId, dateStr) {
-// ... (Funktion bleibt unverändert) ...
     if (!isAdmin) {
         console.error("Nicht-Admins dürfen keine Schichten speichern.");
         return;
@@ -702,12 +797,11 @@ async function saveShift(shifttypeId, userId, dateStr) {
     }
 }
 
-// (findCellByKey - unverändert)
 function findCellByKey(key) {
     return grid.querySelector(`[data-key="${key}"]`);
 }
 
-// --- NAVIGATIONS-EVENTS (unverändert) ---
+// --- NAVIGATIONS-EVENTS ---
 prevMonthBtn.onclick = () => {
     currentMonth--;
     if (currentMonth < 1) { currentMonth = 12; currentYear--; }
@@ -721,7 +815,7 @@ nextMonthBtn.onclick = () => {
     renderGrid();
 };
 
-// --- Shortcut Ladefunktion (unverändert) ---
+// --- Shortcut Ladefunktion ---
 function loadShortcuts() {
     let savedShortcuts = {};
     try {
@@ -745,7 +839,7 @@ function loadShortcuts() {
     );
 }
 
-// --- KEYBOARD SHORTCUT LISTENER (unverändert) ---
+// --- KEYBOARD SHORTCUT LISTENER ---
 window.addEventListener('keydown', async (event) => {
     if (!isAdmin) return;
     if (shiftModal.style.display === 'block') return;
@@ -763,7 +857,7 @@ window.addEventListener('keydown', async (event) => {
     }
 });
 
-// --- Initialisierung (unverändert) ---
+// --- Initialisierung ---
 async function initialize() {
     await loadColorSettings();
     await populateStaticElements();
