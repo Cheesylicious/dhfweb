@@ -2,16 +2,15 @@
 <html lang="de">
 <head>
     <meta charset="UTF-8">
-    <title>Meldungen - DHF-Planer</title>
+    <title>Offene Anfragen - DHF-Planer</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <style>
         /* Import einer modernen Schriftart */
         @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap');
 
         :root {
-            --status-neu: #e74c3c;
-            --status-gesehen: #3498db;
-            --status-archiviert: #95a5a6;
+            --status-offen: #f0ad4e; /* Gelb/Orange für Offen */
+            --status-erledigt: #95a5a6; /* Grau für Erledigt */
         }
 
         body {
@@ -53,7 +52,7 @@
         header nav {
             display: flex;
             gap: 20px;
-            align-items: center; /* Hinzugefügt für Konsistenz */
+            align-items: center;
         }
 
         header nav a {
@@ -64,8 +63,8 @@
             padding: 10px;
             border-radius: 5px;
             transition: background-color 0.3s, color 0.3s;
-            display: inline-flex; /* Hinzugefügt für Konsistenz */
-            align-items: center; /* Hinzugefügt für Konsistenz */
+            display: inline-flex;
+            align-items: center;
         }
 
         header nav a.active, header nav a:hover {
@@ -73,16 +72,15 @@
             color: #ffffff;
         }
 
-        /* (Stil für den neuen Admin-Badge) */
         .nav-badge {
-            background: var(--status-neu);
+            background: #e74c3c;
             color: white;
             font-size: 10px;
             font-weight: 600;
             padding: 2px 5px;
             border-radius: 5px;
-            margin-left: 8px; /* Korrigiert auf 8px für Konsistenz */
-            display: none; /* (Wird per JS angezeigt) */
+            margin-left: 8px;
+            display: none;
         }
 
         #user-info {
@@ -106,7 +104,6 @@
             background: #c0392b;
         }
 
-        /* (Neuer Report-Button - wird in shared_feedback.js erstellt) */
         .report-btn {
             background: #3498db;
             margin-right: 15px;
@@ -114,6 +111,38 @@
         .report-btn:hover {
             background: #2980b9;
         }
+
+        /* Sub-Nav (Glas-Effekt) */
+        .sub-nav {
+            background: rgba(255, 255, 255, 0.05);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            padding: 0 30px;
+            margin-bottom: 30px;
+            margin-top: -1px; /* (Schließt Lücke zum Header) */
+            display: flex;
+            align-items: center;
+            /* WICHTIG: z-index, damit es unter der Benachrichtigungsleiste bleibt */
+            position: relative;
+            z-index: 10000;
+        }
+
+        .sub-nav a {
+            display: inline-block;
+            padding: 15px 20px;
+            text-decoration: none;
+            color: #bdc3c7;
+            font-weight: 500;
+            border-bottom: 3px solid transparent;
+            transition: color 0.3s;
+        }
+
+        .sub-nav a.active, .sub-nav a:hover {
+            color: #ffffff;
+            border-bottom-color: #3498db;
+        }
+
 
         main {
             padding: 30px;
@@ -164,35 +193,36 @@
             color: #ffffff;
         }
         .filter-buttons button.active {
-            background: #3498db;
-            border-color: #3498db;
-            color: white;
+            background: var(--status-offen);
+            border-color: var(--status-offen);
+            color: #1a1a1a;
+            font-weight: 600;
         }
 
-        /* (Innovatives Ticket-Design statt Tabelle) */
-        #feedback-list {
+        #query-list {
             list-style: none;
             padding: 0;
             margin: 0;
         }
 
-        .feedback-item {
+        .query-item {
             border-bottom: 1px solid rgba(255, 255, 255, 0.1);
             transition: background-color 0.3s, opacity 0.5s;
         }
 
-        .feedback-item:last-child {
+        .query-item:last-child {
             border-bottom: none;
         }
 
-        .feedback-item.fade-out {
+        .query-item.fade-out {
             opacity: 0;
         }
 
         .item-header {
             padding: 15px 25px;
             display: grid;
-            grid-template-columns: 1fr 1fr 1fr 100px;
+            /* WER | FÜR WEN | ANFRAGE | DATUM | STATUS */
+            grid-template-columns: 1fr 1fr 2fr 1fr 100px;
             gap: 15px;
             align-items: center;
             cursor: pointer;
@@ -223,16 +253,12 @@
             text-transform: uppercase;
         }
 
-        .item-status[data-status="neu"] {
-            background: var(--status-neu);
-            color: white;
+        .item-status[data-status="offen"] {
+            background: var(--status-offen);
+            color: #1a1a1a;
         }
-        .item-status[data-status="gesehen"] {
-            background: var(--status-gesehen);
-            color: white;
-        }
-        .item-status[data-status="archiviert"] {
-            background: var(--status-archiviert);
+        .item-status[data-status="erledigt"] {
+            background: var(--status-erledigt);
             color: #333;
         }
 
@@ -266,16 +292,14 @@
             cursor: pointer;
             font-size: 13px;
             transition: opacity 0.3s;
+            font-weight: 600;
         }
         .item-actions button:hover {
             opacity: 0.8;
         }
 
-        .btn-archive { background: var(--status-archiviert); color: #333; }
-        .btn-seen { background: var(--status-gesehen); color: white; }
-        .btn-new { background: var(--status-neu); color: white; }
-        .btn-delete { background: #555; color: white; margin-left: auto; }
-
+        .btn-done { background: var(--status-erledigt); color: #333; }
+        .btn-reopen { background: var(--status-offen); color: #1a1a1a; }
 
         /* (Stil für "Zugriff verweigert") */
         #content-wrapper.restricted-view {
@@ -288,7 +312,6 @@
              border: 1px solid rgba(255, 255, 255, 0.1);
         }
         #content-wrapper.restricted-view h2 { color: #e74c3c; }
-
     </style>
 </head>
 <body>
@@ -297,13 +320,11 @@
 
     <header>
         <h1>DHF-Planer</h1>
-        <nav id="main-nav"> <a href="dashboard.html" id="nav-dashboard" style="display: none;">Dashboard</a>
-            <a href="users.html" id="nav-users" style="display: none;">Benutzerverwaltung</a>
-            <a href="feedback.html" class="active" id="nav-feedback" style="display: none;">
-                Meldungen
-                <span id="feedback-badge" class="nav-badge">0</span>
-            </a>
-            <a href="schichtplan.html">Schichtplan</a>
+        <nav id="main-nav">
+            <a href="dashboard.html" id="nav-dashboard">Dashboard</a>
+            <a href="users.html" id="nav-users">Benutzerverwaltung</a>
+            <a href="feedback.html" id="nav-feedback">Meldungen</a>
+            <a href="schichtplan.html" id="nav-schichtplan">Schichtplan</a>
         </nav>
         <div id="user-info">
             <span id="welcome-user"></span>
@@ -312,112 +333,76 @@
         </div>
     </header>
 
+    <!-- SUB-NAV FÜR MELDUNGEN / ANFRAGEN -->
+    <div class="sub-nav" id="sub-nav-tasks">
+        <a href="feedback.html" id="sub-nav-feedback">Meldungen (Bugs/Ideen)</a>
+        <a href="anfragen.html" id="sub-nav-anfragen" class="active">Schicht-Anfragen</a>
+    </div>
+
+
     <main>
         <div id="content-wrapper">
             <div class="card">
                 <div class="card-header">
-                    <h2>Meldungen</h2>
+                    <h2>Offene Schicht-Anfragen</h2>
                     <div class="filter-buttons">
-                        <button class="filter-btn active" data-filter="">Alle</button>
-                        <button class="filter-btn" data-filter="neu">Neu</button>
-                        <button class="filter-btn" data-filter="gesehen">Gesehen</button>
-                        <button class="filter-btn" data-filter="archiviert">Archiviert</button>
+                        <button class="filter-btn active" data-filter="offen">Offen</button>
+                        <button class="filter-btn" data-filter="erledigt">Erledigt</button>
+                        <button class="filter-btn" data-filter="">Alle</button>
                     </div>
                 </div>
 
-                <ul id="feedback-list">
-                    </ul>
+                <ul id="query-list">
+                    <!-- Inhalt wird von anfragen.js geladen -->
+                </ul>
             </div>
         </div>
     </main>
 
     <script>
-        // --- START: PARTIKEL-ANIMATION ---
-        // (Hier ist der identische Partikel-Animationscode wie in den anderen Dateien)
+        // --- START: PARTIKEL-ANIMATION (Standard) ---
         const canvas = document.getElementById('particle-canvas');
         const ctx = canvas.getContext('2d');
         const nodeColor = '#3498db';
         const lineColor = '#ecf0f1';
         let particlesArray;
-
-        function setCanvasSize() {
-            canvas.width = window.innerWidth;
-            canvas.height = window.innerHeight;
-        }
+        function setCanvasSize() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; }
         setCanvasSize();
-
         class Particle {
-            constructor(x, y, directionX, directionY, size) {
-                this.x = x; this.y = y; this.directionX = directionX; this.directionY = directionY; this.size = size;
-            }
-            draw() {
-                ctx.beginPath();
-                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2, false);
-                ctx.fillStyle = nodeColor;
-                ctx.fill();
-            }
-            update() {
-                if (this.x > canvas.width || this.x < 0) { this.directionX = -this.directionX; }
-                if (this.y > canvas.height || this.y < 0) { this.directionY = -this.directionY; }
-                this.x += this.directionX; this.y += this.directionY;
-                this.draw();
-            }
+            constructor(x, y, directionX, directionY, size) { this.x = x; this.y = y; this.directionX = directionX; this.directionY = directionY; this.size = size; }
+            draw() { ctx.beginPath(); ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2, false); ctx.fillStyle = nodeColor; ctx.fill(); }
+            update() { if (this.x > canvas.width || this.x < 0) { this.directionX = -this.directionX; } if (this.y > canvas.height || this.y < 0) { this.directionY = -this.directionY; } this.x += this.directionX; this.y += this.directionY; this.draw(); }
         }
-
         function init() {
-            particlesArray = [];
-            let numberOfParticles = (canvas.height * canvas.width) / 9000;
-            if (numberOfParticles > 100) numberOfParticles = 100;
-
+            particlesArray = []; let numberOfParticles = (canvas.height * canvas.width) / 9000; if (numberOfParticles > 100) numberOfParticles = 100;
             for (let i = 0; i < numberOfParticles; i++) {
-                let size = (Math.random() * 2) + 1;
-                let x = (Math.random() * ((canvas.width - size * 2) - (size * 2)) + size * 2);
+                let size = (Math.random() * 2) + 1; let x = (Math.random() * ((canvas.width - size * 2) - (size * 2)) + size * 2);
                 let y = (Math.random() * ((canvas.height - size * 2) - (size * 2)) + size * 2);
-                let directionX = (Math.random() * 0.4) - 0.2;
-                let directionY = (Math.random() * 0.4) - 0.2;
+                let directionX = (Math.random() * 0.4) - 0.2; let directionY = (Math.random() * 0.4) - 0.2;
                 particlesArray.push(new Particle(x, y, directionX, directionY, size));
             }
         }
-
         function connect() {
-            let maxDistance = 150;
-            ctx.strokeStyle = lineColor;
+            let maxDistance = 150; ctx.strokeStyle = lineColor;
             for (let a = 0; a < particlesArray.length; a++) {
                 for (let b = a; b < particlesArray.length; b++) {
-                    let distance = ((particlesArray[a].x - particlesArray[b].x) * (particlesArray[a].x - particlesArray[b].x))
-                                 + ((particlesArray[a].y - particlesArray[b].y) * (particlesArray[a].y - particlesArray[b].y));
-                    if (distance < (maxDistance * maxDistance)) {
-                        let opacity = 1 - (distance / (maxDistance * maxDistance));
-                        ctx.globalAlpha = opacity;
-                        ctx.beginPath();
-                        ctx.moveTo(particlesArray[a].x, particlesArray[a].y);
-                        ctx.lineTo(particlesArray[b].x, particlesArray[b].y);
-                        ctx.stroke();
-                    }
+                    let distance = ((particlesArray[a].x - particlesArray[b].x) * (particlesArray[a].x - particlesArray[b].x)) + ((particlesArray[a].y - particlesArray[b].y) * (particlesArray[a].y - particlesArray[b].y));
+                    if (distance < (maxDistance * maxDistance)) { let opacity = 1 - (distance / (maxDistance * maxDistance)); ctx.globalAlpha = opacity; ctx.beginPath(); ctx.moveTo(particlesArray[a].x, particlesArray[a].y); ctx.lineTo(particlesArray[b].x, particlesArray[b].y); ctx.stroke(); }
                 }
             }
             ctx.globalAlpha = 1.0;
         }
-
-        function animate() {
-            requestAnimationFrame(animate);
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            for (let i = 0; i < particlesArray.length; i++) {
-                particlesArray[i].update();
-            }
-            connect();
-        }
-
-        window.addEventListener('resize', () => {
-            setCanvasSize();
-            init();
-        });
-        init();
-        animate();
+        function animate() { requestAnimationFrame(animate); ctx.clearRect(0, 0, canvas.width, canvas.height); for (let i = 0; i < particlesArray.length; i++) { particlesArray[i].update(); } connect(); }
+        window.addEventListener('resize', () => { setCanvasSize(); init(); });
+        init(); animate();
         // --- ENDE: PARTIKEL-ANIMATION ---
     </script>
 
-    <script src="feedback.js" defer></script>
+    <!-- Geteilte Skripte -->
+    <script src="shared_feedback.js" defer></script>
     <script src="shared_notifications.js" defer></script>
+
+    <!-- Seiten-Skript -->
+    <script src="anfragen.js" defer></script>
 </body>
 </html>

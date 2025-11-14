@@ -19,11 +19,13 @@ let hoveredCellContext = null;
 
 let currentStaffingActual = {};
 let currentPlanStatus = {}; // <-- NEU: Speichert den Status des Plans
+let currentShiftQueries = []; // <<< NEU: Speichert offene Schicht-Anfragen
 
 let shortcutMap = {};
 const defaultShortcuts = { 'T.': 't', 'N.': 'n', '6': '6', 'FREI': 'f', 'X': 'x', 'U': 'u' };
 let isVisitor = false;
 let isAdmin = false;
+let isPlanschreiber = false; // <<< NEU: Für die neue Rolle
 
 let isStaffingSortingMode = false;
 let sortableStaffingInstance = null;
@@ -61,6 +63,23 @@ const shiftSelection = document.getElementById('shift-selection');
 const closeShiftModalBtn = document.getElementById('close-shift-modal');
 let modalContext = { userId: null, dateStr: null };
 
+// --- NEUE DOM Elemente für Schicht-Anfragen (Query Modal) ---
+const queryModal = document.getElementById('query-modal');
+const closeQueryModalBtn = document.getElementById('close-query-modal');
+const queryModalTitle = document.getElementById('query-modal-title');
+const queryModalInfo = document.getElementById('query-modal-info');
+const queryExistingContainer = document.getElementById('query-existing-container');
+const queryExistingMessage = document.getElementById('query-existing-message');
+const queryAdminActions = document.getElementById('query-admin-actions');
+const queryResolveBtn = document.getElementById('query-resolve-btn');
+const queryNewContainer = document.getElementById('query-new-container');
+const queryMessageInput = document.getElementById('query-message-input');
+const querySubmitBtn = document.getElementById('query-submit-btn');
+const queryModalStatus = document.getElementById('query-modal-status');
+let modalQueryContext = { userId: null, dateStr: null, userName: null, queryId: null };
+// --- ENDE NEU ---
+
+
 // --- KORREKTUR: Spaltenbreiten auf "Inhalt entscheidet" (max-content) gesetzt ---
 const COL_WIDTH_NAME = 'minmax(160px, max-content)';
 const COL_WIDTH_DETAILS = 'minmax(110px, max-content)';
@@ -92,10 +111,15 @@ try {
 
     isAdmin = loggedInUser.role.name === 'admin';
     isVisitor = loggedInUser.role.name === 'Besucher';
+    isPlanschreiber = loggedInUser.role.name === 'Planschreiber'; // <<< NEU
 
     // --- NEU: Admin-Klasse zum Body hinzufügen ---
     if (isAdmin) {
         document.body.classList.add('admin-mode');
+    }
+    // --- NEU: Planschreiber-Klasse hinzufügen ---
+    if (isPlanschreiber) {
+        document.body.classList.add('planschreiber-mode');
     }
     // --- ENDE NEU ---
 
@@ -195,6 +219,7 @@ async function loadColorSettings() {
 function closeModal(modalEl) { modalEl.style.display = 'none'; }
 function openShiftModal(userId, dateStr, userName) {
     // --- NEU: Prüfen, ob Admin UND ob Plan gesperrt ist ---
+    // (Planschreiber dürfen hier nicht rein)
     if (!isAdmin) { return; }
     if (currentPlanStatus && currentPlanStatus.is_locked) {
         // console.warn("Plan ist gesperrt. Bearbeitung nicht möglich.");
@@ -210,7 +235,22 @@ function openShiftModal(userId, dateStr, userName) {
     shiftModal.style.display = 'block';
 }
 closeShiftModalBtn.onclick = () => closeModal(shiftModal);
-window.onclick = (event) => { if (event.target == shiftModal) closeModal(shiftModal); }
+// --- NEU: Query-Modal Listener ---
+if (closeQueryModalBtn) {
+    closeQueryModalBtn.onclick = () => closeModal(queryModal);
+}
+if (querySubmitBtn) {
+    querySubmitBtn.onclick = () => saveShiftQuery();
+}
+if (queryResolveBtn) {
+    queryResolveBtn.onclick = () => resolveShiftQuery();
+}
+// --- ENDE NEU ---
+
+window.onclick = (event) => {
+    if (event.target == shiftModal) closeModal(shiftModal);
+    if (event.target == queryModal) closeModal(queryModal); // <<< NEU
+}
 
 async function loadSpecialDates(year) {
      try {
@@ -227,6 +267,21 @@ async function loadSpecialDates(year) {
          console.error("Fehler beim Laden der Sondertermine:", error.message);
     }
 }
+
+// --- NEUE FUNKTION: Lädt offene Schicht-Anfragen ---
+async function loadShiftQueries() {
+    // Nur laden, wenn der User die Berechtigung hat, sie zu sehen
+    if (!isAdmin && !isPlanschreiber) return;
+    try {
+        // Lade alle offenen Anfragen für den Monat
+        const queries = await apiFetch(`/api/queries?year=${currentYear}&month=${currentMonth}&status=offen`);
+        currentShiftQueries = queries;
+    } catch (e) {
+        console.error("Fehler beim Laden der Schicht-Anfragen", e);
+        currentShiftQueries = [];
+    }
+}
+// --- ENDE NEU ---
 
 
 async function renderGrid() {
@@ -254,8 +309,14 @@ async function renderGrid() {
         const shiftDataPromise = apiFetch(`/api/shifts?year=${currentYear}&month=${currentMonth}`);
         const userDataPromise = apiFetch('/api/users');
         const specialDatesPromise = loadSpecialDates(currentYear);
+        const queriesPromise = loadShiftQueries(); // <<< NEU
 
-        const [shiftPayload, userData, specialDatesResult] = await Promise.all([shiftDataPromise, userDataPromise, specialDatesPromise]);
+        const [shiftPayload, userData, specialDatesResult, queriesResult] = await Promise.all([ // <<< NEU
+            shiftDataPromise,
+            userDataPromise,
+            specialDatesPromise,
+            queriesPromise // <<< NEU
+        ]);
 
         allUsers = userData;
 
@@ -553,6 +614,19 @@ function buildGridDOM() {
                 }
             }
 
+            // --- NEU: Prüfen ob eine Anfrage für diese Zelle existiert ---
+            // (Wir suchen nur nach 'offenen' Anfragen)
+            const queryForCell = currentShiftQueries.find(q =>
+                q.target_user_id === user.id && q.shift_date === dateStr && q.status === 'offen'
+            );
+            if (queryForCell) {
+                // (Das Icon wird im HTML-Template (schichtplan.html) gestyled)
+                cell.innerHTML += `<span class="shift-query-icon">❓</span>`;
+                cell.dataset.queryId = queryForCell.id; // ID in der Zelle speichern
+            }
+            // --- ENDE NEU ---
+
+
             cell.className = cellClasses + currentUserClass;
 
             if (currentYear === today.getFullYear() && (currentMonth - 1) === today.getMonth() && day === today.getDate()) {
@@ -563,17 +637,34 @@ function buildGridDOM() {
             if (textColor) { cell.style.color = textColor; }
             cell.dataset.key = key;
 
+            // --- ANGEPASSTE EVENT HANDLER ---
+            // Admin: Linksklick zum Ändern (nur wenn Plan offen)
             if (isAdmin) {
                 cell.onclick = () => {
                     openShiftModal(user.id, dateStr, `${user.vorname} ${user.name}`);
                 };
+            }
+
+            // Admin ODER Planschreiber: Rechtsklick für Anfragen (funktioniert auch wenn Plan gesperrt)
+            if (isAdmin || isPlanschreiber) {
+                 cell.addEventListener('contextmenu', (e) => {
+                    e.preventDefault(); // Verhindert Browser-Kontextmenü
+                    openQueryModal(user.id, dateStr, `${user.vorname} ${user.name}`, cell.dataset.queryId);
+                });
+            }
+
+            // Maus-Hover-Effekte
+            if (isAdmin || isPlanschreiber) { // Nur Admins/Planschreiber brauchen Hover-Effekte
                 cell.onmouseenter = () => {
-                    cell.classList.add('hovered');
-                    hoveredCellContext = {
-                        userId: user.id, dateStr: dateStr,
-                        userName: `${user.vorname} ${user.name}`,
-                        cellElement: cell
-                    };
+                    // Hover nur wenn Plan offen ODER wenn es ein Planschreiber ist (für Rechtsklick)
+                    if ((isAdmin && !(currentPlanStatus && currentPlanStatus.is_locked)) || isPlanschreiber) {
+                        cell.classList.add('hovered');
+                        hoveredCellContext = {
+                            userId: user.id, dateStr: dateStr,
+                            userName: `${user.vorname} ${user.name}`,
+                            cellElement: cell
+                        };
+                    }
                 };
                 cell.onmouseleave = () => {
                     cell.classList.remove('hovered');
@@ -582,6 +673,8 @@ function buildGridDOM() {
             } else {
                 cell.style.cursor = 'default';
             }
+            // --- ENDE ANGEPASSTE EVENT HANDLER ---
+
             grid.appendChild(cell);
         }
         const totalCell = document.createElement('div');
@@ -1113,12 +1206,15 @@ function loadShortcuts() {
 
 // --- KEYBOARD SHORTCUT LISTENER ---
 window.addEventListener('keydown', async (event) => {
+    // --- WICHTIG: Nur Admins dürfen Shortcuts verwenden ---
     if (!isAdmin) return;
+    // --- ENDE ANPASSUNG ---
+
     // --- NEU: Sperr-Check ---
     if (currentPlanStatus && currentPlanStatus.is_locked) return;
     // --- ENDE NEU ---
 
-    if (shiftModal.style.display === 'block') return;
+    if (shiftModal.style.display === 'block' || queryModal.style.display === 'block') return; // <<< NEU: Auch Query-Modal blockieren
     if (!hoveredCellContext || !hoveredCellContext.userId) return;
     const key = event.key.toLowerCase();
     const abbrev = shortcutMap[key];
@@ -1132,6 +1228,131 @@ window.addEventListener('keydown', async (event) => {
         }
     }
 });
+
+
+// --- NEUE FUNKTIONEN FÜR SCHICHT-ANFRAGEN (QUERY MODAL) ---
+
+/**
+ * Öffnet das Anfrage-Modal (Rechtsklick)
+ */
+function openQueryModal(userId, dateStr, userName, queryId) {
+    const d = new Date(dateStr);
+    const dateDisplay = d.toLocaleDateString('de-DE', { weekday: 'long', day: '2-digit', month: '2-digit' });
+
+    // Globalen Kontext für das Query-Modal setzen
+    modalQueryContext = { userId, dateStr, userName, queryId: queryId || null };
+
+    // Modal-Header füllen
+    queryModalTitle.textContent = "Schicht-Anfrage";
+    queryModalInfo.textContent = `Für: ${userName} am ${dateDisplay}`;
+    queryModalStatus.textContent = "";
+    queryMessageInput.value = ""; // Textfeld immer leeren
+
+    // Prüfen, ob eine existierende Anfrage für diese Zelle geladen wurde
+    const query = queryId ? currentShiftQueries.find(q => q.id == queryId) : null;
+
+    if (query) {
+        // --- FALL 1: Es gibt eine offene Anfrage ---
+        queryExistingContainer.style.display = 'block';
+        queryExistingMessage.textContent = `"${query.message}"\n- ${query.sender_name}, ${new Date(query.created_at).toLocaleString('de-DE', {day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'
+        })} Uhr`;
+
+        // Das "Neue Anfrage"-Feld verstecken (man kann nur 'offene' Anfragen sehen)
+        queryNewContainer.style.display = 'none';
+
+        // Admin-Aktionen (Erledigt-Button) anzeigen
+        if (isAdmin) {
+            queryAdminActions.style.display = 'block';
+        } else {
+            queryAdminActions.style.display = 'none';
+        }
+
+    } else {
+        // --- FALL 2: Keine offene Anfrage ---
+        // Anzeige-Container verstecken
+        queryExistingContainer.style.display = 'none';
+        queryAdminActions.style.display = 'none';
+
+        // "Neue Anfrage"-Container anzeigen
+        queryNewContainer.style.display = 'block';
+    }
+
+    // Modal anzeigen
+    queryModal.style.display = 'block';
+}
+
+/**
+ * Sendet eine neue Anfrage oder aktualisiert eine bestehende.
+ */
+async function saveShiftQuery() {
+    querySubmitBtn.disabled = true;
+    queryModalStatus.textContent = "Sende...";
+    queryModalStatus.style.color = '#555';
+
+    try {
+        const payload = {
+            target_user_id: modalQueryContext.userId,
+            shift_date: modalQueryContext.dateStr,
+            message: queryMessageInput.value
+        };
+
+        if (payload.message.length < 3) {
+            throw new Error("Nachricht ist zu kurz.");
+        }
+
+        // API-Aufruf (POST /api/queries)
+        await apiFetch('/api/queries', 'POST', payload);
+
+        queryModalStatus.textContent = "Gespeichert!";
+        queryModalStatus.style.color = '#2ecc71'; // Grün
+
+        // Daten neu laden und Grid neu zeichnen, um das ❓ Icon anzuzeigen
+        await loadShiftQueries();
+        buildGridDOM();
+
+        setTimeout(() => {
+            closeModal(queryModal);
+            querySubmitBtn.disabled = false;
+        }, 1000);
+
+    } catch (e) {
+        queryModalStatus.textContent = `Fehler: ${e.message}`;
+        queryModalStatus.style.color = '#e74c3c'; // Rot
+        querySubmitBtn.disabled = false;
+    }
+}
+
+/**
+ * (Nur Admin) Markiert eine Anfrage als 'erledigt'.
+ */
+async function resolveShiftQuery() {
+    if (!isAdmin || !modalQueryContext.queryId) return;
+
+    queryResolveBtn.disabled = true;
+    queryModalStatus.textContent = "Speichere Status...";
+    queryModalStatus.style.color = '#555';
+
+    try {
+        // API-Aufruf (PUT /api/queries/<id>/status)
+        await apiFetch(`/api/queries/${modalQueryContext.queryId}/status`, 'PUT', {
+            status: 'erledigt'
+        });
+
+        // Daten neu laden und Grid neu zeichnen (Icon wird verschwinden)
+        await loadShiftQueries();
+        buildGridDOM();
+
+        closeModal(queryModal);
+
+    } catch (e) {
+         queryModalStatus.textContent = `Fehler: ${e.message}`;
+         queryModalStatus.style.color = '#e74c3c'; // Rot
+    } finally {
+        queryResolveBtn.disabled = false;
+    }
+}
+// --- ENDE NEUE FUNKTIONEN ---
+
 
 // --- Initialisierung ---
 async function initialize() {

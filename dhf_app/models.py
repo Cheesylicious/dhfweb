@@ -233,6 +233,8 @@ class FeedbackReport(db.Model):
             "status": self.status,
             "created_at": self.created_at.isoformat()
         }
+
+
 # --- ENDE NEU ---
 
 
@@ -262,5 +264,53 @@ class ShiftPlanStatus(db.Model):
             "month": self.month,
             "status": self.status,
             "is_locked": self.is_locked
+        }
+
+
+# --- ENDE NEU ---
+
+
+# --- NEU: Schicht-Anfragen (Regel 4) ---
+class ShiftQuery(db.Model):
+    """
+    Speichert Anfragen oder Kommentare zu einer bestimmten Schicht-Zelle.
+    """
+    id = db.Column(db.Integer, primary_key=True)
+
+    # Wer hat die Anfrage gestellt?
+    sender_user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    sender = db.relationship('User', foreign_keys=[sender_user_id])
+
+    # Auf welchen Benutzer im Plan bezieht sich die Anfrage?
+    target_user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    target_user = db.relationship('User', foreign_keys=[target_user_id])
+
+    # Welches Datum im Plan?
+    shift_date = db.Column(db.Date, nullable=False)
+
+    # Die Nachricht
+    message = db.Column(db.Text, nullable=False)
+
+    # Status
+    # 'offen', 'erledigt'
+    status = db.Column(db.String(50), nullable=False, default='offen', index=True)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+
+    # Verhindert mehrere offene Anfragen pro Zelle (für denselben Status)
+    __table_args__ = (
+        db.UniqueConstraint('target_user_id', 'shift_date', 'status', name='_user_date_status_uc'),
+    )
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "sender_user_id": self.sender_user_id,
+            "sender_name": f"{self.sender.vorname} {self.sender.name}" if self.sender else "Unbekannt",
+            "target_user_id": self.target_user_id,
+            "target_name": f"{self.target_user.vorname} {self.target_user.name}" if self.target_user else "Unbekannt",
+            "shift_date": self.shift_date.isoformat(),
+            "message": self.message,
+            "status": self.status,
+            "created_at": self.created_at.isoformat()
         }
 # --- ENDE NEU ---

@@ -55,6 +55,11 @@ def create_app(config_name='default'):
     app.register_blueprint(feedback_bp)
     # --- *** ENDE *** ---
 
+    # --- NEU: Blueprint für Schicht-Anfragen registrieren ---
+    from .routes_queries import query_bp
+    app.register_blueprint(query_bp)
+    # --- ENDE NEU ---
+
     # 5. Startup-Logik (Defaults erstellen)
     with app.app_context():
         # db.create_all() kennt jetzt ALLE Modelle aus models.py
@@ -75,6 +80,7 @@ def create_app(config_name='default'):
 def create_default_roles(db_instance):
     """
     Erstellt die Standard-Rollen 'admin', 'user' und NEU 'Besucher', falls sie nicht existieren.
+    (Die Rolle 'Planschreiber' wird hier bewusst NICHT hinzugefügt, damit sie manuell erstellt werden kann)
     """
     # Dieser Import ist jetzt technisch redundant, schadet aber nicht
     from .models import Role
@@ -82,7 +88,7 @@ def create_default_roles(db_instance):
     roles_to_create = {
         'admin': 'Systemadministrator',
         'user': 'Standardbenutzer',
-        'Besucher': 'Nur-Lese-Zugriff auf Schichtplan'  # <<< NEU
+        'Besucher': 'Nur-Lese-Zugriff auf Schichtplan'
     }
 
     for role_name, description in roles_to_create.items():
