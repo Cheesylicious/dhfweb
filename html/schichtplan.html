@@ -179,18 +179,87 @@
             padding: 20px;
             background-color: #fcfcfc;
             border-bottom: 1px solid #eee;
+            /* --- NEU: Flex-Wrap für mobile Ansicht --- */
+            flex-wrap: wrap;
+            gap: 15px;
+        }
+        /* --- NEU: Monat/Jahr-Container --- */
+        .plan-nav-month-year {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            flex-grow: 1; /* Nimmt Platz ein */
         }
         .plan-nav h2 { margin: 0; font-size: 22px; color: #333; }
+
         .plan-nav button {
             padding: 8px 16px; font-size: 15px;
             background: #f0f0f0;
             border: 1px solid #ccc;
             color: #333;
-            border-radius: 5px; cursor: pointer; margin-left: 10px;
+            border-radius: 5px; cursor: pointer;
+            transition: background-color 0.3s;
         }
         .plan-nav button:hover {
             background: #e0e0e0;
         }
+
+        /* --- NEU: Plan-Status Container --- */
+        #plan-status-container {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 5px 10px;
+            background: #f4f4f4;
+            border-radius: 6px;
+        }
+        #plan-status-badge {
+            font-weight: 600;
+            padding: 5px 10px;
+            border-radius: 5px;
+            font-size: 14px;
+        }
+        /* Status-Farben */
+        #plan-status-badge.status-in-bearbeitung {
+            background-color: #fff3cd; /* Gelb */
+            color: #856404;
+        }
+        #plan-status-badge.status-fertiggestellt {
+            background-color: #d4edda; /* Grün */
+            color: #155724;
+        }
+
+        /* Admin-Buttons im Status-Container */
+        #plan-status-container .btn-admin-action {
+            display: none; /* Standardmäßig versteckt */
+            padding: 6px 12px;
+            font-size: 13px;
+            font-weight: 500;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background-color 0.3s;
+        }
+        /* Admin-Modus zeigt die Buttons */
+        body.admin-mode #plan-status-container .btn-admin-action {
+            display: inline-block;
+        }
+
+        /* Spezifische Button-Stile */
+        #plan-lock-btn {
+            background-color: #f8d7da; /* Hellrot */
+            color: #721c24;
+        }
+        #plan-lock-btn.locked {
+            background-color: #e74c3c; /* Kräftiges Rot */
+            color: white;
+        }
+        #plan-status-toggle-btn {
+            background-color: #cce5ff; /* Hellblau */
+            color: #004085;
+        }
+        /* --- ENDE NEU: Plan-Status --- */
+
 
         /* (Kein Speicher-Button in dieser Version) */
         #save-staffing-order-btn { display: none; }
@@ -327,20 +396,74 @@
             cursor: default;
         }
 
+        /* --- NEU: Visuelles Feedback für gesperrten Plan --- */
+        body.plan-locked .grid-cell {
+            cursor: not-allowed !important;
+            background-image: repeating-linear-gradient(
+                -45deg,
+                transparent,
+                transparent 5px,
+                rgba(0, 0, 0, 0.02) 5px,
+                rgba(0, 0, 0, 0.02) 10px
+            );
+        }
+        body.plan-locked .grid-cell:hover {
+            transform: none;
+            box-shadow: inset 0px 1px 3px rgba(0, 0, 0, 0.2);
+        }
+        /* --- ENDE NEU --- */
+
+
         .grid-cell.violation {
             box-shadow: inset 0 0 0 3px #e74c3c !important;
             border: 1px solid #e74c3c !important;
         }
 
+        /* --- START: NEUE LEGENDE (CSS-Grid) --- */
         .plan-legende {
-            padding: 20px; display: flex; flex-wrap: wrap; gap: 15px;
+            padding: 20px;
+            display: grid;
+            /* Passt Spaltenanzahl dynamisch an, mind. 300px breit */
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 25px; /* Abstand zwischen den Gruppen */
             background: #fcfcfc;
             color: #333;
             border-top: 1px solid #eee;
         }
-        .plan-legende b { color: #333; }
-        .legende-item { display: flex; align-items: center; gap: 5px; }
-        .legende-color { width: 15px; height: 15px; border: 1px solid #ccc; border-radius: 3px; }
+
+        .legende-titel {
+            font-weight: 600;
+            color: #333;
+            border-bottom: 2px solid #3498db; /* Blauer Akzent */
+            padding-bottom: 5px;
+            margin-bottom: 10px;
+            font-size: 15px;
+        }
+        .legende-items {
+            display: flex;
+            flex-direction: column; /* Items untereinander */
+            gap: 8px; /* Kleinerer Abstand für Listen-Items */
+        }
+        .legende-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .legende-color {
+            width: 15px;
+            height: 15px;
+            border: 1px solid #ccc;
+            border-radius: 3px;
+            flex-shrink: 0; /* Verhindert Schrumpfen */
+        }
+        .legende-name {
+            font-size: 14px;
+            color: #333; /* Stellt sicher, dass Text lesbar ist */
+        }
+        .legende-name strong {
+            color: #000; /* Abkürzung fetter */
+        }
+        /* --- ENDE: NEUE LEGENDE --- */
 
         .modal {
             display: none; position: fixed; z-index: 100; left: 0; top: 0;
@@ -375,6 +498,9 @@
             background-color: #f0f5fa;
         }
         body.visitor-mode #shift-modal {
+            display: none !important;
+        }
+        body.plan-locked #shift-modal {
             display: none !important;
         }
 
@@ -609,7 +735,17 @@
         <div class="card">
             <div class="plan-nav">
                 <button id="prev-month-btn">&laquo; Vorheriger</button>
-                <h2 id="current-month-label">Lade...</h2>
+
+                <div class="plan-nav-month-year">
+                    <h2 id="current-month-label">Lade...</h2>
+
+                    <div id="plan-status-container" style="display: none;">
+                        <span id="plan-status-badge"></span>
+                        <button id="plan-lock-btn" class="btn-admin-action" title="Plan sperren/entsperren"></button>
+                        <button id="plan-status-toggle-btn" class="btn-admin-action" title="Status wechseln"></button>
+                    </div>
+                </div>
+
                 <div class="nav-buttons">
                     <button id="next-month-btn">Nächster &raquo;</button>
                 </div>
@@ -633,9 +769,24 @@
                 <button class="btn-primary" id="staffing-sort-toggle">Besetzung sortieren</button>
             </div>
 
-            <div class="plan-legende" id="plan-legende">
+            <div class="plan-legende" id="plan-legende-container">
+                <div class="legende-gruppe">
+                    <div class="legende-titel">Arbeitsschichten</div>
+                    <div class="legende-items" id="legende-arbeit">
+                        </div>
                 </div>
-        </div>
+                <div class="legende-gruppe">
+                    <div class="legende-titel">Abwesenheiten</div>
+                    <div class="legende-items" id="legende-abwesenheit">
+                        </div>
+                </div>
+                <div class="legende-gruppe">
+                    <div class="legende-titel">Sonderdienste & Sonstiges</div>
+                    <div class="legende-items" id="legende-sonstiges">
+                        </div>
+                </div>
+            </div>
+            </div>
     </main>
 
     <div id="shift-modal" class="modal">

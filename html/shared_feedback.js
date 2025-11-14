@@ -5,6 +5,7 @@
  * 2. Den HTML-Body für das Feedback-Modal.
  * 3. Die Event-Listener für das Öffnen, Schließen und Senden des Modals.
  * 4. Die Logik zur Anzeige der neuen Meldungen und zur Navigationskorrektur.
+ * 5. NEU: Einen globalen Inaktivitäts-Timer für den Auto-Logout.
  * * (Regel 4: Vermeidet Codeduplizierung in allen HTML-Dateien)
  */
 
@@ -468,5 +469,57 @@
             submitBtn.textContent = 'Absenden';
         }
     };
+
+
+    // --- START: NEUE LOGIK FÜR AUTO-LOGOUT ---
+
+    // 1. Führe dies nur aus, wenn die 'user' Variable oben erfolgreich geladen wurde
+    //    (d.h. wir sind NICHT auf der Login-Seite).
+    if (!user) {
+        return;
+    }
+
+    const LOGOUT_TIMEOUT_MS = 5 * 60 * 1000; // 5 Minuten (5 * 60 * 1000)
+    let inactivityTimer;
+
+    // 2. Die Funktion, die den Logout durchführt
+    function performAutoLogout() {
+        console.log("Inaktivität für 5 Minuten erkannt. Führe automatischen Logout durch.");
+
+        // Wir rufen nicht die API auf, da die Server-Session ohnehin abläuft.
+        // Wichtig ist das Leeren des LocalStorage, um den Login-Screen zu erzwingen.
+        localStorage.removeItem('dhf_user');
+
+        // Wir leiten zur Index-Seite um und fügen einen Grund hinzu.
+        // Die 'index.html' könnte diesen 'reason' anzeigen, z.B. "Sie wurden wegen Inaktivität abgemeldet."
+        window.location.href = 'index.html?logout=true&reason=inactivity';
+    }
+
+    // 3. Die Funktion, die den Timer zurücksetzt
+    function resetInactivityTimer() {
+        clearTimeout(inactivityTimer);
+        inactivityTimer = setTimeout(performAutoLogout, LOGOUT_TIMEOUT_MS);
+    }
+
+    // 4. Die Events, die auf Benutzer-Aktivität lauschen
+    const activityEvents = [
+        'mousemove',
+        'mousedown',
+        'keydown',
+        'touchstart', // Wichtig für Mobilgeräte
+        'scroll'      // Zählt Scrollen auch als Aktivität
+    ];
+
+    // 5. Hänge die Event-Listener an das 'window'-Objekt,
+    //    damit sie auf der gesamten Seite funktionieren.
+    activityEvents.forEach(event => {
+        window.addEventListener(event, resetInactivityTimer, true);
+    });
+
+    // 6. Den Timer beim Laden der Seite initial starten
+    resetInactivityTimer();
+
+    // --- ENDE: NEUE LOGIK FÜR AUTO-LOGOUT ---
+
 
 })(); // (Skript sofort ausführen)

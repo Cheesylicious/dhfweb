@@ -18,6 +18,7 @@ let colorSettings = {};
 let hoveredCellContext = null;
 
 let currentStaffingActual = {};
+let currentPlanStatus = {}; // <-- NEU: Speichert den Status des Plans
 
 let shortcutMap = {};
 const defaultShortcuts = { 'T.': 't', 'N.': 'n', '6': '6', 'FREI': 'f', 'X': 'x', 'U': 'u' };
@@ -40,11 +41,18 @@ const gridContainer = document.getElementById('schichtplan-grid-container');
 const grid = document.getElementById('schichtplan-grid');
 const staffingGridContainer = document.getElementById('staffing-grid-container');
 const staffingGrid = document.getElementById('staffing-grid');
-const legend = document.getElementById('plan-legende');
+// const legend = document.getElementById('plan-legende'); // <-- VERALTET / ENTFERNT
 const monthLabel = document.getElementById('current-month-label');
 const prevMonthBtn = document.getElementById('prev-month-btn');
 const nextMonthBtn = document.getElementById('next-month-btn');
 const staffingSortToggleBtn = document.getElementById('staffing-sort-toggle');
+
+// --- NEUE DOM Elemente für Plan Status ---
+const planStatusContainer = document.getElementById('plan-status-container');
+const planStatusBadge = document.getElementById('plan-status-badge');
+const planLockBtn = document.getElementById('plan-lock-btn');
+const planStatusToggleBtn = document.getElementById('plan-status-toggle-btn');
+// --- ENDE NEU ---
 
 const shiftModal = document.getElementById('shift-modal');
 const shiftModalTitle = document.getElementById('shift-modal-title');
@@ -79,6 +87,12 @@ try {
 
     isAdmin = loggedInUser.role.name === 'admin';
     isVisitor = loggedInUser.role.name === 'Besucher';
+
+    // --- NEU: Admin-Klasse zum Body hinzufügen ---
+    if (isAdmin) {
+        document.body.classList.add('admin-mode');
+    }
+    // --- ENDE NEU ---
 
     const navDashboard = document.getElementById('nav-dashboard');
     const navUsers = document.getElementById('nav-users');
@@ -128,7 +142,22 @@ async function apiFetch(endpoint, method = 'GET', body = null) {
     const options = { method, headers: { 'Content-Type': 'application/json' }, credentials: 'include' };
     if (body) { options.body = JSON.stringify(body); }
     const response = await fetch(API_URL + endpoint, options);
-    if (response.status === 401 || response.status === 403) { logout(); throw new Error('Sitzung ungültig oder fehlende Rechte.'); }
+
+    // --- NEU: Angepasste Fehlerbehandlung für 401/403 ---
+    if (response.status === 401 || response.status === 403) {
+        if (response.status === 401) {
+            logout(); // Nur bei 401 (Unauthorized) ausloggen
+        }
+        // Versuche, die JSON-Fehlermeldung zu lesen (z.B. "Aktion blockiert")
+        const contentType = response.headers.get("content-type");
+        if (contentType && contentType.indexOf("application/json") !== -1) {
+            const errorData = await response.json();
+            throw new Error(errorData.message || 'Sitzung ungültig oder fehlende Rechte.');
+        }
+        throw new Error('Sitzung ungültig oder fehlende Rechte.');
+    }
+    // --- ENDE NEU ---
+
     const contentType = response.headers.get("content-type");
     let data;
     if (contentType && contentType.indexOf("application/json") !== -1) { data = await response.json(); } else { data = { message: await response.text() }; }
@@ -160,7 +189,14 @@ async function loadColorSettings() {
 
 function closeModal(modalEl) { modalEl.style.display = 'none'; }
 function openShiftModal(userId, dateStr, userName) {
+    // --- NEU: Prüfen, ob Admin UND ob Plan gesperrt ist ---
     if (!isAdmin) { return; }
+    if (currentPlanStatus && currentPlanStatus.is_locked) {
+        // console.warn("Plan ist gesperrt. Bearbeitung nicht möglich.");
+        return;
+    }
+    // --- ENDE NEU ---
+
     const d = new Date(dateStr);
     const dateDisplay = d.toLocaleDateString('de-DE', { weekday: 'long', day: '2-digit', month: '2-digit' });
     modalContext = { userId, dateStr };
@@ -192,6 +228,13 @@ async function renderGrid() {
     monthLabel.textContent = "Lade...";
     grid.innerHTML = '<div style="padding: 20px; text-align: center; color: #333;">Lade Daten...</div>';
     staffingGrid.innerHTML = '';
+
+    // --- NEU: Status-Container beim Neuladen verstecken ---
+    if (planStatusContainer) {
+        planStatusContainer.style.display = 'none';
+    }
+    document.body.classList.remove('plan-locked'); // Sperre standardmäßig aufheben
+    // --- ENDE NEU ---
 
     isStaffingSortingMode = false;
     if (staffingSortToggleBtn) {
@@ -243,13 +286,105 @@ async function renderGrid() {
 
         currentStaffingActual = shiftPayload.staffing_actual || {};
 
+        // --- NEU: Plan-Status speichern und UI aktualisieren ---
+        currentPlanStatus = shiftPayload.plan_status || {
+            year: currentYear,
+            month: currentMonth,
+            status: "In Bearbeitung",
+            is_locked: false
+        };
+        updatePlanStatusUI(currentPlanStatus);
+        // --- ENDE NEU ---
+
         buildGridDOM();
         buildStaffingTable();
 
     } catch (error) {
         grid.innerHTML = `<div style="padding: 20px; text-align: center; color: red;">Fehler beim Laden des Plans: ${error.message}</div>`;
+        // --- NEU: Bei Fehler Status-UI trotzdem anzeigen (mit Fehler) ---
+        updatePlanStatusUI({
+            status: "Fehler",
+            is_locked: true // Bei Fehler sicherheitshalber sperren
+        });
+        // --- ENDE NEU ---
     }
 }
+
+// --- NEUE FUNKTION: Aktualisiert die Status-Anzeige im Header ---
+function updatePlanStatusUI(statusData) {
+    if (!planStatusContainer) return;
+
+    planStatusContainer.style.display = 'flex';
+
+    // 1. Status-Badge (für alle sichtbar)
+    if (statusData.status === "Fertiggestellt") {
+        planStatusBadge.textContent = "Fertiggestellt";
+        planStatusBadge.className = 'status-fertiggestellt';
+    } else {
+        // Standard ist "In Bearbeitung" oder "Fehler"
+        planStatusBadge.textContent = statusData.status || "In Bearbeitung";
+        planStatusBadge.className = 'status-in-bearbeitung';
+    }
+
+    // 2. Lock-Button (nur für Admins)
+    if (statusData.is_locked) {
+        planLockBtn.textContent = "Gesperrt";
+        planLockBtn.title = "Plan entsperren, um Bearbeitung zu erlauben";
+        planLockBtn.classList.add('locked');
+        document.body.classList.add('plan-locked'); // CSS-Klasse für UI-Sperre
+    } else {
+        planLockBtn.textContent = "Offen";
+        planLockBtn.title = "Plan sperren, um Bearbeitung zu verhindern";
+        planLockBtn.classList.remove('locked');
+        document.body.classList.remove('plan-locked'); // CSS-Klasse entfernen
+    }
+
+    // 3. Status-Toggle-Button (nur für Admins)
+    if (statusData.status === "Fertiggestellt") {
+        planStatusToggleBtn.textContent = "Als 'In Bearbeitung' markieren";
+        planStatusToggleBtn.title = "Status auf 'In Bearbeitung' zurücksetzen";
+    } else {
+        planStatusToggleBtn.textContent = "Als 'Fertiggestellt' markieren";
+        planStatusToggleBtn.title = "Plan als 'Fertiggestellt' markieren";
+    }
+}
+// --- ENDE NEUE FUNKTION ---
+
+// --- NEUE FUNKTION: Sendet Status-Änderungen an die API ---
+async function handleUpdatePlanStatus(newStatus, newLockState) {
+    if (!isAdmin) return;
+
+    const payload = {
+        year: currentYear,
+        month: currentMonth,
+        status: newStatus,
+        is_locked: newLockState
+    };
+
+    // UI sofort deaktivieren
+    planLockBtn.disabled = true;
+    planStatusToggleBtn.disabled = true;
+
+    try {
+        const updatedStatus = await apiFetch('/api/shifts/status', 'PUT', payload);
+
+        // API-Antwort in globalem Status speichern
+        currentPlanStatus = updatedStatus;
+        // UI mit den neuen Daten aktualisieren
+        updatePlanStatusUI(currentPlanStatus);
+
+    } catch (error) {
+        alert(`Fehler beim Aktualisieren des Status: ${error.message}`);
+        // Bei Fehler: UI mit dem *alten* Status wiederherstellen
+        updatePlanStatusUI(currentPlanStatus);
+    } finally {
+        // Buttons wieder aktivieren
+        planLockBtn.disabled = false;
+        planStatusToggleBtn.disabled = false;
+    }
+}
+// --- ENDE NEUE FUNKTION ---
+
 
 function buildGridDOM() {
     const daysInMonth = new Date(currentYear, currentMonth, 0).getDate();
@@ -727,7 +862,7 @@ function isColorDark(hexColor) {
     }
 }
 
-// --- populateStaticElements ---
+// --- START: ÜBERARBEITETE populateStaticElements ---
 async function populateStaticElements(forceReload = false) {
     if (Object.keys(allShiftTypes).length === 0 || forceReload) {
         const typeData = await apiFetch('/api/shifttypes');
@@ -736,17 +871,42 @@ async function populateStaticElements(forceReload = false) {
         typeData.forEach(st => allShiftTypes[st.id] = st);
     }
 
-    legend.innerHTML = '<b>Legende:</b>';
-    shiftSelection.innerHTML = '';
+    // Hole die neuen Container
+    const legendeArbeit = document.getElementById('legende-arbeit');
+    const legendeAbwesenheit = document.getElementById('legende-abwesenheit');
+    const legendeSonstiges = document.getElementById('legende-sonstiges');
+
+    // Leere die Container
+    if (legendeArbeit) legendeArbeit.innerHTML = '';
+    if (legendeAbwesenheit) legendeAbwesenheit.innerHTML = '';
+    if (legendeSonstiges) legendeSonstiges.innerHTML = '';
+    shiftSelection.innerHTML = ''; // Modal bleibt gleich
 
     const sortedTypes = allShiftTypesList;
+
+    // Harte Definition der Sonderdienste (basierend auf Screenshot)
+    const specialAbbreviations = ['QA', 'S', 'DPG'];
 
     sortedTypes.forEach(st => {
         const item = document.createElement('div');
         item.className = 'legende-item';
-        const priorityIndicator = st.prioritize_background ? ' (Hintergrund prior.)' : '';
-        item.innerHTML = `<div class="legende-color" style="background-color: ${st.color};"></div> ${st.abbreviation} (${st.name}${priorityIndicator})`;
-        legend.appendChild(item);
+
+        // (Hintergrund prior.) entfernt
+        item.innerHTML = `
+            <div class="legende-color" style="background-color: ${st.color};"></div>
+            <span class="legende-name"><strong>${st.abbreviation}</strong> (${st.name})</span>
+        `;
+
+        // Sortiere in Gruppen (Regel 4)
+        if (specialAbbreviations.includes(st.abbreviation)) {
+            if (legendeSonstiges) legendeSonstiges.appendChild(item);
+        } else if (st.is_work_shift) {
+            if (legendeArbeit) legendeArbeit.appendChild(item);
+        } else {
+            if (legendeAbwesenheit) legendeAbwesenheit.appendChild(item);
+        }
+
+        // Modal-Button-Logik (unverändert)
         if (!isVisitor) {
             const btn = document.createElement('button');
             btn.textContent = `${st.abbreviation} (${st.name})`;
@@ -761,6 +921,8 @@ async function populateStaticElements(forceReload = false) {
         }
     });
 }
+// --- ENDE: ÜBERARBEITETE populateStaticElements ---
+
 
 // --- DATEN SPEICHERN ---
 async function saveShift(shifttypeId, userId, dateStr) {
@@ -768,6 +930,13 @@ async function saveShift(shifttypeId, userId, dateStr) {
         console.error("Nicht-Admins dürfen keine Schichten speichern.");
         return;
     }
+    // --- NEU: Sperr-Check (redundant zur API, aber gut für UX) ---
+    if (currentPlanStatus && currentPlanStatus.is_locked) {
+        console.warn("Plan ist gesperrt. Speichern blockiert.");
+        return;
+    }
+    // --- ENDE NEU ---
+
     if (!userId || !dateStr) return;
     const key = `${userId}-${dateStr}`;
     const cell = findCellByKey(key);
@@ -803,17 +972,45 @@ async function saveShift(shifttypeId, userId, dateStr) {
 
         currentStaffingActual = savedData.staffing_actual || {};
 
-        buildGridDOM();
+        // --- START KORREKTUR (Regel 1 & 2) ---
+        // Aktualisiere den Frontend-State (currentTotals)
+        // BEVOR das Grid neu gezeichnet wird.
+        if (savedData.new_total_hours !== undefined) {
+            currentTotals[userId] = savedData.new_total_hours;
+        }
+        if (savedData.new_total_hours_next_month !== undefined) {
+            // (Wir müssen den Benutzer des nächsten Monats hier nicht aktualisieren,
+            // da die Neuberechnung des Folgemonats nur bei Monatsletzten
+            // relevant ist und ein Neuladen im nächsten Monat die Daten korrigiert.)
+        }
+        // --- ENDE KORREKTUR ---
+
+        buildGridDOM(); // <-- Zeichnet jetzt das Grid mit dem frischen Total für userId
         buildStaffingTable();
 
+        // --- KORREKTUR (Regel 1) ---
+        // Die manuelle Aktualisierung HIER ist nicht mehr nötig (und fehlerhaft),
+        // da buildGridDOM() dies bereits korrekt aus currentTotals getan hat.
+        /*
         const totalCell = document.getElementById(`total-hours-${userId}`);
         if (totalCell) {
             totalCell.textContent = (savedData.new_total_hours || 0.0).toFixed(1);
         }
+        */
 
     } catch (error) {
         if (cell) cell.textContent = 'Fehler!';
-        alert(`Fehler beim Speichern: ${error.message}`);
+        // --- NEU: Sperr-Fehlermeldung anzeigen ---
+        let errorMsg = `Fehler beim Speichern: ${error.message}`;
+        if (error.message.includes("Aktion blockiert")) {
+            errorMsg = error.message;
+            // UI-Status aktualisieren, falls der Server 'gesperrt' sagt, die UI aber noch 'offen' war
+            currentPlanStatus.is_locked = true;
+            updatePlanStatusUI(currentPlanStatus);
+        }
+        // --- ENDE NEU ---
+
+        alert(errorMsg); // Zeigt die Sperr-Meldung an
         if (shiftModal.style.display === 'block') {
             shiftModalInfo.textContent = `Fehler: ${error.message}`;
         }
@@ -837,6 +1034,29 @@ nextMonthBtn.onclick = () => {
     loadColorSettings();
     renderGrid();
 };
+
+// --- NEUE EVENT HANDLER FÜR PLAN STATUS BUTTONS ---
+if (planLockBtn) {
+    planLockBtn.onclick = () => {
+        if (!isAdmin) return;
+
+        const newLockState = !currentPlanStatus.is_locked;
+        // Beim Sperren/Entsperren bleibt der Text-Status (Fertig/In Bearbeitung) gleich
+        handleUpdatePlanStatus(currentPlanStatus.status, newLockState);
+    };
+}
+
+if (planStatusToggleBtn) {
+    planStatusToggleBtn.onclick = () => {
+        if (!isAdmin) return;
+
+        const newStatus = (currentPlanStatus.status === "Fertiggestellt") ? "In Bearbeitung" : "Fertiggestellt";
+        // Beim Ändern des Status bleibt der Lock-Status gleich
+        handleUpdatePlanStatus(newStatus, currentPlanStatus.is_locked);
+    };
+}
+// --- ENDE NEUE EVENT HANDLER ---
+
 
 // --- Shortcut Ladefunktion ---
 function loadShortcuts() {
@@ -865,6 +1085,10 @@ function loadShortcuts() {
 // --- KEYBOARD SHORTCUT LISTENER ---
 window.addEventListener('keydown', async (event) => {
     if (!isAdmin) return;
+    // --- NEU: Sperr-Check ---
+    if (currentPlanStatus && currentPlanStatus.is_locked) return;
+    // --- ENDE NEU ---
+
     if (shiftModal.style.display === 'block') return;
     if (!hoveredCellContext || !hoveredCellContext.userId) return;
     const key = event.key.toLowerCase();

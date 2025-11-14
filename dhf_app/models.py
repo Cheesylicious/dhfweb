@@ -4,8 +4,7 @@ from datetime import datetime
 
 
 # --- 5. Datenbank-Modelle ---
-# (Modelle User, Role, Shift bleiben unverändert)
-# ... (Code für User, Role) ...
+# (Modelle User, Role) ...
 
 class Role(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -225,5 +224,37 @@ class FeedbackReport(db.Model):
             "page_context": self.page_context,
             "status": self.status,
             "created_at": self.created_at.isoformat()
+        }
+
+
+# --- ENDE NEU ---
+
+
+# --- NEU: Schichtplan-Status (Regel 1) ---
+
+class ShiftPlanStatus(db.Model):
+    """
+    Speichert den Bearbeitungsstatus und die Sperrung für einen Monats-Schichtplan.
+    """
+    id = db.Column(db.Integer, primary_key=True)
+    year = db.Column(db.Integer, nullable=False, index=True)
+    month = db.Column(db.Integer, nullable=False, index=True)
+
+    # Status: 'In Bearbeitung', 'Fertiggestellt'
+    status = db.Column(db.String(50), nullable=False, default='In Bearbeitung')
+
+    # Sperrung: True (gesperrt, keine Bearbeitung), False (offen)
+    is_locked = db.Column(db.Boolean, nullable=False, default=False)
+
+    # Stellt sicher, dass es nur einen Eintrag pro Monat/Jahr gibt
+    __table_args__ = (db.UniqueConstraint('year', 'month', name='_year_month_uc'),)
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "year": self.year,
+            "month": self.month,
+            "status": self.status,
+            "is_locked": self.is_locked
         }
 # --- ENDE NEU ---

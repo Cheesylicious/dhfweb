@@ -1,7 +1,8 @@
 # cheesylicious/dhfweb/dhfweb-8c61769a1d719fb2f6c9f14a71dc863ec0e0b9b5/dhf_app/routes_shifts.py
 
 from flask import Blueprint, request, jsonify, current_app
-from .models import Shift, ShiftType, User
+# Import für ShiftPlanStatus und UpdateLog hinzugefügt
+from .models import Shift, ShiftType, User, ShiftPlanStatus, UpdateLog
 from .extensions import db
 # --- KORREKTUR: Import aus utils.py ---
 from .utils import admin_required
@@ -17,6 +18,21 @@ from collections import defaultdict
 
 # Blueprint
 shifts_bp = Blueprint('shifts', __name__, url_prefix='/api')
+
+
+# --- NEU: Hilfsfunktion (kopiert von routes_admin) ---
+def _log_update_event(area, description):
+    """
+    Erstellt einen Eintrag im UpdateLog.
+    """
+    new_log = UpdateLog(
+        area=area,
+        description=description,
+        updated_at=datetime.utcnow()
+    )
+    db.session.add(new_log)
+    # Wichtig: KEIN db.session.commit() hier, da dies in der aufrufenden Funktion geschieht.
+# --- ENDE NEU ---
 
 
 def _calculate_user_total_hours(user_id, year, month):
@@ -49,17 +65,19 @@ def _calculate_user_total_hours(user_id, year, month):
     for shift in shifts_in_this_month:
         if shift.shift_type and shift.shift_type.is_work_shift:
             try:
-                # --- KORREKTUR V2 (aus vorherigem Schritt) ---
+                # --- START: FINALE KORREKTUR (Regel 1) --- (IHR NEUER CODE)
 
-                # 1. Addiere IMMER die Stunden des Tages (z.B. 6)
+                # 1. Addiere IMMER die Stunden des Tages (z.B. 8 für T, 12 für N)
+                #    (Dies ist oft die Gesamtdauer der Schicht)
                 total_hours += float(shift.shift_type.hours or 0.0)
 
-                # 2. Addiere den Übertrag (z.B. 6), ABER NUR,
-                #    wenn die Schicht NICHT am letzten Tag des Monats stattfindet.
-                if shift.date != last_day_of_current_month:
-                    total_hours += float(shift.shift_type.hours_spillover or 0.0)
+                # 2. ABER: Wenn die Schicht am Monatsletzten ist UND einen Übertrag hat,
+                #    ziehe diesen Übertrag wieder ab (er zählt ja erst im Folgemonat).
+                if shift.date == last_day_of_current_month and (shift.shift_type.hours_spillover or 0.0) > 0:
+                    total_hours -= float(shift.shift_type.hours_spillover or 0.0)
 
-                # --- ENDE KORREKTUR V2 ---
+                # --- ENDE: FINALE KORREKTUR ---
+
             except Exception:
                 current_app.logger.warning(
                     f"Ungültiger hours-Wert für ShiftType id={getattr(shift.shift_type, 'id', None)}")
@@ -138,7 +156,7 @@ def _calculate_actual_staffing(shifts_in_month_dicts, shifttypes_dicts, year, mo
 @login_required
 def get_shifts():
     """
-    Liefert alle Schichten, Totals, Konflikte UND IST-Besetzung.
+    Liefert alle Schichten, Totals, Konflikte, IST-Besetzung UND PLAN-STATUS.
     """
     try:
         year = int(request.args.get('year'))
@@ -205,12 +223,28 @@ def get_shifts():
     # 4. IST-Besetzung berechnen (verwendet jetzt die korrigierte Funktion)
     staffing_actual = _calculate_actual_staffing(shifts_data, shifttypes_data, year, month)
 
+    # --- NEU: Plan-Status holen ---
+    status_obj = ShiftPlanStatus.query.filter_by(year=year, month=month).first()
+    if status_obj:
+        plan_status_data = status_obj.to_dict()
+    else:
+        # Standard-Status, falls noch kein Eintrag für den Monat existiert
+        plan_status_data = {
+            "id": None,
+            "year": year,
+            "month": month,
+            "status": "In Bearbeitung",
+            "is_locked": False
+        }
+    # --- ENDE NEU ---
+
     return jsonify({
         "shifts": shifts_data,
         "totals": totals_dict,
         "violations": violations_list,
         "staffing_actual": staffing_actual,
-        "shifts_last_month": shifts_last_month_data  # <-- NEU HINZUGEFÜGT
+        "shifts_last_month": shifts_last_month_data,  # <-- NEU HINZUGEFÜGT
+        "plan_status": plan_status_data  # <-- NEU HINZUGEFÜGT
     }), 200
 
 
@@ -251,7 +285,7 @@ def _parse_date_from_payload(data):
 def save_shift():
     """
     Speichert oder löscht eine Schicht.
-    (Erweitert um Neuberechnung der Konflikte UND IST-Besetzung)
+    (Erweitert um SPERR-PRÜFUNG, Neuberechnung der Konflikte UND IST-Besetzung)
     """
     data = request.get_json(silent=True)
     if not data:
@@ -282,6 +316,23 @@ def save_shift():
         shift_date = _parse_date_from_payload(data)
     except ValueError as e:
         return jsonify({"message": f"Ungültiges Datum: {str(e)}"}), 400
+
+    # --- NEU: SPERR-PRÜFUNG ---
+    try:
+        status_obj = ShiftPlanStatus.query.filter_by(
+            year=shift_date.year,
+            month=shift_date.month
+        ).first()
+
+        if status_obj and status_obj.is_locked:
+            return jsonify({
+                "message": f"Aktion blockiert: Der Schichtplan für {shift_date.month:02d}/{shift_date.year} ist gesperrt."
+            }), 403  # 403 Forbidden
+    except Exception as e:
+        # DB-Fehler beim Prüfen der Sperre
+        current_app.logger.error(f"Fehler bei der Schichtplan-Sperrprüfung: {str(e)}")
+        return jsonify({"message": "Serverfehler bei der Sperrprüfung."}), 500
+    # --- ENDE NEU ---
 
     free_type = ShiftType.query.filter_by(abbreviation='FREI').first()
     free_type_id = free_type.id if free_type else None
@@ -405,3 +456,56 @@ def save_shift():
     response_data['staffing_actual'] = staffing_actual
 
     return jsonify(response_data), status_code
+
+
+# --- NEUE ROUTE ZUM SETZEN DES PLAN-STATUS ---
+@shifts_bp.route('/shifts/status', methods=['PUT'])
+@admin_required
+def update_plan_status():
+    """
+    (Admin-Only) Aktualisiert den Status (z.B. "Fertiggestellt") und die Sperrung
+    eines Schichtplans für einen bestimmten Monat.
+    """
+    data = request.get_json()
+    if not data:
+        return jsonify({"message": "Leere Nutzlast"}), 400
+
+    try:
+        year = int(data.get('year'))
+        month = int(data.get('month'))
+        status = data.get('status')  # z.B. "In Bearbeitung", "Fertiggestellt"
+        is_locked = data.get('is_locked')  # z.B. true, false
+    except (TypeError, ValueError):
+        return jsonify({"message": "Ungültiges Jahr oder Monat"}), 400
+
+    if status not in ["In Bearbeitung", "Fertiggestellt"] or is_locked not in [True, False]:
+        return jsonify({"message": "Ungültige Status- oder Sperrwerte"}), 400
+
+    try:
+        # Finde den Status-Eintrag oder erstelle einen neuen (upsert)
+        status_obj = ShiftPlanStatus.query.filter_by(year=year, month=month).first()
+
+        if not status_obj:
+            status_obj = ShiftPlanStatus(year=year, month=month)
+            db.session.add(status_obj)
+
+        status_obj.status = status
+        status_obj.is_locked = is_locked
+
+        # Protokolliere die Admin-Aktion
+        lock_text = "Gesperrt" if is_locked else "Entsperrt"
+        _log_update_event(
+            "Schichtplan Status",
+            f"Status für {month:02d}/{year} gesetzt auf: '{status}' ({lock_text})"
+        )
+
+        db.session.commit()
+
+        return jsonify(status_obj.to_dict()), 200
+
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Fehler beim Aktualisieren des ShiftPlanStatus: {str(e)}")
+        return jsonify({"message": f"Datenbankfehler: {str(e)}"}), 500
+
+# --- ENDE NEUE ROUTE ---
