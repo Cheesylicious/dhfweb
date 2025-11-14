@@ -53,8 +53,11 @@ const shiftSelection = document.getElementById('shift-selection');
 const closeShiftModalBtn = document.getElementById('close-shift-modal');
 let modalContext = { userId: null, dateStr: null };
 
-const COL_WIDTH_NAME = 'minmax(150px, 1.5fr)';
-const COL_WIDTH_DETAILS = 'minmax(80px, 1fr)';
+// --- KORREKTUR: Spaltenbreiten auf "Inhalt entscheidet" (max-content) gesetzt ---
+const COL_WIDTH_NAME = 'minmax(160px, max-content)';
+const COL_WIDTH_DETAILS = 'minmax(110px, max-content)';
+// --- ENDE KORREKTUR ---
+
 const COL_WIDTH_UEBERTRAG = 'minmax(50px, 0.5fr)';
 const COL_WIDTH_DAY = 'minmax(45px, 1fr)';
 const COL_WIDTH_TOTAL = 'minmax(60px, 0.5fr)';
@@ -253,6 +256,8 @@ function buildGridDOM() {
     const monthName = new Date(currentYear, currentMonth - 1, 1).toLocaleString('de-DE', { month: 'long', year: 'numeric' });
     monthLabel.textContent = monthName;
 
+    const today = new Date();
+
     grid.style.gridTemplateColumns = `${COL_WIDTH_NAME} ${COL_WIDTH_DETAILS} ${COL_WIDTH_UEBERTRAG} repeat(${daysInMonth}, ${COL_WIDTH_DAY}) ${COL_WIDTH_TOTAL}`;
 
     grid.innerHTML = '';
@@ -271,6 +276,7 @@ function buildGridDOM() {
         return headerCell;
     };
 
+    // --- ZEILE 1: Wochentage ---
     let nameHeader1 = document.createElement('div');
     nameHeader1.className = 'grid-header';
     grid.appendChild(nameHeader1);
@@ -289,23 +295,30 @@ function buildGridDOM() {
         const dateStr = `${currentYear}-${String(currentMonth).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
         const headerCell = renderDayHeader(day, isWeekend, dateStr);
         headerCell.textContent = dayName;
+
+        if (currentYear === today.getFullYear() && (currentMonth - 1) === today.getMonth() && day === today.getDate()) {
+            headerCell.classList.add('current-day-highlight');
+        }
+
         grid.appendChild(headerCell);
     }
     let totalHeader1 = document.createElement('div');
     totalHeader1.className = 'grid-header-total';
     grid.appendChild(totalHeader1);
 
+    // --- ZEILE 2: Mitarbeiter/Nummern/Std (HIER kommt der Strich) ---
     let nameHeader2 = document.createElement('div');
-    nameHeader2.className = 'grid-header-dog';
+    nameHeader2.className = 'grid-header-dog header-separator-bottom';
     nameHeader2.textContent = 'Mitarbeiter';
     grid.appendChild(nameHeader2);
+
     const dogHeader = document.createElement('div');
-    dogHeader.className = 'grid-header-dog';
+    dogHeader.className = 'grid-header-dog header-separator-bottom';
     dogHeader.textContent = 'Diensthund';
     grid.appendChild(dogHeader);
 
     const uebertragHeader = document.createElement('div');
-    uebertragHeader.className = 'grid-header-uebertrag';
+    uebertragHeader.className = 'grid-header-uebertrag header-separator-bottom';
     uebertragHeader.textContent = 'Ü';
     uebertragHeader.title = 'Übertrag Vormonat';
     grid.appendChild(uebertragHeader);
@@ -315,11 +328,17 @@ function buildGridDOM() {
         const isWeekend = d.getDay() === 0 || d.getDay() === 6;
         const dateStr = `${currentYear}-${String(currentMonth).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
         const headerCell = renderDayHeader(day, isWeekend, dateStr);
+        headerCell.classList.add('header-separator-bottom');
         headerCell.textContent = day;
+
+        if (currentYear === today.getFullYear() && (currentMonth - 1) === today.getMonth() && day === today.getDate()) {
+            headerCell.classList.add('current-day-highlight');
+        }
+
         grid.appendChild(headerCell);
     }
     const totalHeader = document.createElement('div');
-    totalHeader.className = 'grid-header-total';
+    totalHeader.className = 'grid-header-total header-separator-bottom';
     totalHeader.textContent = 'Std.';
     grid.appendChild(totalHeader);
 
@@ -395,6 +414,10 @@ function buildGridDOM() {
             }
 
             cell.className = cellClasses + currentUserClass;
+
+            if (currentYear === today.getFullYear() && (currentMonth - 1) === today.getMonth() && day === today.getDate()) {
+                cell.classList.add('current-day-highlight');
+            }
 
             if (cellColor) { cell.style.backgroundColor = cellColor; }
             if (textColor) { cell.style.color = textColor; }

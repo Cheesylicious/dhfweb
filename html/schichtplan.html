@@ -222,8 +222,15 @@
 
         .grid-header {
             background: #fcfcfc;
-            font-weight: 600; position: sticky; top: 0; z-index: 1;
+            font-weight: 600; position: sticky; top: 0;
+            z-index: 100; /* Z-Index erhöht, damit es über der Tagesmarkierung liegt */
         }
+
+        /* --- NEU: Schwarzer Trennstrich unter der zweiten Kopfzeile --- */
+        .header-separator-bottom {
+            border-bottom: 2px solid #000000 !important; /* Fetter schwarzer Strich */
+        }
+        /* --- ENDE NEU --- */
 
         .grid-header.weekend { background-color: var(--weekend-bg-color, #fff8f8); color: var(--weekend-text-color, #333); }
         .grid-cell.weekend { background-color: var(--weekend-bg-color, #fff8f8); color: var(--weekend-text-color, #333); }
@@ -238,16 +245,42 @@
         .grid-header.day-color-shooting { background-color: var(--shooting-bg-color, #ffb0b0) !important; color: var(--text-color, #333); }
         /* --- ENDE ANPASSUNG --- */
 
+        /* --- Hervorhebung für den aktuellen Tag (Spalte) --- */
+        .current-day-highlight {
+            /* Simuliert einen Rahmen links und rechts INNERHALB der Zelle mit box-shadow.
+               Verwendet das Blau #3498db für Konsistenz. */
+            box-shadow: inset 2px 0 0 0 #3498db, inset -2px 0 0 0 #3498db !important;
+
+            /* KORREKTUR: KEIN !important bei background-color, damit Schichtfarben gewinnen! */
+            background-color: rgba(52, 152, 219, 0.08);
+
+            z-index: 10; /* Über Standard-Zellen, aber unter Headern (z-index 100) */
+        }
+        /* Spezifisch für Header: Hier wollen wir die Farbe erzwingen */
+        .grid-header.current-day-highlight {
+            color: #3498db !important;
+            background-color: #eaf2ff !important;
+        }
+
         .grid-user-name {
             font-weight: 600; text-align: left;
             position: sticky; left: 0;
             background: #fcfcfc;
-            z-index: 5;
+            z-index: 100; /* Z-Index erhöht, damit es beim Scrollen sichtbar bleibt */
             border-left: 1px solid #eee;
         }
 
+        /* --- KORREKTUR: Textausrichtung für Spalten-Header und Inhalt --- */
         .grid-user-dog { font-weight: 500; text-align: left; background: #fcfcfc; color: #555; }
-        .grid-header-dog { font-weight: 600; background: #fcfcfc; }
+        .grid-header-dog { font-weight: 600; background: #fcfcfc; text-align: center; } /* Zentriert 'Mitarbeiter' und 'Diensthund' Header */
+
+        /* --- KORREKTUR: Keine Truncation für Mitarbeiter und Diensthund --- */
+        .grid-user-name, .grid-user-dog, .grid-header-dog {
+            white-space: nowrap; /* Behalten wir bei, damit max-content funktioniert */
+            overflow: visible !important;
+            text-overflow: clip !important;
+        }
+        /* --- ENDE KORREKTUR --- */
 
         /* --- NEU: Stile für "Ü"-Spalte --- */
         .grid-header-uebertrag {
@@ -256,7 +289,7 @@
             color: #8c5a00; /* Dunklerer Text für Kontrast */
             position: sticky;
             top: 0;
-            z-index: 1;
+            z-index: 100; /* Z-Index erhöht */
             border-right: 1px solid #ffcc99;
         }
         .grid-user-uebertrag {
@@ -270,7 +303,7 @@
         /* --- ENDE NEU --- */
 
         .grid-user-total { font-weight: 600; background: #f8f9fa; text-align: center; }
-        .grid-header-total { font-weight: 600; background: #f8f9fa; }
+        .grid-header-total { font-weight: 600; background: #f8f9fa; text-align: center; } /* Zentriert 'Std.' Header */
 
         .grid-cell {
             cursor: pointer;
