@@ -66,6 +66,11 @@ const COL_WIDTH_NAME = 'minmax(160px, max-content)';
 const COL_WIDTH_DETAILS = 'minmax(110px, max-content)';
 // --- ENDE KORREKTUR ---
 
+// --- NEU: Globale Variablen für berechnete Spaltenbreiten (für Bündigkeit) ---
+let computedColWidthName = COL_WIDTH_NAME;
+let computedColWidthDetails = COL_WIDTH_DETAILS;
+// --- ENDE NEU ---
+
 const COL_WIDTH_UEBERTRAG = 'minmax(50px, 0.5fr)';
 const COL_WIDTH_DAY = 'minmax(45px, 1fr)';
 const COL_WIDTH_TOTAL = 'minmax(60px, 0.5fr)';
@@ -586,6 +591,28 @@ function buildGridDOM() {
         totalCell.textContent = userTotalHours.toFixed(1);
         grid.appendChild(totalCell);
     });
+
+    // --- NEU: Spaltenbreiten messen für das Besetzungs-Grid (Regel 2) ---
+    // Wir messen die *tatsächliche* Breite der 'max-content'-Spalten,
+    // damit das untere Grid (Besetzung) exakt bündig ist.
+    try {
+        // nameHeader2 und dogHeader sind die <div> Elemente aus Zeile 2 (definiert um Zeile 320)
+        if (nameHeader2 && dogHeader) {
+            // offsetWidth ist die zuverlässigste Messung (inkl. padding/border)
+            computedColWidthName = `${nameHeader2.offsetWidth}px`;
+            computedColWidthDetails = `${dogHeader.offsetWidth}px`;
+        } else {
+            // Fallback, falls die Header nicht gefunden wurden
+            computedColWidthName = COL_WIDTH_NAME;
+            computedColWidthDetails = COL_WIDTH_DETAILS;
+        }
+    } catch (e) {
+        console.error("Fehler beim Messen der Spaltenbreiten:", e);
+        // Fallback auf die String-Konstanten
+        computedColWidthName = COL_WIDTH_NAME;
+        computedColWidthDetails = COL_WIDTH_DETAILS;
+    }
+    // --- ENDE NEU ---
 }
 
 // --- buildStaffingTable (FIXED: Jede Zeile ist ein eigenes Grid) ---
@@ -608,7 +635,9 @@ function buildStaffingTable() {
     staffingGrid.innerHTML = '';
 
     // Wir definieren das Template, das jede Zeile (als eigenes Grid) nutzen wird
-    const gridTemplateColumns = `${COL_WIDTH_NAME} ${COL_WIDTH_DETAILS} ${COL_WIDTH_UEBERTRAG} repeat(${daysInMonth}, ${COL_WIDTH_DAY}) ${COL_WIDTH_TOTAL}`;
+    // --- KORREKTUR: Verwende die berechneten Pixel-Breiten ---
+    const gridTemplateColumns = `${computedColWidthName} ${computedColWidthDetails} ${COL_WIDTH_UEBERTRAG} repeat(${daysInMonth}, ${COL_WIDTH_DAY}) ${COL_WIDTH_TOTAL}`;
+    // --- ENDE KORREKTUR ---
 
     const dayKeyMap = [
         'min_staff_so', // 0

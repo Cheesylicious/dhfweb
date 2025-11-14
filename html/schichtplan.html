@@ -419,12 +419,12 @@
             border: 1px solid #e74c3c !important;
         }
 
-        /* --- START: NEUE LEGENDE (CSS-Grid) --- */
+        /* --- START: KORRIGIERTE LEGENDE (CSS-Grid) --- */
         .plan-legende {
             padding: 20px;
             display: grid;
-            /* Passt Spaltenanzahl dynamisch an, mind. 300px breit */
-            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            /* --- KORREKTUR 1: Auf 3 Spalten gesetzt, um vollen Platz zu nutzen --- */
+            grid-template-columns: repeat(3, 1fr);
             gap: 25px; /* Abstand zwischen den Gruppen */
             background: #fcfcfc;
             color: #333;
@@ -446,7 +446,8 @@
         }
         .legende-item {
             display: flex;
-            align-items: center;
+            /* --- KORREKTUR 2: Bündig oben ausrichten statt zentriert --- */
+            align-items: flex-start;
             gap: 8px;
         }
         .legende-color {
@@ -455,15 +456,21 @@
             border: 1px solid #ccc;
             border-radius: 3px;
             flex-shrink: 0; /* Verhindert Schrumpfen */
+            /* --- NEU: Sorgt für korrekte Ausrichtung bei Umbruch --- */
+            margin-top: 3px;
         }
         .legende-name {
             font-size: 14px;
             color: #333; /* Stellt sicher, dass Text lesbar ist */
+
+            /* --- KORREKTUR 3: Textumbruch erzwingen --- */
+            white-space: normal;
+            word-break: break-word;
         }
         .legende-name strong {
             color: #000; /* Abkürzung fetter */
         }
-        /* --- ENDE: NEUE LEGENDE --- */
+        /* --- ENDE: KORRIGIERTE LEGENDE --- */
 
         .modal {
             display: none; position: fixed; z-index: 100; left: 0; top: 0;

@@ -23,13 +23,16 @@ def create_app(config_name='default'):
     # 3. CORS initialisieren (wie im Original)
     CORS(app, supports_credentials=True, origins=["http://46.224.63.203", "http://ihre-domain.de"])
 
-    # --- KORREKTUR: User Loader Registrierung ---
-    # Dies MUSS hier passieren, NACHDEM login_manager initialisiert wurde
-    # und BEVOR die Blueprints importiert werden, die User verwenden.
-    from .models import User
+    # --- KORREKTUR: Alle Modelle importieren ---
+    # Wir importieren das gesamte 'models'-Modul.
+    # Dies stellt sicher, dass ALLE Klassen (User, Role, ShiftPlanStatus, etc.)
+    # bei SQLAlchemy registriert werden, BEVOR db.create_all() aufgerufen wird.
+    from . import models
+
     @login_manager.user_loader
     def load_user(user_id):
-        return db.session.get(User, int(user_id))
+        # Wir verwenden die Referenz über das importierte Modul
+        return db.session.get(models.User, int(user_id))
 
     # --- ENDE KORREKTUR ---
 
@@ -54,6 +57,7 @@ def create_app(config_name='default'):
 
     # 5. Startup-Logik (Defaults erstellen)
     with app.app_context():
+        # db.create_all() kennt jetzt ALLE Modelle aus models.py
         db.create_all()
         create_default_roles(db)
         # --- ENTFERNT ---
@@ -72,7 +76,8 @@ def create_default_roles(db_instance):
     """
     Erstellt die Standard-Rollen 'admin', 'user' und NEU 'Besucher', falls sie nicht existieren.
     """
-    from .models import Role  # Importiert Model *innerhalb* der Funktion
+    # Dieser Import ist jetzt technisch redundant, schadet aber nicht
+    from .models import Role
 
     roles_to_create = {
         'admin': 'Systemadministrator',

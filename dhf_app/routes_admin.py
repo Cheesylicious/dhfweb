@@ -57,12 +57,16 @@ def create_user():
         urlaub_gesamt=data.get('urlaub_gesamt', 0), urlaub_rest=data.get('urlaub_rest', 0),
         diensthund=data.get('diensthund'), tutorial_gesehen=data.get('tutorial_gesehen', False),
         shift_plan_visible=data.get('shift_plan_visible', False),
-        shift_plan_sort_order=data.get('shift_plan_sort_order', 999)
+        shift_plan_sort_order=data.get('shift_plan_sort_order', 999),
+        # --- NEU: Passwortänderung beim ersten Login erzwingen ---
+        force_password_change=True
+        # --- ENDE NEU ---
     )
     db.session.add(new_user)
 
-    # <<< UpdateLog HINZUGEFÜGT >>>
-    _log_update_event("Benutzerverwaltung", f"Neuer Benutzer '{data['vorname']} {data['name']}' erstellt.")
+    # <<< UpdateLog HINZUGEFÜGT (angepasst) >>>
+    _log_update_event("Benutzerverwaltung",
+                      f"Neuer Benutzer '{data['vorname']} {data['name']}' erstellt. (PW-Änderung erzwungen)")
 
     db.session.commit()
     return jsonify(new_user.to_dict()), 201
@@ -84,6 +88,8 @@ def update_user(user_id):
     if is_password_changed:
         user.passwort_hash = bcrypt.generate_password_hash(data['passwort']).decode('utf-8')  # <-- Verwendet bcrypt
         user.password_geaendert = datetime.utcnow()
+        # WICHTIG: Wenn Admin ein PW ändert, wird der Zwang NICHT automatisch aktiviert.
+        # Das muss der Admin manuell über die neue Route (unten) tun, falls gewünscht.
     user.geburtstag = none_if_empty(data.get('geburtstag', user.geburtstag))
     user.telefon = data.get('telefon', user.telefon)
     user.eintrittsdatum = data.get('eintrittsdatum', user.eintrittsdatum)
@@ -94,6 +100,7 @@ def update_user(user_id):
     user.tutorial_gesehen = data.get('tutorial_gesehen', user.tutorial_gesehen)
     user.shift_plan_visible = data.get('shift_plan_visible', user.shift_plan_visible)
     user.shift_plan_sort_order = data.get('shift_plan_sort_order', user.shift_plan_sort_order)
+    # (Das Feld 'force_password_change' wird hier bewusst nicht angefasst)
 
     # <<< UpdateLog HINZUGEFÜGT >>>
     desc_msg = f"Benutzer '{user.vorname} {user.name}' aktualisiert."
@@ -103,6 +110,34 @@ def update_user(user_id):
 
     db.session.commit()
     return jsonify(user.to_dict()), 200
+
+
+# --- NEUE ROUTE ---
+@admin_bp.route('/users/<int:user_id>/force_password_reset', methods=['POST'])
+@admin_required
+def force_password_reset(user_id):
+    """
+    Erzwingt, dass der Benutzer beim nächsten Login sein Passwort ändern muss.
+    (Setzt das Flag 'force_password_change' auf True)
+    """
+    user = db.session.get(User, user_id)
+    if not user:
+        return jsonify({"message": "Benutzer nicht gefunden"}), 404
+
+    try:
+        user.force_password_change = True
+
+        _log_update_event("Benutzerverwaltung", f"Passwort-Reset für '{user.vorname} {user.name}' erzwungen.")
+
+        db.session.commit()
+        return jsonify({"message": "Passwort-Änderung beim nächsten Login erzwungen."}), 200
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Fehler bei force_password_reset für User {user_id}: {str(e)}")
+        return jsonify({"message": f"Datenbankfehler: {str(e)}"}), 500
+
+
+# --- ENDE NEUE ROUTE ---
 
 
 @admin_bp.route('/users/<int:user_id>', methods=['DELETE'])

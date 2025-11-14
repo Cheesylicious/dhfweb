@@ -81,7 +81,7 @@
         button {
             width: 100%;
             padding: 12px;
-            /* Akzentfarbe aus .py-Datei */
+            /* Akzentfarbe aus Ihrer .py-Datei */
             background: #3498db;
             color: white;
             border: none;
@@ -130,136 +130,99 @@
     </div>
 
     <script>
-        // --- START: PARTIKEL-ANIMATION (Inspiriert von Ihrer .py-Datei) ---
-
+        // --- START: PARTIKEL-ANIMATION (Unverändert) ---
         const canvas = document.getElementById('particle-canvas');
         const ctx = canvas.getContext('2d');
-
-        // Farben aus Ihrer .py-Datei
         const nodeColor = '#3498db';
-        const lineColor = '#ecf0f1'; // (Angepasst für besseren Kontrast)
-
+        const lineColor = '#ecf0f1';
         let particlesArray;
-
-        // Setzt die Canvas-Größe auf das gesamte Fenster
-        function setCanvasSize() {
-            canvas.width = window.innerWidth;
-            canvas.height = window.innerHeight;
-        }
+        function setCanvasSize() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; }
         setCanvasSize();
-
-        // Partikel-Klasse (speichert Position und Geschwindigkeit)
         class Particle {
-            constructor(x, y, directionX, directionY, size) {
-                this.x = x;
-                this.y = y;
-                this.directionX = directionX;
-                this.directionY = directionY;
-                this.size = size;
-            }
-
-            // Zeichnet den Partikel (Knoten)
-            draw() {
-                ctx.beginPath();
-                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2, false);
-                ctx.fillStyle = nodeColor;
-                ctx.fill();
-            }
-
-            // Bewegt Partikel und lässt ihn an den Rändern abprallen
-            update() {
-                if (this.x > canvas.width || this.x < 0) {
-                    this.directionX = -this.directionX;
-                }
-                if (this.y > canvas.height || this.y < 0) {
-                    this.directionY = -this.directionY;
-                }
-                this.x += this.directionX;
-                this.y += this.directionY;
-                this.draw();
-            }
+            constructor(x, y, directionX, directionY, size) { this.x = x; this.y = y; this.directionX = directionX; this.directionY = directionY; this.size = size; }
+            draw() { ctx.beginPath(); ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2, false); ctx.fillStyle = nodeColor; ctx.fill(); }
+            update() { if (this.x > canvas.width || this.x < 0) { this.directionX = -this.directionX; } if (this.y > canvas.height || this.y < 0) { this.directionY = -this.directionY; } this.x += this.directionX; this.y += this.directionY; this.draw(); }
         }
-
-        // Erstellt das Partikel-Array
         function init() {
-            particlesArray = [];
-            // Ähnliche Anzahl wie in Ihrer .py-Datei (num_nodes = 50), angepasst für Web
-            let numberOfParticles = (canvas.height * canvas.width) / 9000;
-            if (numberOfParticles > 100) numberOfParticles = 100; // Limit
-
+            particlesArray = []; let numberOfParticles = (canvas.height * canvas.width) / 9000; if (numberOfParticles > 100) numberOfParticles = 100;
             for (let i = 0; i < numberOfParticles; i++) {
-                let size = (Math.random() * 2) + 1;
-                let x = (Math.random() * ((canvas.width - size * 2) - (size * 2)) + size * 2);
+                let size = (Math.random() * 2) + 1; let x = (Math.random() * ((canvas.width - size * 2) - (size * 2)) + size * 2);
                 let y = (Math.random() * ((canvas.height - size * 2) - (size * 2)) + size * 2);
-                let directionX = (Math.random() * 0.4) - 0.2; // max_speed = 0.5
-                let directionY = (Math.random() * 0.4) - 0.2;
+                let directionX = (Math.random() * 0.4) - 0.2; let directionY = (Math.random() * 0.4) - 0.2;
                 particlesArray.push(new Particle(x, y, directionX, directionY, size));
             }
         }
-
-        // Zeichnet die Verbindungslinien (der "Konstellations"-Effekt)
         function connect() {
-            // Distanz aus Ihrer .py-Datei (connection_distance = 150)
-            let maxDistance = 150;
-            ctx.strokeStyle = lineColor;
-
+            let maxDistance = 150; ctx.strokeStyle = lineColor;
             for (let a = 0; a < particlesArray.length; a++) {
                 for (let b = a; b < particlesArray.length; b++) {
-                    let distance = ((particlesArray[a].x - particlesArray[b].x) * (particlesArray[a].x - particlesArray[b].x))
-                                 + ((particlesArray[a].y - particlesArray[b].y) * (particlesArray[a].y - particlesArray[b].y));
-
-                    if (distance < (maxDistance * maxDistance)) {
-                        // Linie wird heller, je näher die Punkte sind
-                        let opacity = 1 - (distance / (maxDistance * maxDistance));
-                        ctx.globalAlpha = opacity;
-
-                        ctx.beginPath();
-                        ctx.moveTo(particlesArray[a].x, particlesArray[a].y);
-                        ctx.lineTo(particlesArray[b].x, particlesArray[b].y);
-                        ctx.stroke();
-                    }
+                    let distance = ((particlesArray[a].x - particlesArray[b].x) * (particlesArray[a].x - particlesArray[b].x)) + ((particlesArray[a].y - particlesArray[b].y) * (particlesArray[a].y - particlesArray[b].y));
+                    if (distance < (maxDistance * maxDistance)) { let opacity = 1 - (distance / (maxDistance * maxDistance)); ctx.globalAlpha = opacity; ctx.beginPath(); ctx.moveTo(particlesArray[a].x, particlesArray[a].y); ctx.lineTo(particlesArray[b].x, particlesArray[b].y); ctx.stroke(); }
                 }
             }
-            ctx.globalAlpha = 1.0; // Wichtig: Transparenz zurücksetzen
+            ctx.globalAlpha = 1.0;
         }
-
-        // Die Haupt-Animationsschleife
-        function animate() {
-            requestAnimationFrame(animate);
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-            for (let i = 0; i < particlesArray.length; i++) {
-                particlesArray[i].update();
-            }
-            connect();
-        }
-
-        // Event Listener, um die Canvas bei Fenstergrößenänderung neu zu zeichnen
-        window.addEventListener('resize', () => {
-            setCanvasSize();
-            init();
-        });
-
-        // Starten!
+        function animate() { requestAnimationFrame(animate); ctx.clearRect(0, 0, canvas.width, canvas.height); for (let i = 0; i < particlesArray.length; i++) { particlesArray[i].update(); } connect(); }
+        window.addEventListener('resize', () => { setCanvasSize(); init(); });
         init();
         animate();
-
         // --- ENDE: PARTIKEL-ANIMATION ---
 
 
-        // --- START: IHRE VORHANDENE LOGIN-LOGIK (UNVERÄNDERT) ---
+        // --- START: LOGIN-LOGIK (ANGEPASST) ---
 
         const API_URL = 'http://46.224.63.203:5000';
         const statusEl = document.getElementById('status');
+        const loginBox = document.getElementById('login-box');
 
-        // Umleitungs-Logik bleibt bestehen
-        if (window.location.search.includes('logout=true')) {
-            localStorage.removeItem('dhf_user');
-            statusEl.textContent = 'Erfolgreich abgemeldet.';
-            statusEl.style.color = '#2ecc71'; // (Grün)
-        } else if (localStorage.getItem('dhf_user')) {
-             window.location.href = 'dashboard.html';
-        }
+        // --- KORREKTUR: Sofortige Session-Prüfung beim Laden ---
+        (async function checkUserSession() {
+
+            // Verstecke die Login-Box, während wir prüfen
+            loginBox.style.display = 'none';
+
+            if (window.location.search.includes('logout=true')) {
+                localStorage.removeItem('dhf_user');
+                statusEl.textContent = 'Erfolgreich abgemeldet.';
+                statusEl.style.color = '#2ecc71';
+                loginBox.style.display = 'block'; // Zeige Box wieder an
+                return;
+            }
+
+            try {
+                // Rufe die neue API-Route auf
+                const response = await fetch(API_URL + '/api/check_session', {
+                    method: 'GET',
+                    credentials: 'include' // WICHTIG: Sendet das Cookie
+                });
+
+                if (response.ok) {
+                    const data = await response.json();
+
+                    // Speichere die *aktuellen* User-Daten im localStorage
+                    localStorage.setItem('dhf_user', JSON.stringify(data.user));
+
+                    // Prüfe das Flag (genau wie in der login() Funktion)
+                    if (data.user && data.user.force_password_change === true) {
+                        window.location.href = 'change_password.html';
+                    } else {
+                        window.location.href = 'dashboard.html';
+                    }
+                } else {
+                    // response.ok ist false (z.B. 401 Unauthorized)
+                    // Der Benutzer ist nicht eingeloggt. Zeige die Login-Box an.
+                    localStorage.removeItem('dhf_user');
+                    loginBox.style.display = 'block';
+                }
+            } catch (err) {
+                // Server nicht erreichbar etc.
+                statusEl.textContent = 'Server-Fehler: ' + err.message;
+                statusEl.style.color = '#e74c3c';
+                loginBox.style.display = 'block'; // Zeige Box trotzdem an
+            }
+        })();
+        // --- ENDE KORREKTUR ---
+
 
         function getAuthData() {
             return {
@@ -270,7 +233,6 @@
         }
 
         async function login() {
-            // Die Login-Funktion bleibt unverändert
             const authData = getAuthData();
             statusEl.textContent = 'Melde an...';
             statusEl.style.color = '#bdc3c7'; // (Helles Grau)
@@ -289,7 +251,15 @@
                     statusEl.textContent = 'Erfolg! Leite weiter...';
                     statusEl.style.color = '#2ecc71'; // (Grün)
                     localStorage.setItem('dhf_user', JSON.stringify(data.user));
-                    window.location.href = 'dashboard.html';
+
+                    // Diese Logik (die wir vorher eingebaut haben) ist weiterhin KORREKT
+                    // Sie fängt den *aktiven* Login-Versuch ab.
+                    if (data.user && data.user.force_password_change === true) {
+                        window.location.href = 'change_password.html';
+                    } else {
+                        window.location.href = 'dashboard.html';
+                    }
+
                 } else {
                     statusEl.textContent = 'Fehler: ' + (data.message || 'Unbekannter Fehler');
                     statusEl.style.color = '#e74c3c'; // (Rot)
@@ -301,7 +271,7 @@
             }
         }
 
-        // --- ENDE: IHRE VORHANDENE LOGIN-LOGIK ---
+        // --- ENDE: LOGIN-LOGIK ---
 
     </script>
 </body>

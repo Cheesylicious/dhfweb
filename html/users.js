@@ -122,6 +122,10 @@ const diensthundField = document.getElementById('user-diensthund');
 const tutorialField = document.getElementById('user-tutorial');
 const passGeaendertField = document.getElementById('user-pass-geaendert');
 const zuletztOnlineField = document.getElementById('user-zuletzt-online');
+// --- NEU ---
+const forcePwResetBtn = document.getElementById('force-pw-reset-btn');
+// --- ENDE NEU ---
+
 function openModal(modalEl) {
     modalEl.style.display = 'block';
 }
@@ -272,6 +276,13 @@ addUserBtn.onclick = async () => {
     tutorialField.checked = false;
     passGeaendertField.value = 'Wird autom. gesetzt';
     zuletztOnlineField.value = 'Nie';
+
+    // --- NEU ---
+    // Verstecke den "System"-Tab, da es für neue User keine System-Infos gibt
+    const systemTabButton = document.querySelector('.modal-tabs button[onclick*="tab-system"]');
+    if (systemTabButton) systemTabButton.style.display = 'none';
+    // --- ENDE NEU ---
+
     await loadRolesIntoDropdown();
     openModal(modal);
     openTab(null, 'tab-stammdaten');
@@ -294,6 +305,13 @@ async function openEditModal(user) {
     tutorialField.checked = user.tutorial_gesehen;
     passGeaendertField.value = formatDateTime(user.password_geaendert, 'datetime') || 'Unbekannt';
     zuletztOnlineField.value = formatDateTime(user.zuletzt_online, 'datetime') || 'Nie';
+
+    // --- NEU ---
+    // Zeige den "System"-Tab wieder an
+    const systemTabButton = document.querySelector('.modal-tabs button[onclick*="tab-system"]');
+    if (systemTabButton) systemTabButton.style.display = 'block';
+    // --- ENDE NEU ---
+
     await loadRolesIntoDropdown(user.role_id);
     openModal(modal);
     openTab(null, 'tab-stammdaten');
@@ -342,6 +360,50 @@ async function deleteUser(id) {
         }
     }
 }
+
+// --- NEU: Handler für "Passwortänderung erzwingen" ---
+if (forcePwResetBtn) {
+    forcePwResetBtn.onclick = async () => {
+        const id = userIdField.value;
+        if (!id) {
+            modalStatus.textContent = "Fehler: Benutzer-ID nicht gefunden.";
+            modalStatus.style.color = '#e74c3c';
+            return;
+        }
+
+        if (confirm('Sind Sie sicher, dass Sie diesen Benutzer zwingen möchten, sein Passwort beim nächsten Login zu ändern?')) {
+
+            // Temporäre Statusmeldung im Modal-Footer
+            const originalStatus = modalStatus.textContent;
+            const originalColor = modalStatus.style.color;
+            modalStatus.textContent = 'Setze Flag...';
+            modalStatus.style.color = '#bdc3c7'; // Grau
+
+            try {
+                // Rufe die neue API-Route auf
+                const response = await apiFetch(`/api/users/${id}/force_password_reset`, 'POST');
+
+                modalStatus.textContent = response.message || 'Erfolgreich erzwungen!';
+                modalStatus.style.color = '#2ecc71'; // Grün
+
+            } catch (error) {
+                modalStatus.textContent = 'Fehler: ' + error.message;
+                modalStatus.style.color = '#e74c3c'; // Rot
+            }
+
+            // Setze die Statusmeldung nach 3 Sekunden zurück (außer der User speichert)
+            setTimeout(() => {
+                if (modalStatus.textContent !== 'Speichere...') {
+                    modalStatus.textContent = originalStatus;
+                    modalStatus.style.color = originalColor;
+                }
+            }, 3000);
+        }
+    };
+}
+// --- ENDE NEU ---
+
+
 // Initialisierung nur, wenn nicht gesperrt
 if (isAdmin) {
     loadUsers();

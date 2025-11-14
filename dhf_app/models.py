@@ -34,6 +34,11 @@ class User(db.Model, UserMixin):
     zuletzt_online = db.Column(db.DateTime, nullable=True)
     shift_plan_visible = db.Column(db.Boolean, default=False)
     shift_plan_sort_order = db.Column(db.Integer, default=999)
+
+    # --- NEUES FELD (HINZUGEFÜGT) ---
+    force_password_change = db.Column(db.Boolean, default=False, nullable=False)
+    # --- ENDE NEU ---
+
     __table_args__ = (db.UniqueConstraint('vorname', 'name', name='_vorname_name_uc'),)
 
     def safe_date_iso(self, date_obj):
@@ -52,7 +57,10 @@ class User(db.Model, UserMixin):
             "password_geaendert": self.safe_date_iso(self.password_geaendert),
             "zuletzt_online": self.safe_date_iso(self.zuletzt_online),
             "shift_plan_visible": self.shift_plan_visible,
-            "shift_plan_sort_order": self.shift_plan_sort_order
+            "shift_plan_sort_order": self.shift_plan_sort_order,
+            # --- NEUES FELD (HINZUGEFÜGT) ---
+            "force_password_change": self.force_password_change
+            # --- ENDE NEU ---
         }
 
 
@@ -225,8 +233,6 @@ class FeedbackReport(db.Model):
             "status": self.status,
             "created_at": self.created_at.isoformat()
         }
-
-
 # --- ENDE NEU ---
 
 
