@@ -295,10 +295,12 @@ def update_query_status(query_id):
     try:
         query.status = new_status
 
-        # --- NEU: Logging (Regel 2) ---
-        log_msg = f"Anfrage ID {query.id} als '{new_status}' markiert."
+        # --- START: ANPASSUNG (Überschrift statt ID) ---
+        date_str = query.shift_date.strftime('%d.%m.%Y')
+        target_name = f"{query.target_user.vorname} {query.target_user.name}" if query.target_user else "Thema des Tages"
+        log_msg = f"Anfrage ({target_name} am {date_str}) als '{new_status}' markiert."
         _log_update_event("Schicht-Anfragen", log_msg)
-        # --- ENDE NEU ---
+        # --- ENDE: ANPASSUNG ---
 
         db.session.commit()
         return jsonify(query.to_dict()), 200
@@ -319,8 +321,12 @@ def delete_shift_query(query_id):
         return jsonify({"message": "Anfrage nicht gefunden"}), 404
 
     try:
+        # --- START: ANPASSUNG (Überschrift statt ID) ---
         # Protokollieren VOR dem Löschen
-        _log_update_event("Schicht-Anfragen", f"Anfrage ID {query.id} (Status: {query.status}) gelöscht.")
+        date_str = query.shift_date.strftime('%d.%m.%Y')
+        target_name = f"{query.target_user.vorname} {query.target_user.name}" if query.target_user else "Thema des Tages"
+        _log_update_event("Schicht-Anfragen", f"Anfrage ({target_name} am {date_str}) gelöscht.")
+        # --- ENDE: ANPASSUNG ---
 
         db.session.delete(query)
         db.session.commit()
@@ -378,9 +384,12 @@ def create_query_reply(query_id):
     try:
         db.session.add(new_reply)
 
-        # NEU: Antwort protokollieren (Regel 2)
-        log_msg = f"Neue Antwort auf Anfrage ID {query_id} von {current_user.vorname}."
+        # --- START: ANPASSUNG (Überschrift statt ID) ---
+        date_str = query.shift_date.strftime('%d.%m.%Y')
+        target_name = f"{query.target_user.vorname} {query.target_user.name}" if query.target_user else "Thema des Tages"
+        log_msg = f"Neue Antwort für '{target_name}' am {date_str} (von {current_user.vorname})."
         _log_update_event("Schicht-Anfragen", log_msg)
+        # --- ENDE: ANPASSUNG ---
 
         db.session.commit()
         return jsonify(new_reply.to_dict()), 201
