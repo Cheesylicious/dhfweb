@@ -208,6 +208,9 @@
         .query-item {
             border-bottom: 1px solid rgba(255, 255, 255, 0.1);
             transition: background-color 0.3s, opacity 0.5s;
+            /* --- NEU: Standard-Rand für sanften Übergang --- */
+            border-left: 4px solid transparent;
+            border-right: 4px solid transparent;
         }
 
         .query-item:last-child {
@@ -358,6 +361,18 @@
             margin-left: auto;
         }
         /* --- ENDE ANPASSUNG --- */
+
+
+        /* --- START: NEUER STYLE FÜR HIGHLIGHTING --- */
+        .query-item.action-required-highlight {
+            background-color: rgba(240, 173, 78, 0.1); /* (Ein Hauch von --status-offen) */
+            border-left: 4px solid var(--status-offen);
+        }
+        .query-item.action-required-highlight .item-header {
+             /* Leichterer Hintergrund, um Klickbarkeit zu signalisieren, aber trotzdem Highlight */
+             background: rgba(240, 173, 78, 0.05);
+        }
+        /* --- ENDE: NEUER STYLE --- */
 
 
         /* (Stil für "Zugriff verweigert") */

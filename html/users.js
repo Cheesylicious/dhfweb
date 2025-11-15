@@ -22,6 +22,9 @@ try {
     // --- NEUE LOGIK: Rollenprüfung (WICHTIG) ---
     isAdmin = user.role.name === 'admin';
     isVisitor = user.role.name === 'Besucher';
+    // --- START NEU: Planschreiber-Rolle ---
+    const isPlanschreiber = user.role.name === 'Planschreiber';
+    // --- ENDE NEU ---
 
     // 1. Haupt-Navigationsanpassung
     const navDashboard = document.getElementById('nav-dashboard');
@@ -39,14 +42,25 @@ try {
     if (isAdmin) {
         navUsers.style.display = 'block';
         navFeedback.style.display = 'inline-flex';
+    // --- START NEU: Planschreiber-Navigationslogik ---
+    } else if (isPlanschreiber) {
+        navUsers.style.display = 'none';
+        navFeedback.style.display = 'inline-flex'; // Planschreiber darf Meldungen sehen
+    // --- ENDE NEU ---
     } else {
         navUsers.style.display = 'none';
+        // --- START NEU: Feedback-Link für Standard-User ausblenden ---
+        navFeedback.style.display = 'none';
+        // --- ENDE NEU ---
     }
     // --- ENDE NEU ---
 
-    if (isVisitor || !isAdmin) {
+    // --- START NEU: Zugriffsschutz für Planschreiber auf dieser Seite ---
+    if (isVisitor || !isAdmin) { // (Planschreiber wird jetzt hier auch abgefangen)
         // Nur Admins sehen die Benutzerverwaltung. Besucher und Standard-User (user) werden geblockt.
-        navShiftplan.classList.remove('active');
+
+        // (Korrektur: navShiftplan existiert hier nicht immer, prüfe auf Existenz)
+        if (navShiftplan) navShiftplan.classList.remove('active');
 
         // Ersetze Hauptinhalt durch Meldung
         document.getElementById('content-wrapper').innerHTML = `
@@ -59,9 +73,12 @@ try {
         document.getElementById('sub-nav-users').style.display = 'none';
 
         // Breche Initialisierung ab
-        throw new Error("Besucher/User darf Benutzerverwaltung nicht sehen.");
+        // --- START NEU: "Planschreiber" zur Fehlermeldung hinzugefügt ---
+        throw new Error("Besucher/User/Planschreiber darf Benutzerverwaltung nicht sehen.");
+        // --- ENDE NEU ---
 
     } else if (!isAdmin) {
+         // (Dieser Block wird technisch durch (isVisitor || !isAdmin) abgedeckt, schadet aber nicht)
         // Standard-User: Verstecke nur den Rollen-Link im Sub-Nav
         subNavRoles.style.display = 'none';
     }
@@ -69,9 +86,11 @@ try {
 
 } catch (e) {
     // Wenn der Fehler wegen "Besucher/User" geworfen wurde, nicht ausloggen, nur UI anzeigen
-    if (!e.message.includes("Besucher/User")) {
+    // --- START NEU: "Planschreiber" zur Fehlermeldung hinzugefügt ---
+    if (!e.message.includes("Besucher/User/Planschreiber")) {
          logout();
     }
+    // --- ENDE NEU ---
 }
 document.getElementById('logout-btn').onclick = logout;
 async function apiFetch(endpoint, method = 'GET', body = null) {

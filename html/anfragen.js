@@ -47,8 +47,12 @@ try {
     } else {
         // Planschreiber sieht nur Anfragen, nicht Feedback
         document.getElementById('nav-users').style.display = 'none';
-        document.getElementById('nav-feedback').style.display = 'none';
+        // --- START KORREKTUR: Planschreiber darf Meldungen sehen ---
+        document.getElementById('nav-feedback').style.display = 'inline-flex';
+        // --- ENDE KORREKTUR ---
+        // --- START NEU: Sub-Nav Link für Planschreiber ausblenden ---
         document.getElementById('sub-nav-feedback').style.display = 'none';
+        // --- ENDE NEU ---
     }
     // Dashboard ist für beide sichtbar
     document.getElementById('nav-dashboard').style.display = 'inline-flex';
@@ -178,10 +182,12 @@ function renderReplies(queryId, originalQuery, replies) {
  */
 async function loadConversation(queryId) {
     const itemBody = document.querySelector(`.query-item[data-id="${queryId}"] .item-body`);
+    // --- KORREKTUR: Finde die Query im Cache anhand der ID ---
     const originalQuery = allQueriesCache.find(q => q.id == queryId);
 
-    if (!itemBody || itemBody.dataset.loaded === 'true') {
-        // Falls bereits geladen oder Element nicht gefunden
+    // --- KORREKTUR: Check auf itemBody UND originalQuery ---
+    if (!itemBody || !originalQuery || itemBody.dataset.loaded === 'true') {
+        if (!originalQuery) console.error(`Konnte Query ${queryId} nicht im Cache finden.`);
         return;
     }
 
@@ -229,7 +235,25 @@ async function sendReply(queryId) {
         // Konversation neu laden, um die neue Antwort anzuzeigen
         const itemBody = document.querySelector(`.query-item[data-id="${queryId}"] .item-body`);
         itemBody.dataset.loaded = 'false'; // Temporär zurücksetzen, um Neuladen zu erzwingen
-        await loadConversation(queryId);
+
+        // --- START ANPASSUNG (Regel 2: Event-Dispatching) ---
+        // Header aktualisieren (z.B. "Warte auf Antwort" Zähler anpassen)
+        triggerNotificationUpdate();
+        // --- ENDE ANPASSUNG ---
+
+        // --- KORREKTUR: Lade die Daten neu, um den "last_replier" zu aktualisieren ---
+        // Dies stellt sicher, dass das Highlight sofort verschwindet (oder erscheint)
+        await loadQueries();
+
+        // (Optional) Konversation direkt wieder laden, wenn der Body noch offen ist
+        if (itemBody.style.display === 'block') {
+            // Finde die Query im (jetzt neuen) Cache
+            const originalQuery = allQueriesCache.find(q => q.id == queryId);
+            if(originalQuery) {
+                 await loadConversation(queryId, originalQuery);
+            }
+        }
+
 
     } catch (e) {
         alert(`Fehler beim Senden der Antwort: ${e.message}`);
@@ -275,22 +299,42 @@ function handleGoToDate(queryId) {
 function renderQueries() {
     queryList.innerHTML = '';
 
-    const filteredQueries = currentFilter
-        ? allQueriesCache.filter(q => q.status === currentFilter)
-        : allQueriesCache;
+    // (Keine Filterung mehr nötig, da der API-Call das bereits erledigt)
+    // const filteredQueries = currentFilter ... (ENTFERNT)
 
-    if (filteredQueries.length === 0) {
+    if (allQueriesCache.length === 0) {
         queryList.innerHTML = '<li style="color: #bdc3c7; padding: 20px; text-align: center;">Keine Anfragen für diesen Filter gefunden.</li>';
         return;
     }
 
-    // Neueste zuerst
-    filteredQueries.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+    // Neueste zuerst (API sollte das schon tun, aber zur Sicherheit)
+    allQueriesCache.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
 
-    filteredQueries.forEach(query => {
+    allQueriesCache.forEach(query => {
         const li = document.createElement('li');
         li.className = 'query-item';
         li.dataset.id = query.id;
+
+        // --- START: NEUE HIGHLIGHT-LOGIK ---
+        // (Diese Logik spiegelt die Header-Logik wider)
+        let actionRequired = false;
+        if (query.status === 'offen') {
+            if (query.last_replier_id === null) {
+                // Fall 1: Keine Antworten
+                if (query.sender_user_id !== user.id) {
+                    actionRequired = true; // Neu, von anderem
+                }
+            } else if (query.last_replier_id !== user.id) {
+                // Fall 2: Letzte Antwort von anderem
+                actionRequired = true;
+            }
+        }
+
+        if (actionRequired) {
+            li.classList.add('action-required-highlight');
+        }
+        // --- ENDE: NEUE HIGHLIGHT-LOGIK ---
+
 
         const queryDate = new Date(query.created_at).toLocaleString('de-DE', {
             day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit'
@@ -313,10 +357,13 @@ function renderQueries() {
             // NEUER BUTTON HINZUGEFÜGT (lila, basierend auf Screenshot)
             actionButtons += `<button class="btn-goto-date" data-action="goto-date" style="background: #9b59b6; color: white;">Zum Termin</button>`;
 
-            actionButtons += `<button class="btn-delete-query" data-action="delete" style="background: #e74c3c; color: white; margin-left: auto;">Löschen</button>`;
+            // --- START ANPASSUNG (Inline-Style entfernt, CSS-Klasse .btn-delete-query wird verwendet) ---
+            actionButtons += `<button class="btn-delete-query" data-action="delete">Löschen</button>`;
+            // --- ENDE ANPASSUNG ---
         }
         // --- ENDE ANPASSUNG ---
 
+        // --- START ANPASSUNG (Button-Layout und Abstand) ---
         const conversationSection = `
             <div class="conversation-container">
                 <div id="replies-loader-${query.id}" style="text-align: center; color: #888; margin: 10px; display: none;">Lade Konversation...</div>
@@ -324,13 +371,13 @@ function renderQueries() {
                     </ul>
             </div>
 
-            <div class="reply-form" style="margin-top: 20px; padding-top: 10px; border-top: 1px dashed #ddd;">
+            <div class="reply-form" style="margin-top: 20px; padding-top: 10px; border-top: 1px dashed #ddd; margin-bottom: 20px;">
                 <label for="reply-input-${query.id}" style="font-size: 13px; color: #3498db; font-weight: 600;">Antwort senden:</label>
                 <textarea id="reply-input-${query.id}" rows="2" style="width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 5px; font-size: 14px; box-sizing: border-box; resize: vertical;"></textarea>
-                <button type="button" class="btn-primary btn-reply-submit" data-id="${query.id}" id="reply-submit-${query.id}" style="margin-top: 5px; float: right;">Antwort senden</button>
-                <div style="clear: both;"></div>
+                <button type="button" class="btn-primary btn-reply-submit" data-id="${query.id}" id="reply-submit-${query.id}" style="margin-top: 10px; padding: 10px 15px; font-size: 14px; font-weight: 600;">Antwort senden</button>
             </div>
         `;
+        // --- ENDE ANPASSUNG ---
 
         li.innerHTML = `
             <div class="item-header" data-action="toggle-body">
@@ -370,8 +417,10 @@ async function handleUpdateStatus(id, newStatus) {
             allQueriesCache.push(updatedQuery);
         }
 
-        // Neu rendern, um die UI synchron zu halten
-        renderQueries();
+        // --- KORREKTUR: API neu laden statt nur rendern, damit Highlights stimmen ---
+        await loadQueries();
+        // renderQueries(); // (Nicht mehr nötig, da loadQueries() das übernimmt)
+        // --- ENDE KORREKTUR ---
 
         // --- START ANPASSUNG (Regel 2: Event-Dispatching) ---
         triggerNotificationUpdate();
@@ -471,6 +520,38 @@ queryList.addEventListener('click', (e) => {
         }
     }
 });
+
+// --- START ANPASSUNG (Enter-Taste zum Senden) ---
+/**
+ * Event Listener für Keydown-Events in der Query-Liste (für Textareas).
+ * Löst das Senden der Antwort bei "Enter" aus.
+ * Erlaubt "Shift + Enter" für einen Zeilenumbruch.
+ */
+queryList.addEventListener('keydown', (e) => {
+    // Prüfen, ob das Ziel eine Textarea für Antworten ist UND die "Enter"-Taste gedrückt wurde
+    if (e.target.tagName === 'TEXTAREA' && e.target.id.startsWith('reply-input-') && e.key === 'Enter') {
+
+        // Wenn "Shift" gleichzeitig gedrückt wird, Standardverhalten (Zeilenumbruch) zulassen
+        if (e.shiftKey) {
+            return;
+        }
+
+        // Standardverhalten (Zeilenumbruch bei "Enter") verhindern
+        e.preventDefault();
+
+        // Den zugehörigen Sende-Button finden
+        // (Wir gehen vom Parent (.item-body) aus, um die ID zu holen)
+        const queryId = e.target.closest('.item-body').dataset.queryId;
+        const submitBtn = document.getElementById(`reply-submit-${queryId}`);
+
+        if (submitBtn && !submitBtn.disabled) {
+            // Den Klick auf den Sende-Button simulieren
+            submitBtn.click();
+        }
+    }
+});
+// --- ENDE ANPASSUNG ---
+
 
 /**
  * (Hilfsfunktion zum Entschärfen von HTML in Nachrichten)

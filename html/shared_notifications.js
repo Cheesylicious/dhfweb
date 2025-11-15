@@ -5,6 +5,11 @@
  * Es prüft die API auf "Handlungsbedarf" (neue Meldungen, offene Anfragen)
  * und blendet dynamisch eine Benachrichtigungsleiste ("Subheader") ein,
  * wenn Handlungsbedarf besteht.
+ *
+ * NEU: Zeigt jetzt auch persönliche Benachrichtigungen für den Admin/Planschreiber
+ * (z.B. "Neue Antworten" oder "Warte auf Antwort").
+ *
+ * NEU: Polling alle 30 Sekunden, um Antworten von anderen Benutzern zu empfangen.
  */
 (function() {
     // Stellt sicher, dass das Skript nur einmal ausgeführt wird
@@ -148,6 +153,14 @@
             border-radius: 5px;
             font-size: 13px;
         }
+
+        /* --- NEU: Farbige Badges je nach Priorität --- */
+        .notification-dropdown a .badge-detail.priority-high {
+            background: #e74c3c; /* Rot (passend zum Haupt-Badge) */
+        }
+        .notification-dropdown a .badge-detail.priority-low {
+            background: #95a5a6; /* Grau (für "Warte auf Antwort") */
+        }
     `;
 
     const styleSheet = document.createElement("style");
@@ -170,31 +183,37 @@
             //    Dies stellt sicher, dass beim Neuladen (z.B. durch Event)
             //    die Leiste verschwindet, wenn der Zähler 0 ist.
             const existingSubheader = document.getElementById('notification-subheader');
-            if (existingSubheader) {
-                existingSubheader.remove();
-            }
+
             // --- ENDE ANPASSUNG ---
 
 
             if (!response.ok) {
-                // Bei 401 (Session abgelaufen) oder 403 (Keine Rechte) nichts tun
+                 // Bei 401/403 (z.B. Session abgelaufen)
+                 if (existingSubheader) existingSubheader.remove();
                 return;
             }
 
             const counts = await response.json();
 
+            // --- START: NEUE ZÄHLER-LOGIK ---
             const feedbackCount = counts.new_feedback_count || 0;
-            const queryCount = counts.open_shift_queries_count || 0;
+            const newRepliesCount = counts.new_replies_count || 0; // (Action Required)
+            const waitingCount = counts.waiting_on_others_count || 0; // (Waiting)
 
-            // HINWEIS: Schichtplan-Konflikte (Violations/Staffing)
-            // werden hier (noch) nicht gezählt, da dies ein sehr
-            // langsamer API-Aufruf wäre.
-
-            const totalCount = feedbackCount + queryCount;
+            // Der ROTE Badge zählt nur die "Action Required" Aufgaben
+            const totalActionRequiredCount = feedbackCount + newRepliesCount;
+            // --- ENDE: NEUE ZÄHLER-LOGIK ---
 
             // Wenn es nichts zu tun gibt, Leiste nicht anzeigen
-            if (totalCount === 0) {
+            if (totalActionRequiredCount + waitingCount === 0) {
+                if (existingSubheader) existingSubheader.remove();
                 return;
+            }
+
+            // Wenn die Leiste bereits existiert, entfernen wir sie, um sie neu aufzubauen
+            // (einfacher als den Inhalt zu aktualisieren)
+            if (existingSubheader) {
+                existingSubheader.remove();
             }
 
             // --- 3. HTML-Struktur aufbauen ---
@@ -207,10 +226,31 @@
             // Linke Seite (Text + Badge)
             const leftDiv = document.createElement('div');
             leftDiv.className = 'notification-subheader-left';
+
+            // --- START: DYNAMISCHER HEADER-TEXT ---
+            const messages = [];
+
+            // 1. Action Required (Rot)
+            if (newRepliesCount > 0) {
+                messages.push(`Neue Antworten / Aufgaben: ${newRepliesCount}`);
+            }
+            if (isAdmin && feedbackCount > 0) {
+                messages.push(`Neue Meldungen: ${feedbackCount}`);
+            }
+
+            // 2. Waiting (Grau/Blau)
+            if (waitingCount > 0) {
+                messages.push(`Warte auf Antwort: ${waitingCount}`);
+            }
+
+            const headerText = messages.join('  |  '); // Trennzeichen
+
             leftDiv.innerHTML = `
-                <span class="notification-badge">${totalCount}</span>
-                <span>Handlungsbedarf (Offene Aufgaben)</span>
+                <span class="notification-badge">${totalActionRequiredCount}</span>
+                <span>${headerText}</span>
             `;
+            // --- ENDE: DYNAMISCHER HEADER-TEXT ---
+
 
             // Rechte Seite (Pfeil)
             const rightDiv = document.createElement('div');
@@ -221,29 +261,46 @@
             const dropdown = document.createElement('div');
             dropdown.className = 'notification-dropdown';
 
+            // --- START: DYNAMISCHES DROPDOWN ---
             let listHtml = '<ul>';
+
+            // Priorität 1: Action Required (Rote Badges)
+            if (newRepliesCount > 0) {
+                listHtml += `
+                    <li>
+                        <a href="anfragen.html">
+                            <span>Neue Antworten / Aufgaben</span>
+                            <span class="badge-detail priority-high">${newRepliesCount}</span>
+                        </a>
+                    </li>
+                `;
+            }
             if (isAdmin && feedbackCount > 0) {
                 listHtml += `
                     <li>
                         <a href="feedback.html">
                             <span>Neue Meldungen / Feedback</span>
-                            <span class="badge-detail">${feedbackCount}</span>
+                            <span class="badge-detail priority-high">${feedbackCount}</span>
                         </a>
                     </li>
                 `;
             }
-            if ((isAdmin || isScheduler) && queryCount > 0) {
-                listHtml += `
+
+            // Priorität 2: Waiting (Graue Badges)
+            if (waitingCount > 0) {
+                 listHtml += `
                     <li>
                         <a href="anfragen.html">
-                            <span>Offene Schicht-Anfragen</span>
-                            <span class="badge-detail">${queryCount}</span>
+                            <span>Warte auf Antwort</span>
+                            <span class="badge-detail priority-low">${waitingCount}</span>
                         </a>
                     </li>
                 `;
             }
+
             listHtml += '</ul>';
             dropdown.innerHTML = listHtml;
+            // --- ENDE: DYNAMISCHES DROPDOWN ---
 
             // Zusammenbauen
             subheader.appendChild(leftDiv);
@@ -278,11 +335,17 @@
     // Führe die Funktion aus, sobald das DOM geladen ist
     document.addEventListener('DOMContentLoaded', fetchAndBuildNotifications);
 
+    // --- START ANPASSUNG: Periodisches Polling ---
+    // Prüfe alle 30 Sekunden auf neue Benachrichtigungen (z.B. Antworten von anderen)
+    setInterval(fetchAndBuildNotifications, 30000); // 30.000 ms = 30 Sekunden
+    // --- ENDE ANPASSUNG ---
+
     // --- START ANPASSUNG (Regel 2: Innovatives Event-Handling) ---
     // Füge einen globalen Listener hinzu, der auf das benutzerdefinierte Event wartet.
     window.addEventListener('dhf:notification_update', () => {
         console.log("Event 'dhf:notification_update' empfangen. Lade Zähler neu.");
-        fetchAndBuildNotifications();
+        // Kurze Verzögerung (100ms), um sicherzustellen, dass der DB-Commit der auslösenden Aktion abgeschlossen ist
+        setTimeout(fetchAndBuildNotifications, 100);
     });
     // --- ENDE ANPASSUNG ---
 

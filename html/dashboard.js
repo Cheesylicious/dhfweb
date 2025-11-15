@@ -20,6 +20,10 @@ try {
     if (!user || !user.vorname || !user.role) { throw new Error("Kein User oder fehlende Rolle"); }
 
     isAdmin = user.role.name === 'admin';
+    // --- START NEU: Planschreiber-Rolle ---
+    const isPlanschreiber = user.role.name === 'Planschreiber';
+    // --- ENDE NEU ---
+
     // Die isVisitor Prüfung ist dank des Head-Skripts nicht mehr nötig,
     // da Besucher bereits umgeleitet werden, bevor dieser Teil ausgeführt wird.
 
@@ -48,10 +52,21 @@ try {
         if(manualLogBtn) manualLogBtn.classList.remove('hidden'); // Button für Admin anzeigen
 
         document.querySelector('.card-section p').textContent = "Dies ist das Admin-Dashboard. Wählen Sie einen Bereich aus der Navigation oben.";
-    } else {
+    }
+    // --- START NEU: Planschreiber-Navigationslogik ---
+    else if (isPlanschreiber) {
+         navUsers.style.display = 'none';
+         navFeedback.style.display = 'inline-flex'; // Planschreiber darf Meldungen sehen
+         if(manualLogBtn) manualLogBtn.classList.add('hidden');
+
+         document.querySelector('.card-section p').textContent = "Dies ist das Dashboard. Sie haben Zugriff auf den Schichtplan und die Schicht-Anfragen (unter Meldungen).";
+    }
+    // --- ENDE NEU ---
+    else {
          // Standard-User Logik: Update-Log bleibt sichtbar (durch Entfernen des Ausblend-Codes)
          navUsers.style.display = 'none';
-         navFeedback.style.display = 'none'; // Feedback-Link nur für Admins (Konsistenz)
+         navFeedback.style.display = 'none'; // Feedback-Link nur für Admins/Planschreiber
+         if(manualLogBtn) manualLogBtn.classList.add('hidden');
 
          document.querySelector('.card-section p').textContent = "Dies ist das Dashboard. Wählen Sie einen Bereich aus der Navigation oben.";
     }

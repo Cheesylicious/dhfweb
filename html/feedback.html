@@ -115,6 +115,37 @@
             background: #2980b9;
         }
 
+        /* --- START NEU: Sub-Nav (Kopiert von anfragen.html) --- */
+        .sub-nav {
+            background: rgba(255, 255, 255, 0.05);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            padding: 0 30px;
+            margin-bottom: 30px;
+            margin-top: -1px; /* (Schließt Lücke zum Header) */
+            display: flex;
+            align-items: center;
+            position: relative;
+            z-index: 10000;
+        }
+
+        .sub-nav a {
+            display: inline-block;
+            padding: 15px 20px;
+            text-decoration: none;
+            color: #bdc3c7;
+            font-weight: 500;
+            border-bottom: 3px solid transparent;
+            transition: color 0.3s;
+        }
+
+        .sub-nav a.active, .sub-nav a:hover {
+            color: #ffffff;
+            border-bottom-color: #3498db;
+        }
+        /* --- ENDE NEU --- */
+
         main {
             padding: 30px;
             max-width: 1200px;
@@ -312,6 +343,10 @@
         </div>
     </header>
 
+    <div class="sub-nav" id="sub-nav-tasks">
+        <a href="feedback.html" id="sub-nav-feedback" class="active">Meldungen (Bugs/Ideen)</a>
+        <a href="anfragen.html" id="sub-nav-anfragen">Schicht-Anfragen</a>
+    </div>
     <main>
         <div id="content-wrapper">
             <div class="card">

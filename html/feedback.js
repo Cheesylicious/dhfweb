@@ -20,19 +20,37 @@ try {
 
     isAdmin = user.role.name === 'admin';
     const isVisitor = user.role.name === 'Besucher';
+    // --- START NEU: Planschreiber-Rolle hinzugefügt ---
+    const isPlanschreiber = user.role.name === 'Planschreiber';
+    // --- ENDE NEU ---
 
     // *** SEHR WICHTIG: Zugriffsschutz ***
-    if (!isAdmin) {
-        // Wenn kein Admin, ersetze den Inhalt durch eine Fehlermeldung
+    // --- START NEU: Zugriff für Planschreiber erlaubt (mit Umleitung) ---
+    if (!isAdmin && !isPlanschreiber) {
+        // Wenn weder Admin noch Planschreiber, ersetze den Inhalt
+    // --- ENDE NEU ---
         const wrapper = document.getElementById('content-wrapper');
         wrapper.classList.add('restricted-view');
         wrapper.innerHTML = `
             <h2 style="color: #e74c3c;">Zugriff verweigert</h2>
-            <p>Nur Administratoren dürfen auf die Meldungsverwaltung zugreifen.</p>
+            <p>Nur Administratoren oder Planschreiber dürfen auf die Meldungsverwaltung zugreifen.</p>
         `;
         // Verhindere das Ausführen weiterer Logik
-        throw new Error("Keine Admin-Rechte für Feedback-Verwaltung.");
+        // --- START NEU: Fehlermeldung angepasst ---
+        throw new Error("Keine Admin/Planschreiber-Rechte für Feedback-Verwaltung.");
+        // --- ENDE NEU ---
     }
+
+    // --- START NEU: Umleitung für Planschreiber ---
+    // Wenn der Benutzer Planschreiber, ABER NICHT Admin ist,
+    // wird er von der feedback.html (Bugs) sofort auf anfragen.html umgeleitet.
+    if (isPlanschreiber && !isAdmin) {
+        window.location.href = 'anfragen.html';
+        // Wir werfen einen Fehler, um das Laden der restlichen Seite zu stoppen.
+        throw new Error("Umleitung für Planschreiber zu anfragen.html.");
+    }
+    // --- ENDE NEU ---
+
 
     // --- KORREKTUR: Robuste Navigationsanpassung für ALLE eingeloggten Benutzer ---
     const navDashboard = document.getElementById('nav-dashboard');
@@ -48,16 +66,24 @@ try {
         if (navUsers) navUsers.style.display = 'inline-flex';
         if (navFeedback) navFeedback.style.display = 'inline-flex'; // Meldungen anzeigen (ist aktiv)
     }
+    // --- START NEU: Planschreiber-Navigationslogik ---
+    else if (isPlanschreiber) {
+         if (navUsers) navUsers.style.display = 'none';
+         if (navFeedback) navFeedback.style.display = 'inline-flex';
+    }
+    // --- ENDE NEU ---
     // --- ENDE KORREKTUR ---
 
     // (Navigation wird in Schritt 6 global hinzugefügt, hier nur der Logout)
     document.getElementById('logout-btn').onclick = logout;
 
 } catch (e) {
-    if (!e.message.includes("Admin-Rechte")) {
+    // --- START NEU: Fehlermeldung angepasst ---
+    if (!e.message.includes("Admin/Planschreiber-Rechte") && !e.message.includes("Umleitung für Planschreiber")) {
          logout();
     }
-    // (Stoppt die Ausführung, wenn der Fehler "Keine Admin-Rechte" geworfen wurde)
+    // --- ENDE NEU ---
+    // (Stoppt die Ausführung, wenn der Fehler geworfen wurde)
 }
 
 // --- Globale API-Funktion (Standard) ---
@@ -264,6 +290,8 @@ function escapeHTML(str) {
 
 
 // --- Initialisierung ---
+// --- START NEU: Prüfung auf Admin (Planschreiber wird vorher umgeleitet) ---
 if (isAdmin) {
     loadReports(); // (Starte mit Filter "Alle")
 }
+// --- ENDE NEU ---

@@ -149,7 +149,17 @@ try {
         navUsers.style.display = 'block';
         navFeedback.style.display = 'inline-flex';
         if (staffingSortToggleBtn) staffingSortToggleBtn.style.display = 'inline-block';
+    // --- START NEU: Planschreiber-Navigationslogik ---
+    } else if (isPlanschreiber) {
+        navUsers.style.display = 'none';
+        navFeedback.style.display = 'inline-flex'; // Planschreiber darf Meldungen sehen
+        if (staffingSortToggleBtn) staffingSortToggleBtn.style.display = 'none';
+    // --- ENDE NEU ---
     } else {
+         // --- START NEU: Standard-User (weder Admin noch Planschreiber) ---
+        navUsers.style.display = 'none';
+        navFeedback.style.display = 'none';
+        // --- ENDE NEU ---
         if (staffingSortToggleBtn) staffingSortToggleBtn.style.display = 'none';
     }
 
@@ -1543,7 +1553,7 @@ async function sendReply() {
         await apiFetch(`/api/queries/${queryId}/replies`, 'POST', payload);
 
         // Finde die Originalanfrage im Cache, um sie an den Renderer zu übergeben
-        const originalQuery = currentShiftQueries.find(q => q.id == queryId); // KORREKTUR: === statt ==
+        const originalQuery = currentShiftQueries.find(q => q.id == queryId);
 
         // UI aktualisieren: Nachricht leeren, Konversation neu laden
         replyMessageInput.value = '';
@@ -1551,6 +1561,11 @@ async function sendReply() {
 
         queryModalStatus.textContent = "Antwort gesendet!";
         queryModalStatus.style.color = '#2ecc71';
+
+        // --- START ANPASSUNG (Regel 2: Event-Dispatching) ---
+        // Header aktualisieren (z.B. "Warte auf Antwort" Zähler anpassen)
+        triggerNotificationUpdate();
+        // --- ENDE ANPASSUNG ---
 
         setTimeout(() => {
             queryModalStatus.textContent = '';

@@ -2,13 +2,17 @@
 
 from flask import Blueprint, request, jsonify, current_app
 # --- NEUE IMPORTE ---
-from .models import ShiftQuery, User, FeedbackReport, UpdateLog, ShiftQueryReply  # <<< ShiftQueryReply HINZUGEFÜGT
+from .models import ShiftQuery, User, FeedbackReport, UpdateLog, ShiftQueryReply
 from .extensions import db
 from .utils import admin_required, scheduler_or_admin_required
 from flask_login import login_required, current_user
 from sqlalchemy import extract, func
 # --- ENDE NEUE IMPORTE ---
 from datetime import datetime
+# --- START: HINZUGEFÜGT (Für performante Zählung) ---
+from sqlalchemy.sql import select
+
+# --- ENDE: HINZUGEFÜGT ---
 
 # Erstellt einen Blueprint. Alle Routen hier beginnen mit /api/queries
 query_bp = Blueprint('query', __name__, url_prefix='/api/queries')
@@ -38,16 +42,14 @@ def get_notifications_summary():
     """
     Ruft eine Zusammenfassung aller relevanten Benachrichtigungs-Zähler
     für den aktuell eingeloggten Benutzer ab.
-    """
 
-    # (Regel 2: Innovativ - wir holen das Datum nur einmal)
-    now = datetime.utcnow()
-    current_year = now.year
-    current_month = now.month
+    ANGEPASST: Zählt jetzt intelligent, wer zuletzt geantwortet hat.
+    """
 
     response = {
         "new_feedback_count": 0,
-        "open_shift_queries_count": 0
+        "new_replies_count": 0,  # (Umbenannt: Action Required)
+        "waiting_on_others_count": 0  # (Umbenannt: Waiting)
     }
 
     try:
@@ -55,20 +57,77 @@ def get_notifications_summary():
 
         # 1. Zähler für Admins (Neue Meldungen)
         if user_role == 'admin':
-            # (Logik aus routes_feedback.py übernommen, Regel 2: Performant)
             count = db.session.query(func.count(FeedbackReport.id)).filter(
                 FeedbackReport.status == 'neu'
             ).scalar()
             response["new_feedback_count"] = count
 
-        # 2. Zähler für Admins UND Planschreiber (Offene Anfragen)
-        # (Wir zählen alle offenen Anfragen, nicht nur diesen Monat,
-        #  damit alte Anfragen nicht übersehen werden)
+        # 2. Zähler für Admins UND Planschreiber
         if user_role in ['admin', 'Planschreiber']:
-            count = db.session.query(func.count(ShiftQuery.id)).filter(
+
+            current_user_id = current_user.id
+
+            # --- START: KOMPLETT NEUE ZÄHL-LOGIK ---
+
+            # A) Finde die ID des letzten Antwortenden für JEDE Anfrage
+            # A.1: Subquery findet die *letzte* Antwort-Zeit für jede Query
+            last_reply_sq = db.session.query(
+                ShiftQueryReply.query_id,
+                func.max(ShiftQueryReply.created_at).label('last_reply_time')
+            ).group_by(ShiftQueryReply.query_id).subquery()
+
+            # A.2: Subquery findet die user_id, die zur *letzten* Antwort-Zeit gehört
+            last_reply_user_sq = db.session.query(
+                ShiftQueryReply.query_id,
+                ShiftQueryReply.user_id
+            ).join(
+                last_reply_sq,
+                db.and_(
+                    ShiftQueryReply.query_id == last_reply_sq.c.query_id,
+                    ShiftQueryReply.created_at == last_reply_sq.c.last_reply_time
+                )
+            ).distinct(ShiftQueryReply.query_id).subquery()
+
+            # B) Hole ALLE offenen Anfragen und verknüpfe sie (LEFT JOIN)
+            #    mit dem letzten Antwortenden.
+            query_results = db.session.query(
+                ShiftQuery,
+                last_reply_user_sq.c.user_id.label('last_replier_id')
+            ).filter(
                 ShiftQuery.status == 'offen'
-            ).scalar()
-            response["open_shift_queries_count"] = count
+            ).outerjoin(
+                last_reply_user_sq,
+                ShiftQuery.id == last_reply_user_sq.c.query_id
+            ).all()
+
+            # C) Initialisiere Zähler
+            new_replies_count = 0  # (Action Required)
+            waiting_on_others_count = 0  # (Waiting)
+
+            # D) Sortiere die Anfragen in die beiden Kategorien
+            for query, last_replier_id in query_results:
+
+                if last_replier_id is None:
+                    # FALL 1: Keine Antworten vorhanden
+                    if query.sender_user_id == current_user_id:
+                        # Ich habe sie erstellt, niemand hat geantwortet.
+                        waiting_on_others_count += 1
+                    else:
+                        # Jemand anderes hat sie erstellt, niemand hat geantwortet.
+                        new_replies_count += 1  # (Neue Aufgabe für mich)
+
+                elif last_replier_id == current_user_id:
+                    # FALL 2: ICH war der letzte Antwortende
+                    waiting_on_others_count += 1
+
+                else:
+                    # FALL 3: Jemand ANDERES war der letzte Antwortende
+                    new_replies_count += 1  # (Action Required)
+
+            response["new_replies_count"] = new_replies_count
+            response["waiting_on_others_count"] = waiting_on_others_count
+
+            # --- ENDE: KOMPLETT NEUE ZÄHL-LOGIK ---
 
         return jsonify(response), 200
 
@@ -147,14 +206,43 @@ def get_shift_queries():
     """
     Ruft alle Schicht-Anfragen ab.
     Optional filterbar nach Jahr/Monat UND Status.
+
+    NEU: Liefert jetzt 'last_replier_id' mit, um "Neue Antwort"
+    im Frontend zu signalisieren.
     """
     year = request.args.get('year')
     month = request.args.get('month')
     status = request.args.get('status')  # Optional: 'offen' oder 'erledigt'
 
     try:
+        # --- START: Subquery für letzten Antwortenden (identisch zu summary) ---
+        # A.1: Subquery findet die *letzte* Antwort-Zeit für jede Query
+        last_reply_sq = db.session.query(
+            ShiftQueryReply.query_id,
+            func.max(ShiftQueryReply.created_at).label('last_reply_time')
+        ).group_by(ShiftQueryReply.query_id).subquery()
+
+        # A.2: Subquery findet die user_id, die zur *letzten* Antwort-Zeit gehört
+        last_reply_user_sq = db.session.query(
+            ShiftQueryReply.query_id,
+            ShiftQueryReply.user_id
+        ).join(
+            last_reply_sq,
+            db.and_(
+                ShiftQueryReply.query_id == last_reply_sq.c.query_id,
+                ShiftQueryReply.created_at == last_reply_sq.c.last_reply_time
+            )
+        ).distinct(ShiftQueryReply.query_id).subquery()
+        # --- ENDE: Subquery ---
+
         # Beginne mit der Basis-Abfrage
-        query = ShiftQuery.query
+        query = db.session.query(
+            ShiftQuery,
+            last_reply_user_sq.c.user_id.label('last_replier_id')
+        ).outerjoin(
+            last_reply_user_sq,
+            ShiftQuery.id == last_reply_user_sq.c.query_id
+        )
 
         # Wende Datumsfilter nur an, wenn BEIDE (year und month) vorhanden sind
         if year and month:
@@ -168,12 +256,19 @@ def get_shift_queries():
 
         # Wende Statusfilter an, falls vorhanden
         if status in ['offen', 'erledigt']:
-            query = query.filter_by(status=status)
+            query = query.filter(ShiftQuery.status == status)
 
-        # Sortiere (optional, aber gut für die Anzeige)
-        queries = query.order_by(ShiftQuery.created_at.desc()).all()
+        # Sortiere
+        query_results = query.order_by(ShiftQuery.created_at.desc()).all()
 
-        return jsonify([q.to_dict() for q in queries]), 200
+        # --- Manuelles Erstellen der Dictionaries ---
+        response_list = []
+        for query, last_replier_id in query_results:
+            q_dict = query.to_dict()
+            q_dict['last_replier_id'] = last_replier_id
+            response_list.append(q_dict)
+
+        return jsonify(response_list), 200
 
     except Exception as e:
         current_app.logger.error(f"Fehler beim Laden von ShiftQueries: {str(e)}")
