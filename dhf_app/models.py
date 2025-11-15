@@ -208,7 +208,7 @@ class FeedbackReport(db.Model):
 
     # Was wurde gemeldet?
     report_type = db.Column(db.String(50), nullable=False)  # z.B. 'bug', 'improvement'
-    category = db.Column(db.String(100), nullable=False)  # z.B. 'Schichtplan', 'Login', 'Allgemein'
+    category = db.Column(db.String(100), nullable=False)  # z.b. 'Schichtplan', 'Login', 'Allgemein'
     message = db.Column(db.Text, nullable=False)
     page_context = db.Column(db.String(255), nullable=True)  # z.B. '/schichtplan.html'
 
@@ -282,7 +282,7 @@ class ShiftQuery(db.Model):
     sender = db.relationship('User', foreign_keys=[sender_user_id])
 
     # Auf welchen Benutzer im Plan bezieht sich die Anfrage?
-    target_user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    target_user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True)
     target_user = db.relationship('User', foreign_keys=[target_user_id])
 
     # Welches Datum im Plan?
@@ -296,21 +296,62 @@ class ShiftQuery(db.Model):
     status = db.Column(db.String(50), nullable=False, default='offen', index=True)
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
 
-    # Verhindert mehrere offene Anfragen pro Zelle (für denselben Status)
+    # Der Backref für die Antworten wird in ShiftQueryReply definiert
     __table_args__ = (
-        db.UniqueConstraint('target_user_id', 'shift_date', 'status', name='_user_date_status_uc'),
+        # Der UniqueConstraint wurde entfernt, da target_user_id nullable ist.
     )
 
     def to_dict(self):
+        target_name = f"{self.target_user.vorname} {self.target_user.name}" if self.target_user else "Thema des Tages / Allgemein"
         return {
             "id": self.id,
             "sender_user_id": self.sender_user_id,
             "sender_name": f"{self.sender.vorname} {self.sender.name}" if self.sender else "Unbekannt",
             "target_user_id": self.target_user_id,
-            "target_name": f"{self.target_user.vorname} {self.target_user.name}" if self.target_user else "Unbekannt",
+            "target_name": target_name,
             "shift_date": self.shift_date.isoformat(),
             "message": self.message,
             "status": self.status,
             "created_at": self.created_at.isoformat()
         }
+
+
+# --- NEU: ShiftQueryReply Modell für Konversationen (Regel 4) ---
+
+class ShiftQueryReply(db.Model):
+    """
+    Speichert Antworten auf Schicht-Anfragen (ShiftQuery).
+    """
+    id = db.Column(db.Integer, primary_key=True)
+
+    # Verknüpfung zur Anfrage
+    # WICHTIG: ondelete='CASCADE' und passive_deletes=True stellen die Kaskadierung sicher.
+    query_id = db.Column(db.Integer,
+                         db.ForeignKey('shift_query.id', ondelete='CASCADE'),
+                         nullable=False)
+
+    # Der Backref auf 'ShiftQuery' wird mit der Cascade-Option definiert, um DELETE CASCADE durch SQLAlchemy zu erzwingen
+    query = db.relationship('ShiftQuery',
+                            backref=db.backref('replies',
+                                               lazy='dynamic',
+                                               cascade="all, delete-orphan",
+                                               passive_deletes=True))
+
+    # Wer hat geantwortet
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    user = db.relationship('User')
+
+    message = db.Column(db.Text, nullable=False)
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "query_id": self.query_id,
+            "user_id": self.user_id,
+            "user_name": f"{self.user.vorname} {self.user.name}" if self.user else "Unbekannt",
+            "message": self.message,
+            "created_at": self.created_at.isoformat()
+        }
+
 # --- ENDE NEU ---

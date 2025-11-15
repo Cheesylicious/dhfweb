@@ -12,6 +12,15 @@
         return;
     }
 
+    // --- START ANPASSUNG (Regel 1: Bugfix) ---
+    // Wenn wir auf der Passwort-Änderungs-Seite sind, darf
+    // dieses Skript NICHTS tun (sonst kann man es umgehen).
+    if (window.location.pathname.endsWith('change_password.html')) {
+        console.log("shared_notifications.js: Stoppt Ausführung auf change_password.html.");
+        return; // Komplette Ausführung des Skripts abbrechen
+    }
+    // --- ENDE ANPASSUNG ---
+
     const API_URL = 'http://46.224.63.203:5000';
     let user;
     let isAdmin = false;
@@ -155,6 +164,18 @@
                 credentials: 'include'
             });
 
+            // --- START ANPASSUNG (Regel 1, Regel 2: Wiederverwendbarkeit) ---
+
+            // 1. (NEU) Alte Leiste immer entfernen, falls vorhanden.
+            //    Dies stellt sicher, dass beim Neuladen (z.B. durch Event)
+            //    die Leiste verschwindet, wenn der Zähler 0 ist.
+            const existingSubheader = document.getElementById('notification-subheader');
+            if (existingSubheader) {
+                existingSubheader.remove();
+            }
+            // --- ENDE ANPASSUNG ---
+
+
             if (!response.ok) {
                 // Bei 401 (Session abgelaufen) oder 403 (Keine Rechte) nichts tun
                 return;
@@ -214,7 +235,6 @@
             if ((isAdmin || isScheduler) && queryCount > 0) {
                 listHtml += `
                     <li>
-                        <!-- --- ÄNDERUNG HIER: Link auf anfragen.html --- -->
                         <a href="anfragen.html">
                             <span>Offene Schicht-Anfragen</span>
                             <span class="badge-detail">${queryCount}</span>
@@ -257,5 +277,13 @@
 
     // Führe die Funktion aus, sobald das DOM geladen ist
     document.addEventListener('DOMContentLoaded', fetchAndBuildNotifications);
+
+    // --- START ANPASSUNG (Regel 2: Innovatives Event-Handling) ---
+    // Füge einen globalen Listener hinzu, der auf das benutzerdefinierte Event wartet.
+    window.addEventListener('dhf:notification_update', () => {
+        console.log("Event 'dhf:notification_update' empfangen. Lade Zähler neu.");
+        fetchAndBuildNotifications();
+    });
+    // --- ENDE ANPASSUNG ---
 
 })();

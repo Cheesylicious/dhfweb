@@ -2,7 +2,7 @@
 
 from flask import Blueprint, request, jsonify, current_app
 # --- NEUE IMPORTE ---
-from .models import ShiftQuery, User, FeedbackReport
+from .models import ShiftQuery, User, FeedbackReport, UpdateLog, ShiftQueryReply  # <<< ShiftQueryReply HINZUGEFÜGT
 from .extensions import db
 from .utils import admin_required, scheduler_or_admin_required
 from flask_login import login_required, current_user
@@ -12,6 +12,23 @@ from datetime import datetime
 
 # Erstellt einen Blueprint. Alle Routen hier beginnen mit /api/queries
 query_bp = Blueprint('query', __name__, url_prefix='/api/queries')
+
+
+# --- NEU: Hilfsfunktion (kopiert von routes_admin) ---
+def _log_update_event(area, description):
+    """
+    Erstellt einen Eintrag im UpdateLog.
+    """
+    new_log = UpdateLog(
+        area=area,
+        description=description,
+        updated_at=datetime.utcnow()
+    )
+    db.session.add(new_log)
+    # Wichtig: KEIN db.session.commit() hier, da dies in der aufrufenden Funktion geschieht.
+
+
+# --- ENDE NEU ---
 
 
 # --- NEUE ROUTE FÜR BENACHRICHTIGUNGS-ZÄHLER ---
@@ -72,22 +89,26 @@ def create_shift_query():
     """
     data = request.get_json()
     try:
-        # --- KORREKTUR: Validierung VOR der int()-Umwandlung ---
         target_user_id_raw = data.get('target_user_id')
         shift_date_str = data.get('shift_date')
         message = data.get('message')
 
-        if not target_user_id_raw or not shift_date_str or not message:
-            return jsonify({"message": "target_user_id, shift_date und message sind erforderlich"}), 400
+        # target_user_id_raw ist jetzt OPTIONAL. Wir prüfen nur auf Datum und Nachricht.
+        if not shift_date_str or not message:
+            return jsonify({"message": "shift_date und message sind erforderlich"}), 400
 
-        # Sichere Umwandlung, NACHDEM wir wissen, dass der Wert existiert
-        target_user_id = int(target_user_id_raw)
-        # --- ENDE KORREKTUR ---
+        # Sichere Umwandlung: Konvertiere nur wenn Wert vorhanden, sonst None
+        if target_user_id_raw is None or target_user_id_raw == 'null' or target_user_id_raw == '':
+            target_user_id = None
+        else:
+            try:
+                target_user_id = int(target_user_id_raw)
+            except (ValueError, TypeError):
+                return jsonify({"message": "Ungültige target_user_id"}), 400
 
         shift_date = datetime.fromisoformat(shift_date_str).date()
 
         # Prüfen, ob für diese Zelle schon eine offene Anfrage existiert
-        # (Regel 2: Innovativ - wir überschreiben die alte Anfrage statt Duplikate zu erzeugen)
         existing_query = ShiftQuery.query.filter_by(
             target_user_id=target_user_id,
             shift_date=shift_date,
@@ -124,25 +145,34 @@ def create_shift_query():
 @scheduler_or_admin_required  # Planschreiber oder Admin darf lesen
 def get_shift_queries():
     """
-    Ruft alle Schicht-Anfragen für einen bestimmten Monat ab.
-    Optional filterbar nach Status.
+    Ruft alle Schicht-Anfragen ab.
+    Optional filterbar nach Jahr/Monat UND Status.
     """
     year = request.args.get('year')
     month = request.args.get('month')
     status = request.args.get('status')  # Optional: 'offen' oder 'erledigt'
 
-    if not year or not month:
-        return jsonify({"message": "Jahr und Monat sind erforderlich"}), 400
-
     try:
-        query = ShiftQuery.query.filter(
-            extract('year', ShiftQuery.shift_date) == int(year),
-            extract('month', ShiftQuery.shift_date) == int(month)
-        )
+        # Beginne mit der Basis-Abfrage
+        query = ShiftQuery.query
+
+        # Wende Datumsfilter nur an, wenn BEIDE (year und month) vorhanden sind
+        if year and month:
+            try:
+                query = query.filter(
+                    extract('year', ShiftQuery.shift_date) == int(year),
+                    extract('month', ShiftQuery.shift_date) == int(month)
+                )
+            except ValueError:
+                return jsonify({"message": "Ungültiges Jahr oder Monat"}), 400
+
+        # Wende Statusfilter an, falls vorhanden
         if status in ['offen', 'erledigt']:
             query = query.filter_by(status=status)
 
-        queries = query.all()
+        # Sortiere (optional, aber gut für die Anzeige)
+        queries = query.order_by(ShiftQuery.created_at.desc()).all()
+
         return jsonify([q.to_dict() for q in queries]), 200
 
     except Exception as e:
@@ -151,11 +181,11 @@ def get_shift_queries():
 
 
 @query_bp.route('/<int:query_id>/status', methods=['PUT'])
-@admin_required  # Nur Admin darf Status ändern (z.B. auf 'erledigt')
+@scheduler_or_admin_required
 def update_query_status(query_id):
     """
     Aktualisiert den Status einer Anfrage (z.B. 'offen' -> 'erledigt').
-    Nur für Admins.
+    Jetzt für Admins UND Planschreiber.
     """
     query = db.session.get(ShiftQuery, query_id)
     if not query:
@@ -169,8 +199,99 @@ def update_query_status(query_id):
 
     try:
         query.status = new_status
+
+        # --- NEU: Logging (Regel 2) ---
+        log_msg = f"Anfrage ID {query.id} als '{new_status}' markiert."
+        _log_update_event("Schicht-Anfragen", log_msg)
+        # --- ENDE NEU ---
+
         db.session.commit()
         return jsonify(query.to_dict()), 200
     except Exception as e:
         db.session.rollback()
         return jsonify({"message": f"Datenbankfehler: {str(e)}"}), 500
+
+
+# --- START: NEUE ROUTE (Regel 1, Regel 4) ---
+@query_bp.route('/<int:query_id>', methods=['DELETE'])
+@scheduler_or_admin_required  # Admins und Planschreiber dürfen löschen
+def delete_shift_query(query_id):
+    """
+    Löscht eine Schicht-Anfrage endgültig.
+    """
+    query = db.session.get(ShiftQuery, query_id)
+    if not query:
+        return jsonify({"message": "Anfrage nicht gefunden"}), 404
+
+    try:
+        # Protokollieren VOR dem Löschen
+        _log_update_event("Schicht-Anfragen", f"Anfrage ID {query.id} (Status: {query.status}) gelöscht.")
+
+        db.session.delete(query)
+        db.session.commit()
+        return jsonify({"message": "Anfrage erfolgreich gelöscht"}), 200
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Fehler beim Löschen von ShiftQuery {query_id}: {str(e)}")
+        return jsonify({"message": f"Datenbankfehler: {str(e)}"}), 500
+
+
+# --- ENDE: NEUE ROUTE ---
+
+
+# --- START: NEUE ROUTEN FÜR ANTWORTEN (Replies) ---
+
+@query_bp.route('/<int:query_id>/replies', methods=['GET'])
+@scheduler_or_admin_required  # Admins und Planschreiber dürfen Konversationen sehen
+def get_query_replies(query_id):
+    """
+    Ruft alle Antworten für eine spezifische ShiftQuery ab.
+    """
+    query = db.session.get(ShiftQuery, query_id)
+    if not query:
+        return jsonify({"message": "Anfrage nicht gefunden"}), 404
+
+    # Sortiere nach Erstellungsdatum (älteste zuerst)
+    replies = query.replies
+
+    return jsonify([reply.to_dict() for reply in replies]), 200
+
+
+@query_bp.route('/<int:query_id>/replies', methods=['POST'])
+@scheduler_or_admin_required  # Admins und Planschreiber dürfen antworten
+def create_query_reply(query_id):
+    """
+    Erstellt eine neue Antwort auf eine ShiftQuery.
+    """
+    query = db.session.get(ShiftQuery, query_id)
+    if not query:
+        return jsonify({"message": "Anfrage nicht gefunden"}), 404
+
+    data = request.get_json()
+    message = data.get('message')
+
+    if not message:
+        return jsonify({"message": "Nachricht ist erforderlich"}), 400
+
+    new_reply = ShiftQueryReply(
+        query_id=query_id,
+        user_id=current_user.id,
+        message=message,
+        created_at=datetime.utcnow()
+    )
+
+    try:
+        db.session.add(new_reply)
+
+        # NEU: Antwort protokollieren (Regel 2)
+        log_msg = f"Neue Antwort auf Anfrage ID {query_id} von {current_user.vorname}."
+        _log_update_event("Schicht-Anfragen", log_msg)
+
+        db.session.commit()
+        return jsonify(new_reply.to_dict()), 201
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Fehler beim Erstellen der Antwort für Query {query_id}: {str(e)}")
+        return jsonify({"message": f"Datenbankfehler: {str(e)}"}), 500
+
+# --- ENDE NEUE ROUTEN ---

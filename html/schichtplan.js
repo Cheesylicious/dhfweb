@@ -2,6 +2,8 @@
 const API_URL = 'http://46.224.63.203:5000';
 const SHORTCUT_STORAGE_KEY = 'dhf_shortcuts';
 const COLOR_STORAGE_KEY = 'dhf_color_settings';
+// --- NEU: Key für localStorage (Regel 4) ---
+const DHF_HIGHLIGHT_KEY = 'dhf_highlight_goto';
 let loggedInUser;
 let currentDate = new Date();
 let currentYear = currentDate.getFullYear();
@@ -72,10 +74,21 @@ const queryExistingContainer = document.getElementById('query-existing-container
 const queryExistingMessage = document.getElementById('query-existing-message');
 const queryAdminActions = document.getElementById('query-admin-actions');
 const queryResolveBtn = document.getElementById('query-resolve-btn');
+const queryDeleteBtn = document.getElementById('query-delete-btn');
 const queryNewContainer = document.getElementById('query-new-container');
 const queryMessageInput = document.getElementById('query-message-input');
 const querySubmitBtn = document.getElementById('query-submit-btn');
 const queryModalStatus = document.getElementById('query-modal-status');
+const queryTargetSelection = document.getElementById('query-target-selection'); // NEU
+const targetTypeUser = document.getElementById('target-type-user'); // NEU
+const targetTypeDay = document.getElementById('target-type-day'); // NEU
+
+// NEU: Elemente für Antworten
+const queryReplyForm = document.getElementById('query-reply-form');
+const replyMessageInput = document.getElementById('reply-message-input');
+const replySubmitBtn = document.getElementById('reply-submit-btn');
+const queryRepliesList = document.getElementById('query-replies-list');
+
 let modalQueryContext = { userId: null, dateStr: null, userName: null, queryId: null };
 // --- ENDE NEU ---
 
@@ -244,6 +257,13 @@ if (querySubmitBtn) {
 }
 if (queryResolveBtn) {
     queryResolveBtn.onclick = () => resolveShiftQuery();
+}
+if (queryDeleteBtn) {
+    queryDeleteBtn.onclick = () => deleteShiftQueryFromModal();
+}
+// NEU: Listener für Antworten
+if (replySubmitBtn) {
+    replySubmitBtn.onclick = () => sendReply();
 }
 // --- ENDE NEU ---
 
@@ -616,9 +636,18 @@ function buildGridDOM() {
 
             // --- NEU: Prüfen ob eine Anfrage für diese Zelle existiert ---
             // (Wir suchen nur nach 'offenen' Anfragen)
-            const queryForCell = currentShiftQueries.find(q =>
+            // Erweiterung: Wir suchen zuerst nach einer spezifischen Anfrage für den User.
+            // Falls keine da ist, schauen wir, ob es eine allgemeine Anfrage ("Thema des Tages") gibt.
+            let queryForCell = currentShiftQueries.find(q =>
                 q.target_user_id === user.id && q.shift_date === dateStr && q.status === 'offen'
             );
+            if (!queryForCell) {
+                // Suche nach allgemeiner Anfrage (target_user_id ist null)
+                queryForCell = currentShiftQueries.find(q =>
+                    q.target_user_id === null && q.shift_date === dateStr && q.status === 'offen'
+                );
+            }
+
             if (queryForCell) {
                 // (Das Icon wird im HTML-Template (schichtplan.html) gestyled)
                 cell.innerHTML += `<span class="shift-query-icon">❓</span>`;
@@ -1232,6 +1261,130 @@ window.addEventListener('keydown', async (event) => {
 
 // --- NEUE FUNKTIONEN FÜR SCHICHT-ANFRAGEN (QUERY MODAL) ---
 
+// --- START ANPASSUNG (Regel 2: Event-Dispatching) ---
+/**
+ * Löst das globale Event aus, um den Notification-Header zu aktualisieren.
+ */
+function triggerNotificationUpdate() {
+    window.dispatchEvent(new CustomEvent('dhf:notification_update'));
+}
+// --- ENDE ANPASSUNG ---
+
+
+/**
+ * Aktualisiert den Infotext im Query Modal basierend auf der Auswahl.
+ */
+function updateQueryModalInfo(dateDisplay) {
+     // Wir holen den Wert vom Radio-Button, falls er existiert (bei neuer Anfrage)
+     const selectedTypeEl = document.querySelector('input[name="query-target-type"]:checked');
+     const selectedType = selectedTypeEl ? selectedTypeEl.value : 'user';
+
+     let targetText;
+     if (selectedType === 'user' && modalQueryContext.userName) {
+         targetText = modalQueryContext.userName;
+     } else {
+         targetText = "Thema des Tages / Allgemein";
+     }
+     // Nur den User-Teil aktualisieren, der Datumsteil ist immer gleich
+     queryModalInfo.textContent = `Für: ${targetText} am ${dateDisplay}`;
+}
+
+/**
+ * Fügt Listener für die Anfrageart-Auswahl hinzu.
+ */
+function attachQueryTypeListeners(userName, dateDisplay) {
+    // Wenn die Auswahl nicht existiert (z.b. bei bestehender Anfrage), nichts tun
+    if (!queryTargetSelection) return;
+
+    // Listener entfernen, um Duplikate zu vermeiden
+    queryTargetSelection.removeEventListener('change', handleQueryTypeChange);
+
+    // Listener für die Radio-Buttons hinzufügen
+    function handleQueryTypeChange(event) {
+        if (event.target.name === 'query-target-type') {
+            // Infotext aktualisieren, wenn die Auswahl wechselt
+            updateQueryModalInfo(dateDisplay);
+        }
+    }
+    queryTargetSelection.addEventListener('change', handleQueryTypeChange);
+}
+
+
+/**
+ * NEU: Rendert die Konversation (Originalanfrage + Antworten).
+ */
+function renderReplies(replies, originalQuery) {
+    if (!queryRepliesList) return;
+
+    // 1. Ursprüngliche Anfrage (als erster Eintrag)
+    const originalQueryItem = document.getElementById('initial-query-item');
+    if (originalQueryItem) {
+        const senderName = originalQuery.sender_name || "Unbekannt";
+        const formattedDate = new Date(originalQuery.created_at).toLocaleTimeString('de-DE', {day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit'});
+
+        originalQueryItem.innerHTML = `
+            <div class="reply-meta">
+                <strong>${senderName} (Erstanfrage)</strong> am ${formattedDate} Uhr
+            </div>
+            <div class="reply-text" style="font-style: italic;">
+                ${originalQuery.message}
+            </div>
+        `;
+    }
+
+    // 2. Bestehende Antworten entfernen (außer der ursprünglichen)
+    let currentChild = queryRepliesList.lastElementChild;
+    while (currentChild) {
+        const prev = currentChild.previousElementSibling;
+        if (currentChild.id !== 'initial-query-item') {
+            queryRepliesList.removeChild(currentChild);
+        }
+        currentChild = prev;
+    }
+
+    // 3. Neue Antworten hinzufügen
+    replies.forEach(reply => {
+        const li = document.createElement('li');
+        li.className = 'reply-item';
+        const isSelf = reply.user_id === loggedInUser.id;
+        const formattedDate = new Date(reply.created_at).toLocaleTimeString('de-DE', {day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit'});
+
+        li.innerHTML = `
+            <div class="reply-meta" style="color: ${isSelf ? '#3498db' : '#888'};">
+                <strong>${reply.user_name}</strong> am ${formattedDate} Uhr
+            </div>
+            <div class="reply-text">
+                ${reply.message}
+            </div>
+        `;
+        queryRepliesList.appendChild(li);
+    });
+
+    // Auto-scroll to bottom
+    const conversationContainer = document.getElementById('query-conversation-container');
+    if(conversationContainer) {
+        conversationContainer.scrollTop = conversationContainer.scrollHeight;
+    }
+}
+
+
+/**
+ * NEU: Lädt die Konversation für eine Anfrage.
+ */
+async function loadQueryConversation(queryId, originalQuery) {
+    if (!queryId || !originalQuery) return;
+    try {
+        const replies = await apiFetch(`/api/queries/${queryId}/replies`);
+        // Wir übergeben nur die dynamischen Antworten (replies) zusammen mit der Originalanfrage (originalQuery)
+        renderReplies(replies, originalQuery);
+
+    } catch (e) {
+        console.error("Fehler beim Laden der Konversation:", e);
+        if(queryRepliesList) queryRepliesList.innerHTML = `<li style="color:red; list-style: none; padding: 10px 0;">Fehler beim Laden der Antworten: ${e.message}</li>`;
+    }
+}
+
+
 /**
  * Öffnet das Anfrage-Modal (Rechtsklick)
  */
@@ -1239,47 +1392,68 @@ function openQueryModal(userId, dateStr, userName, queryId) {
     const d = new Date(dateStr);
     const dateDisplay = d.toLocaleDateString('de-DE', { weekday: 'long', day: '2-digit', month: '2-digit' });
 
-    // Globalen Kontext für das Query-Modal setzen
+    // 1. Globalen Kontext setzen
     modalQueryContext = { userId, dateStr, userName, queryId: queryId || null };
 
-    // Modal-Header füllen
-    queryModalTitle.textContent = "Schicht-Anfrage";
-    queryModalInfo.textContent = `Für: ${userName} am ${dateDisplay}`;
+    // 2. Zustand des Modals setzen
     queryModalStatus.textContent = "";
-    queryMessageInput.value = ""; // Textfeld immer leeren
+    queryMessageInput.value = "";
+    document.getElementById('reply-message-input').value = ''; // Antwortfeld leeren
 
-    // Prüfen, ob eine existierende Anfrage für diese Zelle geladen wurde
+    // NEU: Reply-Formular und Konversation zunächst verstecken
+    queryReplyForm.style.display = 'none';
+    const conversationContainer = document.getElementById('query-conversation-container');
+    if(conversationContainer) conversationContainer.style.display = 'none';
+
+    // NEU: Auswahlfelder initialisieren
+    if (queryTargetSelection) {
+        // Bei Rechtsklick auf eine Zelle ist es standardmäßig ein User-Thema
+        targetTypeUser.checked = true;
+        // Die Auswahl ist nur bei einer NEUEN Anfrage sichtbar
+        const isNewQuery = !queryId;
+        queryTargetSelection.style.display = isNewQuery ? 'block' : 'none';
+        // Listener neu anfügen/aktualisieren
+        attachQueryTypeListeners(userName, dateDisplay);
+    }
+
+    // 3. Bestehende Anfrage prüfen
     const query = queryId ? currentShiftQueries.find(q => q.id == queryId) : null;
 
     if (query) {
-        // --- FALL 1: Es gibt eine offene Anfrage ---
+        // --- FALL 1: Es gibt eine offene Anfrage (Konversation) ---
         queryExistingContainer.style.display = 'block';
-        queryExistingMessage.textContent = `"${query.message}"\n- ${query.sender_name}, ${new Date(query.created_at).toLocaleString('de-DE', {day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'
-        })} Uhr`;
-
-        // Das "Neue Anfrage"-Feld verstecken (man kann nur 'offene' Anfragen sehen)
         queryNewContainer.style.display = 'none';
 
-        // Admin-Aktionen (Erledigt-Button) anzeigen
-        if (isAdmin) {
-            queryAdminActions.style.display = 'block';
+        // Konversation und Antworten laden
+        loadQueryConversation(queryId, query);
+        if(conversationContainer) conversationContainer.style.display = 'block';
+        queryReplyForm.style.display = 'block'; // Antwortformular aktivieren
+
+        // Admin-Aktionen (Erledigt/Löschen) anzeigen
+        if (isAdmin || isPlanschreiber) {
+            queryAdminActions.style.display = 'flex';
         } else {
             queryAdminActions.style.display = 'none';
         }
 
+        // Infotext anpassen
+        let targetName = query.target_name || "Thema des Tages / Allgemein";
+        queryModalInfo.textContent = `Für: ${targetName} am ${dateDisplay}`;
+
     } else {
-        // --- FALL 2: Keine offene Anfrage ---
-        // Anzeige-Container verstecken
+        // --- FALL 2: Keine offene Anfrage (Neues Formular) ---
         queryExistingContainer.style.display = 'none';
         queryAdminActions.style.display = 'none';
-
-        // "Neue Anfrage"-Container anzeigen
         queryNewContainer.style.display = 'block';
+        queryReplyForm.style.display = 'none';
+
+        // Infotext initialisieren
+        updateQueryModalInfo(dateDisplay);
     }
 
-    // Modal anzeigen
     queryModal.style.display = 'block';
 }
+
 
 /**
  * Sendet eine neue Anfrage oder aktualisiert eine bestehende.
@@ -1289,15 +1463,35 @@ async function saveShiftQuery() {
     queryModalStatus.textContent = "Sende...";
     queryModalStatus.style.color = '#555';
 
+    // NEU: Anfrageart bestimmen
+    const selectedType = document.querySelector('input[name="query-target-type"]:checked').value;
+    const isNewQuery = queryTargetSelection.style.display === 'block';
+
     try {
+        let targetUserId = null;
+        if (isNewQuery) {
+            // Nur wenn NEU und User gewählt, wird die ID gesendet
+            targetUserId = selectedType === 'user' ? modalQueryContext.userId : null;
+        } else {
+            // Bei einer BESTEHENDEN Anfrage (sollte hier nicht passieren, da Fall 1 existierende Anfragen abfängt)
+            targetUserId = modalQueryContext.userId;
+        }
+
         const payload = {
-            target_user_id: modalQueryContext.userId,
+            target_user_id: targetUserId,
             shift_date: modalQueryContext.dateStr,
             message: queryMessageInput.value
         };
 
         if (payload.message.length < 3) {
             throw new Error("Nachricht ist zu kurz.");
+        }
+
+        // Wenn es eine User-Anfrage ist und der User im Grid gesucht wird,
+        // ist die ID IMMER erforderlich. Wenn es 'day' ist, ist sie null.
+        if (payload.target_user_id === null && selectedType === 'user') {
+             // Sollte nicht passieren, aber als Schutz
+             throw new Error("Mitarbeiter-ID fehlt für diese Art von Anfrage.");
         }
 
         // API-Aufruf (POST /api/queries)
@@ -1309,6 +1503,10 @@ async function saveShiftQuery() {
         // Daten neu laden und Grid neu zeichnen, um das ❓ Icon anzuzeigen
         await loadShiftQueries();
         buildGridDOM();
+
+        // --- START ANPASSUNG (Regel 2: Event-Dispatching) ---
+        triggerNotificationUpdate();
+        // --- ENDE ANPASSUNG ---
 
         setTimeout(() => {
             closeModal(queryModal);
@@ -1322,11 +1520,56 @@ async function saveShiftQuery() {
     }
 }
 
+
 /**
- * (Nur Admin) Markiert eine Anfrage als 'erledigt'.
+ * NEU: Sendet eine Antwort auf eine bestehende Anfrage.
+ */
+async function sendReply() {
+    const queryId = modalQueryContext.queryId;
+    const message = replyMessageInput.value.trim();
+
+    if (!queryId || message.length < 3) {
+        queryModalStatus.textContent = "Nachricht ist zu kurz.";
+        queryModalStatus.style.color = '#e74c3c';
+        return;
+    }
+
+    replySubmitBtn.disabled = true;
+    queryModalStatus.textContent = "Sende Antwort...";
+    queryModalStatus.style.color = '#555';
+
+    try {
+        const payload = { message: message };
+        await apiFetch(`/api/queries/${queryId}/replies`, 'POST', payload);
+
+        // Finde die Originalanfrage im Cache, um sie an den Renderer zu übergeben
+        const originalQuery = currentShiftQueries.find(q => q.id == queryId); // KORREKTUR: === statt ==
+
+        // UI aktualisieren: Nachricht leeren, Konversation neu laden
+        replyMessageInput.value = '';
+        await loadQueryConversation(queryId, originalQuery);
+
+        queryModalStatus.textContent = "Antwort gesendet!";
+        queryModalStatus.style.color = '#2ecc71';
+
+        setTimeout(() => {
+            queryModalStatus.textContent = '';
+        }, 2000);
+
+    } catch (e) {
+        queryModalStatus.textContent = `Fehler: ${e.message}`;
+        queryModalStatus.style.color = '#e74c3c';
+    } finally {
+        replySubmitBtn.disabled = false;
+    }
+}
+
+
+/**
+ * (Admin ODER Planschreiber) Markiert eine Anfrage als 'erledigt'.
  */
 async function resolveShiftQuery() {
-    if (!isAdmin || !modalQueryContext.queryId) return;
+    if (!isAdmin && !isPlanschreiber || !modalQueryContext.queryId) return;
 
     queryResolveBtn.disabled = true;
     queryModalStatus.textContent = "Speichere Status...";
@@ -1342,6 +1585,10 @@ async function resolveShiftQuery() {
         await loadShiftQueries();
         buildGridDOM();
 
+        // --- START ANPASSUNG (Regel 2: Event-Dispatching) ---
+        triggerNotificationUpdate();
+        // --- ENDE ANPASSUNG ---
+
         closeModal(queryModal);
 
     } catch (e) {
@@ -1349,6 +1596,42 @@ async function resolveShiftQuery() {
          queryModalStatus.style.color = '#e74c3c'; // Rot
     } finally {
         queryResolveBtn.disabled = false;
+    }
+}
+
+/**
+ * (Admin ODER Planschreiber) Löscht eine Anfrage endgültig.
+ */
+async function deleteShiftQueryFromModal() {
+    if (!isAdmin && !isPlanschreiber || !modalQueryContext.queryId) return;
+
+    if (!confirm("Sind Sie sicher, dass Sie diese Anfrage endgültig löschen möchten?")) {
+        return;
+    }
+
+    queryDeleteBtn.disabled = true;
+    queryModalStatus.textContent = "Lösche Anfrage...";
+    queryModalStatus.style.color = '#e74c3c'; // Rot
+
+    try {
+        // API-Aufruf (DELETE /api/queries/<id>)
+        await apiFetch(`/api/queries/${modalQueryContext.queryId}`, 'DELETE');
+
+        // Daten neu laden und Grid neu zeichnen (Icon wird verschwinden)
+        await loadShiftQueries();
+        buildGridDOM();
+
+        // --- START ANPASSUNG (Regel 2: Event-Dispatching) ---
+        triggerNotificationUpdate();
+        // --- ENDE ANPASSUNG ---
+
+        closeModal(queryModal);
+
+    } catch (e) {
+         queryModalStatus.textContent = `Fehler beim Löschen: ${e.message}`;
+         queryModalStatus.style.color = '#e74c3c'; // Rot
+    } finally {
+        queryDeleteBtn.disabled = false;
     }
 }
 // --- ENDE NEUE FUNKTIONEN ---
@@ -1359,7 +1642,80 @@ async function initialize() {
     await loadColorSettings();
     await populateStaticElements();
     loadShortcuts();
+
+    // --- START ANPASSUNG (Regel 1: Highlight-Logik) ---
+    let highlightData = null;
+    try {
+        const data = localStorage.getItem(DHF_HIGHLIGHT_KEY);
+        if (data) {
+            highlightData = JSON.parse(data);
+            localStorage.removeItem(DHF_HIGHLIGHT_KEY); // Wichtig: Nur einmal verwenden
+
+            // Setze den globalen Monat/Jahr auf das Datum der Anfrage
+            const targetDate = new Date(highlightData.date);
+            currentYear = targetDate.getFullYear();
+            currentMonth = targetDate.getMonth() + 1;
+        }
+    } catch (e) {
+        console.error("Fehler beim Lesen der Highlight-Daten:", e);
+        highlightData = null;
+    }
+
+    // Führe renderGrid aus (lädt jetzt den korrekten Monat)
     await renderGrid();
+
+    // Wenn Highlight-Daten vorhanden waren, führe das Blinken aus
+    if (highlightData) {
+        highlightCells(highlightData.date, highlightData.targetUserId);
+    }
+    // --- ENDE ANPASSUNG ---
 }
+
+// --- START: NEUE FUNKTION (Regel 2: Innovatives Blinken) ---
+/**
+ * Hebt die relevanten Zellen im Grid hervor (blinkend).
+ */
+function highlightCells(dateStr, targetUserId) {
+    const day = new Date(dateStr).getDate();
+
+    // (CSS-Klasse .grid-cell-highlight muss in schichtplan.html definiert sein)
+    const highlightClass = 'grid-cell-highlight';
+
+    let cellsToHighlight = [];
+
+    if (targetUserId) {
+        // Spezifische Zelle
+        const key = `${targetUserId}-${dateStr}`;
+        const cell = findCellByKey(key);
+        if (cell) cellsToHighlight.push(cell);
+
+    } else {
+        // Allgemeine Anfrage: Alle Zellen des Tages
+        const allCellsInDay = document.querySelectorAll(`.grid-cell[data-key$="-${dateStr}"]`);
+        cellsToHighlight = Array.from(allCellsInDay);
+    }
+
+    if (cellsToHighlight.length > 0) {
+        // Scrollt die erste gefundene Zelle ins Sichtfeld
+        cellsToHighlight[0].scrollIntoView({
+            behavior: 'smooth',
+            block: 'center',
+            inline: 'center'
+        });
+
+        // Füge die Blink-Klasse hinzu
+        cellsToHighlight.forEach(cell => {
+            cell.classList.add(highlightClass);
+        });
+
+        // Entferne die Klasse nach 5 Sekunden
+        setTimeout(() => {
+            cellsToHighlight.forEach(cell => {
+                cell.classList.remove(highlightClass);
+            });
+        }, 5000); // 5 Sekunden
+    }
+}
+// --- ENDE: NEUE FUNKTION ---
 
 initialize();

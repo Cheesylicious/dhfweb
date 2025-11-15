@@ -269,20 +269,66 @@
             margin-top: -5px;
         }
 
-        .item-body p {
+        /* --- NEU: Konversations-Styles --- */
+        .conversation-container {
             background: rgba(0,0,0,0.2);
             padding: 15px;
             border-radius: 5px;
-            color: #ffffff;
-            white-space: pre-wrap; /* (Behält Zeilenumbrüche bei) */
-            word-break: break-word;
             border: 1px solid #555;
             margin: 10px 0;
+            max-height: 250px;
+            overflow-y: auto;
         }
+        .query-replies-list {
+            list-style: none;
+            padding: 0;
+            margin: 0;
+        }
+        .reply-item {
+            padding: 8px 0;
+            border-bottom: 1px dashed rgba(255, 255, 255, 0.1);
+            color: #bdc3c7;
+        }
+        .reply-item:last-child {
+            border-bottom: none;
+        }
+        .reply-meta {
+            font-size: 11px;
+            color: #999;
+            margin-bottom: 3px;
+        }
+        .reply-text {
+            font-size: 14px;
+            color: #ffffff;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+
+        .reply-form textarea {
+            width: 100%;
+            padding: 8px;
+            box-sizing: border-box;
+            background: rgba(0, 0, 0, 0.3);
+            border: 1px solid #3498db;
+            border-radius: 5px;
+            color: #ffffff;
+            font-family: 'Poppins', sans-serif;
+            font-size: 14px;
+            resize: vertical;
+        }
+
+        /* Originalnachricht (jetzt im Conversation-Container, falls kein reply-Modus) */
+        .item-body p {
+            /* Wird nur als Fallback für die allererste Zeile im alten Schema verwendet */
+            display: none;
+        }
+        /* --- ENDE NEU --- */
+
 
         .item-actions {
             display: flex;
             gap: 10px;
+            align-items: center; /* NEU: Zentriert Buttons vertikal */
         }
 
         .item-actions button {
@@ -300,6 +346,19 @@
 
         .btn-done { background: var(--status-erledigt); color: #333; }
         .btn-reopen { background: var(--status-offen); color: #1a1a1a; }
+
+        /* --- START ANPASSUNG (Regel 1, 4) --- */
+        .btn-primary { background: #3498db; color: white; } /* Für den Senden-Button */
+        .btn-goto-date { background: #9b59b6; color: white; margin-left: 20px; }
+
+        /* Löschen rückt nach rechts */
+        .btn-delete-query {
+            background: #e74c3c;
+            color: white;
+            margin-left: auto;
+        }
+        /* --- ENDE ANPASSUNG --- */
+
 
         /* (Stil für "Zugriff verweigert") */
         #content-wrapper.restricted-view {
@@ -333,7 +392,6 @@
         </div>
     </header>
 
-    <!-- SUB-NAV FÜR MELDUNGEN / ANFRAGEN -->
     <div class="sub-nav" id="sub-nav-tasks">
         <a href="feedback.html" id="sub-nav-feedback">Meldungen (Bugs/Ideen)</a>
         <a href="anfragen.html" id="sub-nav-anfragen" class="active">Schicht-Anfragen</a>
@@ -353,8 +411,7 @@
                 </div>
 
                 <ul id="query-list">
-                    <!-- Inhalt wird von anfragen.js geladen -->
-                </ul>
+                    </ul>
             </div>
         </div>
     </main>
@@ -398,11 +455,9 @@
         // --- ENDE: PARTIKEL-ANIMATION ---
     </script>
 
-    <!-- Geteilte Skripte -->
     <script src="shared_feedback.js" defer></script>
     <script src="shared_notifications.js" defer></script>
 
-    <!-- Seiten-Skript -->
     <script src="anfragen.js" defer></script>
 </body>
 </html>

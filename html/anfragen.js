@@ -4,6 +4,9 @@ let user;
 let isAdmin = false;
 let isScheduler = false; // "Planschreiber"
 
+// --- NEU: Key für localStorage (Regel 4) ---
+const DHF_HIGHLIGHT_KEY = 'dhf_highlight_goto';
+
 // --- Auth-Check und Logout-Setup (Standard) ---
 async function logout() {
     try { await apiFetch('/api/logout', 'POST'); }
@@ -96,26 +99,175 @@ let currentFilter = "offen"; // (Startet mit "Offen")
 // Hält die Abfragen im Speicher, um Neuladen zu vermeiden
 let allQueriesCache = [];
 
+// --- START ANPASSUNG (Regel 2: Event-Dispatching) ---
+/**
+ * Löst das globale Event aus, um den Notification-Header zu aktualisieren.
+ */
+function triggerNotificationUpdate() {
+    window.dispatchEvent(new CustomEvent('dhf:notification_update'));
+}
+// --- ENDE ANPASSUNG ---
+
+
 /**
  * Lädt die Anfragen von der API (nur beim ersten Mal)
  */
 async function loadQueries() {
     queryList.innerHTML = '<li>Lade Anfragen...</li>';
 
-    // Wir holen immer alle Anfragen für den aktuellen Monat
-    // (Die API in routes_queries.py erwartet year/month)
-    const now = new Date();
-    const year = now.getFullYear();
-    const month = now.getMonth() + 1;
-
     try {
-        const queries = await apiFetch(`/api/queries?year=${year}&month=${month}&status=${currentFilter}`);
+        // Ruft alle Anfragen ab, die dem Statusfilter entsprechen (unabhängig vom Datum)
+        const queries = await apiFetch(`/api/queries?status=${currentFilter}`);
         allQueriesCache = queries;
         renderQueries();
     } catch (error) {
         queryList.innerHTML = `<li style="color: var(--status-offen); padding: 20px;">Fehler beim Laden: ${error.message}</li>`;
     }
 }
+
+// --- START: NEUE FUNKTIONEN für Konversation (Regel 1, 2) ---
+
+/**
+ * Rendert die Antworten in den Konversations-Container.
+ */
+function renderReplies(queryId, originalQuery, replies) {
+    const repliesContainer = document.getElementById(`replies-${queryId}`);
+    if (!repliesContainer) return;
+
+    repliesContainer.innerHTML = ''; // Vorherige Antworten löschen
+
+    const queryDate = new Date(originalQuery.created_at).toLocaleString('de-DE', {day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit'});
+
+    // NEU: Ursprüngliche Nachricht als ersten Konversationseintrag rendern
+    const originalItem = document.createElement('li');
+    originalItem.className = 'reply-item';
+    originalItem.style.borderBottom = '1px solid #777'; // Optische Trennung
+    originalItem.style.marginBottom = '5px';
+    originalItem.innerHTML = `
+        <div class="reply-meta" style="color: #3498db;">
+            <strong>${originalQuery.sender_name} (Erstanfrage)</strong> am ${queryDate} Uhr
+        </div>
+        <div class="reply-text" style="font-style: italic;">
+            ${escapeHTML(originalQuery.message)}
+        </div>
+    `;
+    repliesContainer.appendChild(originalItem);
+    // ENDE NEU
+
+    replies.forEach(reply => {
+        const li = document.createElement('li');
+        li.className = 'reply-item';
+        const isSelf = reply.user_id === user.id;
+        const formattedDate = new Date(reply.created_at).toLocaleTimeString('de-DE', {day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit'});
+
+        li.innerHTML = `
+            <div class="reply-meta" style="color: ${isSelf ? '#3498db' : '#888'};">
+                <strong>${reply.user_name}</strong> am ${formattedDate} Uhr
+            </div>
+            <div class="reply-text">
+                ${reply.message}
+            </div>
+        `;
+        repliesContainer.appendChild(li);
+    });
+}
+
+/**
+ * Lädt die Konversation für eine Anfrage und rendert sie.
+ * Führt dies nur einmal pro Anfrage aus.
+ */
+async function loadConversation(queryId) {
+    const itemBody = document.querySelector(`.query-item[data-id="${queryId}"] .item-body`);
+    const originalQuery = allQueriesCache.find(q => q.id == queryId);
+
+    if (!itemBody || itemBody.dataset.loaded === 'true') {
+        // Falls bereits geladen oder Element nicht gefunden
+        return;
+    }
+
+    const loader = itemBody.querySelector(`#replies-loader-${queryId}`);
+    if (loader) loader.style.display = 'block';
+
+    try {
+        const replies = await apiFetch(`/api/queries/${queryId}/replies`);
+        renderReplies(queryId, originalQuery, replies); // OriginalQuery übergeben
+        itemBody.dataset.loaded = 'true';
+
+    } catch (e) {
+        const repliesContainer = itemBody.querySelector(`#replies-${queryId}`);
+        if (repliesContainer) {
+            repliesContainer.innerHTML = `<li style="color: red; list-style: none;">Fehler beim Laden der Konversation.</li>`;
+        }
+    } finally {
+        if (loader) loader.style.display = 'none';
+    }
+}
+
+/**
+ * Sendet eine neue Antwort auf eine Anfrage.
+ */
+async function sendReply(queryId) {
+    const messageInput = document.getElementById(`reply-input-${queryId}`);
+    const submitBtn = document.getElementById(`reply-submit-${queryId}`);
+    const message = messageInput.value.trim();
+
+    if (message.length < 3) {
+        alert("Nachricht ist zu kurz.");
+        return;
+    }
+
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Sende...';
+
+    try {
+        const payload = { message: message };
+        await apiFetch(`/api/queries/${queryId}/replies`, 'POST', payload);
+
+        // Nachricht leeren
+        messageInput.value = '';
+
+        // Konversation neu laden, um die neue Antwort anzuzeigen
+        const itemBody = document.querySelector(`.query-item[data-id="${queryId}"] .item-body`);
+        itemBody.dataset.loaded = 'false'; // Temporär zurücksetzen, um Neuladen zu erzwingen
+        await loadConversation(queryId);
+
+    } catch (e) {
+        alert(`Fehler beim Senden der Antwort: ${e.message}`);
+    } finally {
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Antwort senden';
+    }
+}
+
+// --- START: NEUE FUNKTION "Zum Termin" (Regel 1) ---
+/**
+ * Speichert die Zieldaten im localStorage und leitet zum Schichtplan um.
+ */
+function handleGoToDate(queryId) {
+    const query = allQueriesCache.find(q => q.id == queryId);
+    if (!query) {
+        alert("Fehler: Anfrage nicht im Cache gefunden.");
+        return;
+    }
+
+    // Daten für den Schichtplan vorbereiten
+    const highlightData = {
+        date: query.shift_date, // YYYY-MM-DD
+        targetUserId: query.target_user_id // ID oder null
+    };
+
+    // Im localStorage speichern
+    try {
+        localStorage.setItem(DHF_HIGHLIGHT_KEY, JSON.stringify(highlightData));
+        // Zur Zieldatei navigieren
+        window.location.href = 'schichtplan.html';
+    } catch (e) {
+        console.error("Fehler beim Speichern im localStorage:", e);
+        alert("Fehler bei der Weiterleitung.");
+    }
+}
+// --- ENDE: NEUE FUNKTION ---
+
 
 /**
  * Stellt die Anfragen in der Liste dar (basierend auf Cache und Filter)
@@ -148,16 +300,37 @@ function renderQueries() {
              day: '2-digit', month: '2-digit', year: 'numeric'
         });
 
-        // Aktions-Buttons je nach Status (und Rolle)
+        // --- START ANPASSUNG (Button "Zum Termin") ---
         let actionButtons = '';
-        // Nur Admins dürfen den Status ändern
-        if (isAdmin) {
+
+        if (isAdmin || isScheduler) {
             if (query.status === 'offen') {
                 actionButtons = `<button class="btn-done" data-action="erledigt">Als 'erledigt' markieren</button>`;
             } else {
                 actionButtons = `<button class="btn-reopen" data-action="offen">Wieder öffnen</button>`;
             }
+
+            // NEUER BUTTON HINZUGEFÜGT (lila, basierend auf Screenshot)
+            actionButtons += `<button class="btn-goto-date" data-action="goto-date" style="background: #9b59b6; color: white;">Zum Termin</button>`;
+
+            actionButtons += `<button class="btn-delete-query" data-action="delete" style="background: #e74c3c; color: white; margin-left: auto;">Löschen</button>`;
         }
+        // --- ENDE ANPASSUNG ---
+
+        const conversationSection = `
+            <div class="conversation-container">
+                <div id="replies-loader-${query.id}" style="text-align: center; color: #888; margin: 10px; display: none;">Lade Konversation...</div>
+                <ul id="replies-${query.id}" class="query-replies-list">
+                    </ul>
+            </div>
+
+            <div class="reply-form" style="margin-top: 20px; padding-top: 10px; border-top: 1px dashed #ddd;">
+                <label for="reply-input-${query.id}" style="font-size: 13px; color: #3498db; font-weight: 600;">Antwort senden:</label>
+                <textarea id="reply-input-${query.id}" rows="2" style="width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 5px; font-size: 14px; box-sizing: border-box; resize: vertical;"></textarea>
+                <button type="button" class="btn-primary btn-reply-submit" data-id="${query.id}" id="reply-submit-${query.id}" style="margin-top: 5px; float: right;">Antwort senden</button>
+                <div style="clear: both;"></div>
+            </div>
+        `;
 
         li.innerHTML = `
             <div class="item-header" data-action="toggle-body">
@@ -167,9 +340,9 @@ function renderQueries() {
                 <span>Gesendet am: <strong>${queryDate} Uhr</strong></span>
                 <span class="item-status" data-status="${query.status}">${query.status}</span>
             </div>
-            <div class="item-body">
-                <p>${escapeHTML(query.message)}</p>
-                <div class="item-actions">
+            <div class="item-body" data-loaded="false" data-query-id="${query.id}">
+                ${conversationSection}
+                <div class="item-actions" style="margin-top: 20px;">
                     ${actionButtons}
                 </div>
             </div>
@@ -200,8 +373,43 @@ async function handleUpdateStatus(id, newStatus) {
         // Neu rendern, um die UI synchron zu halten
         renderQueries();
 
+        // --- START ANPASSUNG (Regel 2: Event-Dispatching) ---
+        triggerNotificationUpdate();
+        // --- ENDE ANPASSUNG ---
+
     } catch (error) {
         alert(`Fehler beim Aktualisieren: ${error.message}`);
+    }
+}
+
+
+/**
+ * Löscht eine Anfrage
+ */
+async function handleDelete(id) {
+    const item = queryList.querySelector(`.query-item[data-id="${id}"]`);
+    if (!item) return;
+
+    if (!confirm("Sind Sie sicher, dass Sie diese Anfrage endgültig löschen möchten?")) {
+        return;
+    }
+
+    try {
+        // API-Aufruf zum Löschen
+        await apiFetch(`/api/queries/${id}`, 'DELETE');
+
+        // Cache aktualisieren (Eintrag entfernen)
+        allQueriesCache = allQueriesCache.filter(q => q.id !== parseInt(id));
+
+        // Neu rendern (innovativer als fade-out, da der Cache die Quelle ist)
+        renderQueries();
+
+        // --- START ANPASSUNG (Regel 2: Event-Dispatching) ---
+        triggerNotificationUpdate();
+        // --- ENDE ANPASSUNG ---
+
+    } catch (error) {
+        alert(`Fehler beim Löschen: ${error.message}`);
     }
 }
 
@@ -219,11 +427,7 @@ filterButtonsContainer.addEventListener('click', (e) => {
 
         currentFilter = e.target.dataset.filter;
 
-        // Wir müssen die Daten neu von der API laden,
-        // falls der Benutzer 'Alle' oder 'Erledigt' sehen will
-        // (da wir standardmäßig nur 'offen' laden könnten)
-
-        // Einfache Lösung: Immer neu laden, wenn Filter wechselt
+        // API neu laden (filtert jetzt nur nach Status)
         loadQueries();
     }
 });
@@ -236,17 +440,35 @@ queryList.addEventListener('click', (e) => {
     const header = e.target.closest('.item-header');
 
     if (button) {
-        // (Aktions-Button geklickt)
         const action = button.dataset.action;
         const id = e.target.closest('.query-item').dataset.id;
 
+        // --- START ANPASSUNG (Button "Zum Termin") ---
         if (action === 'offen' || action === 'erledigt') {
             handleUpdateStatus(id, action);
+        } else if (action === 'delete') {
+            handleDelete(id);
+        } else if (action === 'goto-date') {
+            handleGoToDate(id);
+        } else if (button.classList.contains('btn-reply-submit')) {
+            // NEU: Antwort senden
+            e.preventDefault(); // Verhindert ggf. ungewollte Aktionen
+            sendReply(id);
         }
+        // --- ENDE ANPASSUNG ---
+
     } else if (header) {
+        const itemBody = header.nextElementSibling;
+
         // (Header geklickt -> Aufklappen)
-        const body = header.nextElementSibling;
-        body.style.display = (body.style.display === 'block') ? 'none' : 'block';
+        const isCollapsed = itemBody.style.display !== 'block';
+        itemBody.style.display = isCollapsed ? 'block' : 'none';
+
+        // NEU: Konversation laden, wenn der Body geöffnet wird und noch nicht geladen wurde
+        if (isCollapsed && itemBody.dataset.loaded === 'false') {
+            const queryId = itemBody.dataset.queryId; // KORREKTUR
+            loadConversation(queryId);
+        }
     }
 });
 
