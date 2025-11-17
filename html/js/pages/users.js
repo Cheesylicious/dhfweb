@@ -12,18 +12,11 @@ let isAdmin = false; // Wird durch initAuthCheck gesetzt
 // --- 1. Authentifizierung & Zugriffsschutz ---
 try {
     // Ruft die zentrale Auth-Prüfung auf (Regel 4).
-    // Diese Funktion kümmert sich um:
-    // 1. User-Prüfung (localStorage)
-    // 2. Rollen-Zuweisung (isAdmin, etc.)
-    // 3. Navigations-Anpassung (Links ein/ausblenden)
-    // 4. Logout-Button-Listener
-    // 5. Auto-Logout-Timer
     const authData = initAuthCheck();
     user = authData.user;
     isAdmin = authData.isAdmin; // Setzt die globale 'isAdmin' Variable für diese Datei
 
     // --- START: Seiten-spezifischer Zugriffsschutz (aus Original übernommen) ---
-    // (Planschreiber und Hundeführer werden jetzt hier auch abgefangen)
     if (!isAdmin) {
         // Nur Admins sehen die Benutzerverwaltung.
         const navShiftplan = document.getElementById('nav-shiftplan');
@@ -37,7 +30,9 @@ try {
                 <p>Bitte nutzen Sie den Link zum <a href="schichtplan.html" style="color: #3498db;">Schichtplan</a>.</p>
             </div>
         `;
-        document.getElementById('sub-nav-users').style.display = 'none';
+        // (Sicherstellen, dass das Sub-Nav-Element existiert, bevor darauf zugegriffen wird)
+        const subNavUsers = document.getElementById('sub-nav-users');
+        if (subNavUsers) subNavUsers.style.display = 'none';
 
         // Breche Initialisierung ab
         throw new Error("Nicht-Admin darf Benutzerverwaltung nicht sehen.");
@@ -70,6 +65,11 @@ const geburtstagField = document.getElementById('user-geburtstag');
 const telefonField = document.getElementById('user-telefon');
 const eintrittsdatumField = document.getElementById('user-eintrittsdatum');
 const aktivAbField = document.getElementById('user-aktiv-ab');
+
+// --- START NEU: Inaktiv-Datum ---
+const inaktivAbField = document.getElementById('user-inaktiv-ab');
+// --- ENDE NEU ---
+
 const urlaubGesamtField = document.getElementById('user-urlaub-gesamt');
 const urlaubRestField = document.getElementById('user-urlaub-rest');
 const diensthundField = document.getElementById('user-diensthund');
@@ -81,6 +81,7 @@ const columnModal = document.getElementById('column-modal');
 const toggleColumnsBtn = document.getElementById('toggle-columns-btn');
 const saveColumnToggleBtn = document.getElementById('save-column-toggle');
 const columnCheckboxes = document.querySelectorAll('.col-toggle-cb');
+const modalTabsContainer = document.getElementById('user-modal-tabs');
 
 // --- 3. Hilfsfunktionen (Seiten-spezifisch) ---
 
@@ -90,11 +91,12 @@ function openModal(modalEl) {
 function closeModal(modalEl) {
     modalEl.style.display = 'none';
 }
-closeModalBtn.onclick = () => closeModal(modal);
-window.onclick = (event) => {
-    if (event.target == modal) closeModal(modal);
-    if (event.target == columnModal) closeModal(columnModal);
-}
+
+/**
+ * Öffnet den angeklickten Tab im Modal.
+ * @param {Event} evt - Das Klick-Ereignis (optional)
+ * @param {string} tabName - Die ID des zu öffnenden Tabs (z.B. 'tab-stammdaten')
+ */
 function openTab(evt, tabName) {
     let i, tabcontent, tablinks;
     tabcontent = document.getElementsByClassName("modal-tab-content");
@@ -105,10 +107,24 @@ function openTab(evt, tabName) {
     for (i = 0; i < tablinks.length; i++) {
         tablinks[i].className = tablinks[i].className.replace(" active", "");
     }
-    document.getElementById(tabName).style.display = "block";
-    if (evt) evt.currentTarget.className += " active";
-    else tablinks[0].className += " active";
+
+    const tabElement = document.getElementById(tabName);
+    if (tabElement) {
+        tabElement.style.display = "block";
+    }
+
+    // Wenn durch Klick ausgelöst, setze den Button aktiv
+    if (evt) {
+        evt.currentTarget.className += " active";
+    } else {
+        // Wenn manuell ausgelöst (beim Öffnen), setze den ersten Tab aktiv
+        const firstTab = modalTabsContainer.querySelector('button[data-tab="tab-stammdaten"]');
+        if (firstTab) {
+            firstTab.className += " active";
+        }
+    }
 }
+
 function formatDateTime(isoString, type = 'date') {
     if (!isoString) return '';
     const d = new Date(isoString);
@@ -155,12 +171,10 @@ saveColumnToggleBtn.onclick = () => {
 async function loadRolesIntoDropdown(selectedRoleId = null) {
     try {
         if (allRoles.length === 0) {
-            // Nutzt die importierte apiFetch
             allRoles = await apiFetch('/api/roles');
         }
         roleField.innerHTML = '';
         allRoles.forEach(role => {
-            // isAdmin-Variable kommt aus dem Auth-Check
             if (!isAdmin && (role.name === 'Besucher' || role.name === 'admin')) {
                 return;
             }
@@ -178,13 +192,11 @@ async function loadRolesIntoDropdown(selectedRoleId = null) {
 }
 async function loadUsers() {
     try {
-        // Nutzt die importierte apiFetch
         const users = await apiFetch('/api/users');
         userTableBody.innerHTML = '';
         users.forEach(u => {
             const row = document.createElement('tr');
             const roleName = u.role ? u.role.name : 'Keine Rolle';
-            // WICHTIG: window.openEditModal, da es inline im HTML aufgerufen wird
             const userJsonString = JSON.stringify(u).replace(/'/g, "\\'");
             const telefon = u.telefon || '---';
             const eintritt = formatDateTime(u.eintrittsdatum, 'date') || '---';
@@ -234,12 +246,15 @@ addUserBtn.onclick = async () => {
     userIdField.value = '';
     vornameField.value = '';
     nameField.value = '';
-    passwortField.value = ''; // (Feld leeren)
+    passwortField.value = '';
     passwortField.placeholder = 'Passwort (erforderlich)';
     geburtstagField.value = '';
     telefonField.value = '';
     eintrittsdatumField.value = '';
     aktivAbField.value = '';
+    // --- START NEU: Inaktiv-Datum ---
+    inaktivAbField.value = '';
+    // --- ENDE NEU ---
     urlaubGesamtField.value = 0;
     urlaubRestField.value = 0;
     diensthundField.value = '';
@@ -247,7 +262,7 @@ addUserBtn.onclick = async () => {
     passGeaendertField.value = 'Wird autom. gesetzt';
     zuletztOnlineField.value = 'Nie';
 
-    const systemTabButton = document.querySelector('.modal-tabs button[onclick*="tab-system"]');
+    const systemTabButton = document.querySelector('.modal-tabs button[data-tab="tab-system"]');
     if (systemTabButton) systemTabButton.style.display = 'none';
 
     await loadRolesIntoDropdown();
@@ -267,6 +282,9 @@ async function openEditModal(user) {
     telefonField.value = user.telefon || '';
     eintrittsdatumField.value = formatDateTime(user.eintrittsdatum, 'date');
     aktivAbField.value = formatDateTime(user.aktiv_ab_datum, 'date');
+    // --- START NEU: Inaktiv-Datum ---
+    inaktivAbField.value = formatDateTime(user.inaktiv_ab_datum, 'date');
+    // --- ENDE NEU ---
     urlaubGesamtField.value = user.urlaub_gesamt || 0;
     urlaubRestField.value = user.urlaub_rest || 0;
     diensthundField.value = user.diensthund || '';
@@ -274,7 +292,7 @@ async function openEditModal(user) {
     passGeaendertField.value = formatDateTime(user.password_geaendert, 'datetime') || 'Unbekannt';
     zuletztOnlineField.value = formatDateTime(user.zuletzt_online, 'datetime') || 'Nie';
 
-    const systemTabButton = document.querySelector('.modal-tabs button[onclick*="tab-system"]');
+    const systemTabButton = document.querySelector('.modal-tabs button[data-tab="tab-system"]');
     if (systemTabButton) systemTabButton.style.display = 'block';
 
     await loadRolesIntoDropdown(user.role_id);
@@ -293,6 +311,9 @@ saveUserBtn.onclick = async () => {
         telefon: telefonField.value || null,
         eintrittsdatum: eintrittsdatumField.value || null,
         aktiv_ab_datum: aktivAbField.value || null,
+        // --- START NEU: Inaktiv-Datum ---
+        inaktiv_ab_datum: inaktivAbField.value || null,
+        // --- ENDE NEU ---
         urlaub_gesamt: parseInt(urlaubGesamtField.value) || 0,
         urlaub_rest: parseInt(urlaubRestField.value) || 0,
         diensthund: diensthundField.value || null,
@@ -301,7 +322,6 @@ saveUserBtn.onclick = async () => {
     if (!payload.passwort) { delete payload.passwort; }
     try {
         if (id) {
-            // Nutzt die importierte apiFetch
             await apiFetch(`/api/users/${id}`, 'PUT', payload);
         } else {
             if (!payload.passwort) {
@@ -309,7 +329,6 @@ saveUserBtn.onclick = async () => {
                 openTab(null, 'tab-stammdaten');
                 return;
             }
-            // Nutzt die importierte apiFetch
             await apiFetch('/api/users', 'POST', payload);
         }
         closeModal(modal);
@@ -322,7 +341,6 @@ saveUserBtn.onclick = async () => {
 async function deleteUser(id) {
     if (confirm('Sind Sie sicher, dass Sie diesen Benutzer löschen möchten?')) {
         try {
-            // Nutzt die importierte apiFetch
             await apiFetch(`/api/users/${id}`, 'DELETE');
             loadUsers();
         } catch (error) {
@@ -345,7 +363,6 @@ if (forcePwResetBtn) {
             modalStatus.textContent = 'Setze Flag...';
             modalStatus.style.color = '#bdc3c7';
             try {
-                // Nutzt die importierte apiFetch
                 const response = await apiFetch(`/api/users/${id}/force_password_reset`, 'POST');
                 modalStatus.textContent = response.message || 'Erfolgreich erzwungen!';
                 modalStatus.style.color = '#2ecc71';
@@ -364,6 +381,23 @@ if (forcePwResetBtn) {
 }
 
 // --- 5. Initialisierung ---
+
+// Event-Listener für die Modal-Tabs hinzufügen
+if (modalTabsContainer) {
+    modalTabsContainer.addEventListener('click', (e) => {
+        if (e.target.tagName === 'BUTTON' && e.target.dataset.tab) {
+            openTab(e, e.target.dataset.tab);
+        }
+    });
+}
+
+// Event-Handler für Modale
+closeModalBtn.onclick = () => closeModal(modal);
+window.addEventListener('click', (event) => {
+    if (event.target == modal) closeModal(modal);
+    if (event.target == columnModal) closeModal(columnModal);
+});
+
 // (Der Auth-Check oben hat bereits sichergestellt, dass wir Admin sind)
 loadUsers();
 applyColumnPreferences();

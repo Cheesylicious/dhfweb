@@ -301,7 +301,7 @@ function renderReplies(replies, originalQuery) {
         const formattedDate = new Date(originalQuery.created_at).toLocaleTimeString('de-DE', {day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit'});
         originalQueryItem.innerHTML = `
             <div class="reply-meta"><strong>${senderName} (Erstanfrage)</strong> am ${formattedDate} Uhr</div>
-            <div class="reply-text" style="font-style: italic;">${originalQuery.message}</div>`;
+            <div class="reply-text" style="font-style: italic;">${escapeHTML(originalQuery.message)}</div>`;
     }
     let currentChild = dom.queryRepliesList.lastElementChild;
     while (currentChild) {
@@ -318,7 +318,7 @@ function renderReplies(replies, originalQuery) {
         const formattedDate = new Date(reply.created_at).toLocaleTimeString('de-DE', {day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit'});
         li.innerHTML = `
             <div class="reply-meta" style="color: ${isSelf ? '#3498db' : '#888'};"><strong>${reply.user_name}</strong> am ${formattedDate} Uhr</div>
-            <div class="reply-text">${reply.message}</div>`;
+            <div class="reply-text">${escapeHTML(reply.message)}</div>`;
         dom.queryRepliesList.appendChild(li);
     });
     const conversationContainer = document.getElementById('query-conversation-container');
@@ -545,19 +545,23 @@ async function renderGrid() {
     if (state.sortableStaffingInstance) state.sortableStaffingInstance.destroy();
 
     try {
+        // --- START KORREKTUR (Regel 1 & 2) ---
+        // Entferne den separaten '/api/users' Aufruf
         const shiftDataPromise = apiFetch(`/api/shifts?year=${state.currentYear}&month=${state.currentMonth}`);
-        const userDataPromise = apiFetch('/api/users');
+        // const userDataPromise = apiFetch('/api/users'); // <-- ENTFERNT (Regel 4)
         const specialDatesPromise = loadSpecialDates(state.currentYear);
         const queriesPromise = loadShiftQueries();
 
-        const [shiftPayload, userData] = await Promise.all([
+        const [shiftPayload] = await Promise.all([ // <-- Nur shiftPayload wird abgewartet
             shiftDataPromise,
-            userDataPromise,
             specialDatesPromise,
             queriesPromise
         ]);
 
-        state.allUsers = userData;
+        // Nutze die Benutzerliste aus dem shiftPayload
+        state.allUsers = shiftPayload.users;
+        // --- ENDE KORREKTUR ---
+
         state.currentShifts = {};
         shiftPayload.shifts.forEach(s => {
             const key = `${s.user_id}-${s.date}`;
@@ -691,7 +695,10 @@ function buildGridDOM() {
     dom.grid.querySelector('.grid-header-total.header-separator-bottom').textContent = 'Std.';
 
     // DATENZEILEN
+    // --- START KORREKTUR (Regel 1): Nutze state.allUsers (die gefilterte Liste) ---
     const visibleUsers = state.allUsers.filter(user => user.shift_plan_visible === true);
+    // --- ENDE KORREKTUR ---
+
     visibleUsers.forEach(user => {
         const isCurrentUser = (state.loggedInUser && state.loggedInUser.id === user.id);
         const currentUserClass = isCurrentUser ? ' current-user-row' : '';
