@@ -1,9 +1,13 @@
+# cheesylicious/dhfweb/dhfweb-ec604d738e9bd121b65cc8557f8bb98d2aa18062/dhf_app/routes_queries.py
 # Neue Datei: dhf_app/routes_queries.py
 
 from flask import Blueprint, request, jsonify, current_app
 # --- NEUE IMPORTE ---
-from .models import ShiftQuery, User, FeedbackReport, UpdateLog, ShiftQueryReply
+# --- START: Role und joinedload hinzugefügt ---
+from .models import ShiftQuery, User, FeedbackReport, UpdateLog, ShiftQueryReply, Role
 from .extensions import db
+from sqlalchemy.orm import joinedload
+# --- ENDE: Role und joinedload hinzugefügt ---
 # --- START: KORRIGIERTER IMPORT ---
 from .utils import admin_required, scheduler_or_admin_required, query_roles_required
 # --- ENDE: KORRIGIERTER IMPORT ---
@@ -48,6 +52,7 @@ def get_notifications_summary():
     für den aktuell eingeloggten Benutzer ab.
 
     ANGEPASST: Zählt jetzt intelligent, wer zuletzt geantwortet hat.
+    NEU: Ignoriert Wunsch-Anfragen für 'Planschreiber'.
     """
 
     response = {
@@ -105,7 +110,12 @@ def get_notifications_summary():
             ).outerjoin(
                 last_reply_user_sq,
                 ShiftQuery.id == last_reply_user_sq.c.query_id
+            ).options(
+                # --- START: NEU (Performance: Lade Sender und Rolle) ---
+                joinedload(ShiftQuery.sender).joinedload(User.role)
+                # --- ENDE: NEU ---
             )
+
 
             # --- START: NEUER FILTER FÜR HUNDEFÜHRER ---
             if user_role == 'Hundeführer':
@@ -125,6 +135,19 @@ def get_notifications_summary():
 
             # D) Sortiere die Anfragen in die beiden Kategorien
             for query, last_replier_id in query_results:
+
+                # --- START: NEUE FILTERLOGIK FÜR PLANSCHREIBER ---
+                if user_role == 'Planschreiber':
+                    # Prüfe, ob es eine Wunsch-Anfrage von einem Hundeführer ist
+                    sender_role_name = query.sender.role.name if query.sender and query.sender.role else ""
+                    is_wunsch_anfrage = (
+                        sender_role_name == 'Hundeführer' and
+                        query.message.startswith("Anfrage für:")
+                    )
+                    # Wenn ja, ignoriere diese Anfrage für den Planschreiber
+                    if is_wunsch_anfrage:
+                        continue
+                # --- ENDE: NEUE FILTERLOGIK FÜR PLANSCHREIBER ---
 
                 if last_replier_id is None:
                     # FALL 1: Keine Antworten vorhanden

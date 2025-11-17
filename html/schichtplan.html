@@ -375,8 +375,11 @@
         .grid-header-total { font-weight: 600; background: #f8f9fa; text-align: center; } /* Zentriert 'Std.' Header */
 
         .grid-cell {
-            /* --- KORREKTUR: Cursor wird jetzt dynamisch über JS/CSS-Klassen gesteuert --- */
-            /* cursor: pointer; */
+            /* --- START: GEÄNDERT (cursor: pointer) --- */
+            /* Standardmäßig kein Cursor */
+            cursor: default;
+            /* --- ENDE: GEÄNDERT --- */
+
             font-weight: 500;
             transition: background-color 0.2s, transform 0.2s, box-shadow 0.2s;
             box-shadow: inset 0px 1px 3px rgba(0, 0, 0, 0.2);
@@ -384,31 +387,21 @@
             z-index: 1;
         }
 
-        /* --- KORREKTUR: Planschreiber-Hover/Cursor-Logik --- */
-        /* Standard: Admin darf (wenn Plan offen), Planschreiber darf NICHT (Linksklick) */
-        body:not(.admin-mode) .grid-cell { cursor: default; }
-
-        /* Planschreiber soll aber Rechtsklick machen können, also Cursor ändern */
-        body.planschreiber-mode .grid-cell {
-             cursor: context-menu; /* Zeigt Rechtsklick-Möglichkeit an */
+        /* --- START: NEUE CURSOR-LOGIK FÜR LINKSKLICK --- */
+        /* Admins (wenn Plan offen) und Planschreiber (immer) bekommen Pointer für Linksklick */
+        body.admin-mode:not(.plan-locked) .grid-cell,
+        body.planschreiber-mode:not(.plan-locked) .grid-cell {
+             cursor: pointer;
         }
-        /* --- START: NEU (Hundeführer) --- */
-        /* Hundeführer: Standardmäßig kein Cursor */
-        body.hundefuehrer-mode .grid-cell {
-            cursor: default;
+        /* Hundeführer bekommen Pointer nur auf eigener Zeile (wenn Plan offen) */
+        body.hundefuehrer-mode:not(.plan-locked) .current-user-row.grid-cell {
+            cursor: pointer;
         }
-        /* Hundeführer: Nur auf eigener Zeile Rechtsklick */
-        body.hundefuehrer-mode .current-user-row.grid-cell {
-            cursor: context-menu;
+        /* Besucher haben nie einen Pointer */
+        body.visitor-mode .grid-cell {
+            cursor: default !important;
         }
-        /* --- ENDE: NEU --- */
-
-        /* Admin darf Linksklick (für Hover/Shortcut), wenn Plan offen */
-        body.admin-mode:not(.plan-locked) .grid-cell {
-            /* --- KORREKTUR: Linksklick öffnet kein Modal mehr, nur für Hover/Shortcut --- */
-             cursor: default;
-        }
-        /* --- ENDE KORREKTUR --- */
+        /* --- ENDE: NEUE CURSOR-LOGIK --- */
 
 
         .grid-cell.hovered {
@@ -434,25 +427,26 @@
             );
         }
 
-        /* --- KORREKTUR: Planschreiber/Admin sollen im gesperrten Modus Rechtsklick (context-menu) können --- */
-        /* --- START: NEU (Hundeführer) --- */
+        /* --- START: GEÄNDERT (Linksklick auf gesperrt) --- */
+        /* Im gesperrten Modus dürfen Admins/Planschreiber/Hundeführer immer noch klicken,
+           um Notizen/Anfragen zu sehen (aber nicht zu ändern). */
         body.admin-mode.plan-locked .grid-cell,
         body.planschreiber-mode.plan-locked .grid-cell {
-            cursor: context-menu !important;
+            cursor: pointer !important;
         }
-        /* Hundeführer nur auf eigener Zeile */
         body.hundefuehrer-mode.plan-locked .current-user-row.grid-cell {
-             cursor: context-menu !important;
+             cursor: pointer !important;
         }
-        /* --- ENDE: NEU --- */
-        /* --- ENDE KORREKTUR --- */
+        /* --- ENDE: GEÄNDERT --- */
 
         body.plan-locked .grid-cell:hover {
             transform: none;
             box-shadow: inset 0px 1px 3px rgba(0, 0, 0, 0.2);
         }
-        /* Planschreiber-Hover (für Rechtsklick) soll auch im gesperrten Modus funktionieren */
-        body.planschreiber-mode.plan-locked .grid-cell.hovered {
+        /* Hover-Effekt (visuell) soll auch im gesperrten Modus funktionieren */
+        body.admin-mode.plan-locked .grid-cell.hovered,
+        body.planschreiber-mode.plan-locked .grid-cell.hovered,
+        body.hundefuehrer-mode.plan-locked .current-user-row.grid-cell.hovered {
              background-color: #d6eaff !important;
              box-shadow: 0px 2px 8px rgba(0, 0, 0, 0.3);
              transform: scale(1.05);
@@ -878,63 +872,143 @@
         /* --- ENDE ANPASSUNG --- */
 
 
-        /* --- START: NEUES KONTEXTMENÜ-STYLING --- */
-        #shift-context-menu {
+        /* --- START: NEUES CLICK-MODAL (ERSETZT KONTEXTMENÜ) --- */
+        #click-action-modal {
             display: none;
             position: absolute;
-            z-index: 100005; /* Über allem, außer vielleicht Feedback-Modal */
+            z-index: 100005;
 
             /* Glas-Effekt */
-            background: rgba(40, 40, 40, 0.9);
+            background: rgba(40, 40, 40, 0.95);
             backdrop-filter: blur(10px);
             -webkit-backdrop-filter: blur(10px);
             border: 1px solid rgba(255, 255, 255, 0.1);
 
             color: #ffffff;
-            border-radius: 6px;
-            box-shadow: 0 5px 15px rgba(0,0,0,0.3);
-            min-width: 200px;
-            padding: 5px 0;
+            border-radius: 8px;
+            box-shadow: 0 5px 20px rgba(0,0,0,0.4);
+            width: 300px;
             font-family: 'Poppins', sans-serif;
+
+            /* Verhindert Textauswahl im Modal */
+            user-select: none;
+            -webkit-user-select: none;
         }
-        .context-menu-item {
+
+        .cam-header {
             padding: 10px 15px;
-            font-size: 14px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        .cam-header-title {
+            font-size: 16px;
+            font-weight: 600;
+            color: #ffffff;
+        }
+        .cam-header-subtitle {
+            font-size: 13px;
             color: #bdc3c7;
+        }
+
+        /* Sektionen im Modal */
+        .cam-section {
+            padding: 10px;
+        }
+        /* Titel für Sektionen (z.B. "Wunsch-Anfrage") */
+        .cam-section-title {
+            font-size: 12px;
+            font-weight: 600;
+            color: #3498db; /* Blau */
+            text-transform: uppercase;
+            padding: 0 5px 5px 5px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            margin-bottom: 5px;
+        }
+
+        /* Sektion für Admin-Schnell-Genehmigung (GRÜN/ROT) */
+        #cam-admin-wunsch-actions {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+        }
+        .cam-button {
+            padding: 10px;
+            border: none;
+            border-radius: 5px;
             cursor: pointer;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
+            font-weight: 600;
+            font-size: 14px;
+            transition: transform 0.2s, opacity 0.2s;
         }
-        .context-menu-item:hover {
-            background-color: rgba(52, 152, 219, 0.2);
-            color: #ffffff;
+        .cam-button:hover {
+            transform: scale(1.03);
+            opacity: 0.9;
         }
-        .context-menu-item strong {
-            color: #ffffff;
+        .cam-button.approve {
+            background: #2ecc71;
+            color: white;
+        }
+        .cam-button.reject {
+            background: #e74c3c;
+            color: white;
+        }
+
+        /* Sektion für Admin-Schichtauswahl (Grid) */
+        #cam-admin-shifts {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr;
+            gap: 8px;
+        }
+        .cam-shift-button {
+            padding: 8px;
+            font-size: 14px;
+            font-weight: 500;
+            background: rgba(255, 255, 255, 0.1);
+            color: #bdc3c7;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 5px;
+            cursor: pointer;
+            text-align: center;
+        }
+        .cam-shift-button:hover {
+            background: #3498db;
+            color: white;
+            border-color: #3498db;
+        }
+        .cam-shift-button.all {
+             background: rgba(255, 255, 255, 0.05);
+             color: #3498db;
+             grid-column: 1 / -1; /* Volle Breite */
+        }
+
+        /* Sektion für Hundeführer-Anfragen (Grid) */
+        #cam-hundefuehrer-requests {
+             display: grid;
+             grid-template-columns: 1fr 1fr 1fr;
+             gap: 8px;
+        }
+
+        /* Sektion für Admin/Planschreiber Notizen (Link) */
+        .cam-action-link {
+            padding: 10px 5px;
+            font-size: 14px;
+            color: #f0ad4e; /* Orange/Gelb */
+            cursor: pointer;
+        }
+        .cam-action-link:hover {
+            color: #f39c12;
+            text-decoration: underline;
+        }
+
+        /* Sektion für Hundeführer "Zurückziehen" (Rot) */
+        .cam-action-link.delete {
+            color: #e74c3c;
             font-weight: 600;
         }
-        .context-menu-item .shortcut-hint {
-            font-size: 12px;
-            color: #777;
-            background: rgba(255,255,255,0.1);
-            padding: 2px 5px;
-            border-radius: 3px;
+        .cam-action-link.delete:hover {
+             color: #c0392b;
         }
-        .context-menu-divider {
-            height: 1px;
-            background: rgba(255, 255, 255, 0.1);
-            margin: 5px 0;
-        }
-        /* Spezieller Stil für die Anfrage-Option */
-        .context-menu-item.query-item {
-            color: #f0ad4e; /* Gelb, passend zur Anfrage-Warnung */
-        }
-        .context-menu-item.query-item:hover {
-            background-color: rgba(240, 173, 78, 0.2);
-            color: #f0ad4e;
-        }
-        /* --- ENDE: NEUES KONTEXTMENÜ-STYLING --- */
+
+        /* --- ENDE: NEUES CLICK-MODAL --- */
 
     </style>
 </head>
@@ -1098,8 +1172,36 @@
         </div>
     </div>
 
-    <div id="shift-context-menu">
+    <div id="click-action-modal">
+        <div class="cam-header">
+            <div id="cam-title" class="cam-header-title">Aktion wählen</div>
+            <div id="cam-subtitle" class="cam-header-subtitle">Für: Max Mustermann am 25.12.</div>
         </div>
+
+        <div class="cam-section" id="cam-admin-wunsch-actions" style="display: none;">
+            <div class="cam-section-title">Wunsch-Anfrage</div>
+            <button id="cam-btn-approve" class="cam-button approve">Genehmigen</button>
+            <button id="cam-btn-reject" class="cam-button reject">Ablehnen</button>
+        </div>
+
+        <div class="cam-section" id="cam-admin-shifts" style="display: none;">
+            <div class="cam-section-title">Schicht zuweisen</div>
+            </div>
+
+        <div class="cam-section" id="cam-hundefuehrer-requests" style="display: none;">
+            <div class="cam-section-title">Wunsch-Anfrage</div>
+            </div>
+
+        <div class="cam-section" id="cam-notiz-actions" style="display: none;">
+            <div class="cam-section-title">Notizen</div>
+            <div id="cam-link-notiz" class="cam-action-link">❓ Notiz ansehen / erstellen...</div>
+        </div>
+
+        <div class="cam-section" id="cam-hundefuehrer-delete" style="display: none;">
+             <div class="cam-section-title">Meine Anfrage</div>
+            <div id="cam-link-delete" class="cam-action-link delete">Anfrage zurückziehen</div>
+        </div>
+    </div>
     <script>
         // --- PARTIKEL-ANIMATION (Unverändert) ---
         const canvas = document.getElementById('particle-canvas');

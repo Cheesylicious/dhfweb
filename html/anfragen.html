@@ -199,7 +199,7 @@
             font-weight: 600;
         }
 
-        #query-list {
+        #query-list-anfragen, #query-list-wunsch { /* <<< GEÄNDERT */
             list-style: none;
             padding: 0;
             margin: 0;
@@ -363,6 +363,18 @@
         /* --- ENDE ANPASSUNG --- */
 
 
+        /* --- START: NEUE STILE FÜR GENEHMIGEN/ABLEHNEN --- */
+        .btn-approve {
+            background: #2ecc71; /* Grün */
+            color: white;
+        }
+        .btn-reject {
+            background: #e74c3c; /* Rot */
+            color: white;
+        }
+        /* --- ENDE: NEUE STILE --- */
+
+
         /* --- START: NEUER STYLE FÜR HIGHLIGHTING --- */
         .query-item.action-required-highlight {
             background-color: rgba(240, 173, 78, 0.1); /* (Ein Hauch von --status-offen) */
@@ -386,6 +398,11 @@
              border: 1px solid rgba(255, 255, 255, 0.1);
         }
         #content-wrapper.restricted-view h2 { color: #e74c3c; }
+
+        /* --- NEU: CSS FÜR TAB-INHALT --- */
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+        /* --- ENDE NEU --- */
     </style>
 </head>
 <body>
@@ -409,26 +426,45 @@
 
     <div class="sub-nav" id="sub-nav-tasks">
         <a href="feedback.html" id="sub-nav-feedback">Meldungen (Bugs/Ideen)</a>
-        <a href="anfragen.html" id="sub-nav-anfragen" class="active">Schicht-Anfragen</a>
-    </div>
+        <a href="anfragen.html" id="sub-nav-anfragen" class="active">Schicht-Anfragen (Alle)</a>
+        <a href="#" id="sub-nav-wunsch" style="display: none;">Wunsch-Anfragen (HF)</a>
+        </div>
 
 
     <main>
         <div id="content-wrapper">
-            <div class="card">
-                <div class="card-header">
-                    <h2>Offene Schicht-Anfragen</h2>
-                    <div class="filter-buttons">
-                        <button class="filter-btn active" data-filter="offen">Offen</button>
-                        <button class="filter-btn" data-filter="erledigt">Erledigt</button>
-                        <button class="filter-btn" data-filter="">Alle</button>
-                    </div>
-                </div>
 
-                <ul id="query-list">
-                    </ul>
+            <div id="tab-content-anfragen" class="tab-content active">
+                <div class="card">
+                    <div class="card-header">
+                        <h2>Schicht-Anfragen (Alle)</h2>
+                        <div class="filter-buttons" id="filter-buttons-anfragen">
+                            <button class="filter-btn active" data-filter="offen">Offen</button>
+                            <button class="filter-btn" data-filter="erledigt">Erledigt</button>
+                            <button class="filter-btn" data-filter="">Alle</button>
+                        </div>
+                    </div>
+                    <ul id="query-list-anfragen">
+                        </ul>
+                </div>
             </div>
-        </div>
+
+            <div id="tab-content-wunsch" class="tab-content" style="display: none;">
+                 <div class="card">
+                    <div class="card-header">
+                        <h2>Wunsch-Anfragen (Hundeführer)</h2>
+                        <div class="filter-buttons" id="filter-buttons-wunsch">
+                            <button class="filter-btn active" data-filter="offen">Offen</button>
+                            <button class="filter-btn" data-filter="erledigt">Erledigt</button>
+                            <button class="filter-btn" data-filter="">Alle</button>
+                        </div>
+                    </div>
+                    <ul id="query-list-wunsch">
+                         </ul>
+                </div>
+            </div>
+
+            </div>
     </main>
 
     <script>

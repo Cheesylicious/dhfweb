@@ -1,3 +1,4 @@
+// cheesylicious/dhfweb/dhfweb-ec604d738e9bd121b65cc8557f8bb98d2aa18062/html/anfragen.js
 // --- Globales Setup ---
 const API_URL = 'http://46.224.63.203:5000';
 let user;
@@ -86,6 +87,14 @@ async function apiFetch(endpoint, method = 'GET', body = null) {
     const response = await fetch(API_URL + endpoint, options);
     if (response.status === 401 || response.status === 403) {
         if (response.status === 401) { logout(); }
+        // --- START: NEUE FEHLERBEHANDLUNG FÜR API-SPERRE (REGEL 1) ---
+        // Versuche, die JSON-Fehlermeldung zu lesen (z.B. "Aktion blockiert")
+        const contentType = response.headers.get("content-type");
+        if (contentType && contentType.indexOf("application/json") !== -1) {
+            const errorData = await response.json();
+            throw new Error(errorData.message || 'Sitzung ungültig oder fehlende Rechte.');
+        }
+        // --- ENDE: NEUE FEHLERBEHANDLUNG ---
         throw new Error('Sitzung ungültig oder fehlende Rechte.');
     }
     const contentType = response.headers.get("content-type");
@@ -104,12 +113,28 @@ async function apiFetch(endpoint, method = 'GET', body = null) {
 
 // --- Seitenlogik für Anfragen-Verwaltung ---
 
-const queryList = document.getElementById('query-list');
-const filterButtonsContainer = document.querySelector('.filter-buttons');
-let currentFilter = "offen"; // (Startet mit "Offen")
+// --- START: GEÄNDERTE VARIABLEN ---
+const queryListAnfragen = document.getElementById('query-list-anfragen');
+const queryListWunsch = document.getElementById('query-list-wunsch');
+const filterButtonsAnfragen = document.getElementById('filter-buttons-anfragen');
+const filterButtonsWunsch = document.getElementById('filter-buttons-wunsch');
+
+const tabAnfragen = document.getElementById('sub-nav-anfragen');
+const tabWunsch = document.getElementById('sub-nav-wunsch');
+const tabContentAnfragen = document.getElementById('tab-content-anfragen');
+const tabContentWunsch = document.getElementById('tab-content-wunsch');
+const contentWrapper = document.getElementById('content-wrapper');
+
+let currentFilterAnfragen = "offen";
+let currentFilterWunsch = "offen";
+let currentView = 'anfragen'; // 'anfragen' oder 'wunsch'
+// --- ENDE: GEÄNDERTE VARIABLEN ---
 
 // Hält die Abfragen im Speicher, um Neuladen zu vermeiden
 let allQueriesCache = [];
+// --- NEU: Hält die Schichtarten für die Genehmigung ---
+let allShiftTypesList = [];
+
 
 // --- START ANPASSUNG (Regel 2: Event-Dispatching) ---
 /**
@@ -120,21 +145,42 @@ function triggerNotificationUpdate() {
 }
 // --- ENDE ANPASSUNG ---
 
+// --- START: NEUE FUNKTION (REGEL 1) ---
+/**
+ * Lädt alle Schichtarten, damit wir "T.?" zu einer ID zuordnen können.
+ */
+async function loadAllShiftTypes() {
+    try {
+        allShiftTypesList = await apiFetch('/api/shifttypes');
+    } catch (e) {
+        console.error("Fehler beim Laden der Schichtarten:", e);
+        alert("Kritischer Fehler: Schichtarten konnten nicht geladen werden. Genehmigen/Ablehnen ist deaktiviert.");
+    }
+}
+// --- ENDE: NEUE FUNKTION ---
+
 
 /**
- * Lädt die Anfragen von der API (nur beim ersten Mal)
+ * Lädt die Anfragen von der API (wird bei Tab-Wechsel und Initialisierung aufgerufen)
  */
 async function loadQueries() {
-    queryList.innerHTML = '<li>Lade Anfragen...</li>';
+    // --- START: GEÄNDERTE LOGIK ---
+    // Bestimme, welche Liste und welchen Filter wir verwenden
+    const currentList = (currentView === 'anfragen') ? queryListAnfragen : queryListWunsch;
+    const currentFilter = (currentView === 'anfragen') ? currentFilterAnfragen : currentFilterWunsch;
+    // --- ENDE: GEÄNDERTE LOGIK ---
+
+    currentList.innerHTML = '<li>Lade Anfragen...</li>';
 
     try {
         // Ruft alle Anfragen ab, die dem Statusfilter entsprechen
         // (API filtert automatisch für Hundeführer)
-        const queries = await apiFetch(`/api/queries?status=${currentFilter}`);
+        // WICHTIG: Wir laden IMMER ALLE (filter=''), damit der Cache vollständig ist
+        const queries = await apiFetch(`/api/queries?status=`);
         allQueriesCache = queries;
-        renderQueries();
+        renderQueries(); // Ruft die angepasste renderQueries auf
     } catch (error) {
-        queryList.innerHTML = `<li style="color: var(--status-offen); padding: 20px;">Fehler beim Laden: ${error.message}</li>`;
+        currentList.innerHTML = `<li style="color: var(--status-offen); padding: 20px;">Fehler beim Laden: ${error.message}</li>`;
     }
 }
 
@@ -301,122 +347,188 @@ function handleGoToDate(queryId) {
 }
 // --- ENDE: NEUE FUNKTION ---
 
+// --- START: NEUE HILFSFUNKTION (Regel 1) ---
+/**
+ * Definiert, ob eine Anfrage eine "Wunsch-Anfrage" ist.
+ */
+const isWunschAnfrage = (q) => {
+    return q.sender_role_name === 'Hundeführer' && q.message.startsWith("Anfrage für:");
+};
+// --- ENDE: NEUE HILFSFUNKTION ---
+
+
+// --- START: NEUE HILFSFUNKTION (Regel 4) ---
+/**
+ * Erstellt ein einzelnes Listen-Element (<li>) für eine Anfrage.
+ */
+function createQueryElement(query) {
+    const li = document.createElement('li');
+    li.className = 'query-item';
+    li.dataset.id = query.id;
+
+    // --- START: NEUE HIGHLIGHT-LOGIK ---
+    // (Diese Logik spiegelt die Header-Logik wider)
+    let actionRequired = false;
+    if (query.status === 'offen') {
+        if (query.last_replier_id === null) {
+            // Fall 1: Keine Antworten
+            if (query.sender_user_id !== user.id) {
+                actionRequired = true; // Neu, von anderem
+            }
+        } else if (query.last_replier_id !== user.id) {
+            // Fall 2: Letzte Antwort von anderem
+            actionRequired = true;
+        }
+    }
+
+    if (actionRequired) {
+        li.classList.add('action-required-highlight');
+    }
+    // --- ENDE: NEUE HIGHLIGHT-LOGIK ---
+
+
+    const queryDate = new Date(query.created_at).toLocaleString('de-DE', {
+        day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit'
+    });
+
+    const shiftDate = new Date(query.shift_date).toLocaleDateString('de-DE', {
+         day: '2-digit', month: '2-digit', year: 'numeric'
+    });
+
+    // --- START: ANPASSUNG (Rollenbasierte Aktions-Buttons) ---
+    let actionButtons = '';
+    const isWunsch = isWunschAnfrage(query);
+
+    // "Zum Termin" Button ist für alle Rollen auf dieser Seite sichtbar
+    actionButtons += `<button class="btn-goto-date" data-action="goto-date" title="Zum Tag im Schichtplan springen">Zum Termin</button>`;
+
+    // --- NEU: Logik für Genehmigen/Ablehnen ---
+    if (isWunsch && query.status === 'offen' && (isAdmin)) {
+        // Admin-exklusive Genehmigungs-Buttons
+        actionButtons += `<button class="btn-approve" data-action="approve" title="Trägt die Schicht '${query.message.replace('Anfrage für:', '').trim()}' im Plan ein und schließt die Anfrage.">Genehmigen</button>`;
+        actionButtons += `<button class="btn-reject" data-action="reject" title="Lehnt die Anfrage ab, setzt die Schicht auf 'FREI' und löscht die Anfrage.">Ablehnen</button>`;
+
+        // Admins dürfen Wünsche auch normal löschen (rechtsbündig)
+        actionButtons += `<button class="btn-delete-query" data-action="delete" title="Löscht die Anfrage, ändert aber NICHTS am Schichtplan.">Löschen</button>`;
+
+    } else if (isAdmin || isScheduler) {
+        // Normale Admin/Planschreiber-Buttons (für NICHT-Wunsch-Anfragen)
+        if (query.status === 'offen') {
+            actionButtons += `<button class="btn-done" data-action="erledigt">Als 'erledigt' markieren</button>`;
+        } else {
+            actionButtons += `<button class="btn-reopen" data-action="offen">Wieder öffnen</button>`;
+        }
+        actionButtons += `<button class="btn-delete-query" data-action="delete">Löschen</button>`;
+
+    } else if (isHundefuehrer) {
+        // Hundeführer sieht Löschen-Button NUR, wenn er der Sender ist
+        if (query.sender_user_id === user.id) {
+             actionButtons += `<button class="btn-delete-query" data-action="delete">Anfrage zurückziehen</button>`;
+        }
+    }
+    // --- ENDE: ANPASSUNG ---
+
+
+    // --- START ANPASSUNG (Button-Layout und Abstand) ---
+    const conversationSection = `
+        <div class="conversation-container">
+            <div id="replies-loader-${query.id}" style="text-align: center; color: #888; margin: 10px; display: none;">Lade Konversation...</div>
+            <ul id="replies-${query.id}" class="query-replies-list">
+                </ul>
+        </div>
+
+        <div class="reply-form" style="margin-top: 20px; padding-top: 10px; border-top: 1px dashed #ddd; margin-bottom: 20px;">
+            <label for="reply-input-${query.id}" style="font-size: 13px; color: #3498db; font-weight: 600;">Antwort senden:</label>
+            <textarea id="reply-input-${query.id}" rows="2" style="width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 5px; font-size: 14px; box-sizing: border-box; resize: vertical;"></textarea>
+            <button type="button" class="btn-primary btn-reply-submit" data-id="${query.id}" id="reply-submit-${query.id}" style="margin-top: 10px; padding: 10px 15px; font-size: 14px; font-weight: 600;">Antwort senden</button>
+        </div>
+    `;
+    // --- ENDE ANPASSUNG ---
+
+    li.innerHTML = `
+        <div class="item-header" data-action="toggle-body">
+            <span>Von: <strong>${query.sender_name}</strong></span>
+            <span>Für: <strong>${query.target_name}</strong></span>
+            <span>Anfrage für Datum: <strong>${shiftDate}</strong></span>
+            <span>Gesendet am: <strong>${queryDate} Uhr</strong></span>
+            <span class="item-status" data-status="${query.status}">${query.status}</span>
+        </div>
+        <div class="item-body" data-loaded="false" data-query-id="${query.id}">
+            ${conversationSection}
+            <div class="item-actions" style="margin-top: 20px;">
+                ${actionButtons}
+            </div>
+        </div>
+    `;
+    return li;
+}
+// --- ENDE: NEUE HILFSFUNKTION ---
+
 
 /**
  * Stellt die Anfragen in der Liste dar (basierend auf Cache und Filter)
  */
 function renderQueries() {
-    queryList.innerHTML = '';
+    // --- START: GEÄNDERTE LOGIK (Rendert beide Listen) ---
+    queryListAnfragen.innerHTML = '';
+    queryListWunsch.innerHTML = '';
 
-    // (Keine Filterung mehr nötig, da der API-Call das bereits erledigt)
-    // const filteredQueries = currentFilter ... (ENTFERNT)
+    // --- KORREKTUR: Filter-Logik ---
 
-    if (allQueriesCache.length === 0) {
-        queryList.innerHTML = '<li style="color: #bdc3c7; padding: 20px; text-align: center;">Keine Anfragen für diesen Filter gefunden.</li>';
-        return;
+    // 1. Definition, was eine Wunsch-Anfrage ist (Hilfsfunktion)
+    // (isWunschAnfrage(q) ist global definiert)
+
+    // 2. Daten für "Wunsch-Anfragen" (gefiltert nach Status 'currentFilterWunsch' UND Kriterien)
+    const queriesWunsch = allQueriesCache.filter(q => {
+        // Status-Filter
+        if (currentFilterWunsch !== '' && q.status !== currentFilterWunsch) return false;
+        // Kriterien-Filter
+        return isWunschAnfrage(q);
+    });
+
+    // 3. Daten für "Alle Anfragen" (gefiltert nach Status 'currentFilterAnfragen' UND NICHT Wunsch)
+    const queriesAnfragen = allQueriesCache.filter(q => {
+        // Status-Filter
+        if (currentFilterAnfragen !== '' && q.status !== currentFilterAnfragen) return false;
+        // KORREKTUR: Schließe Wunsch-Anfragen aus
+        return !isWunschAnfrage(q);
+    });
+
+    // --- ENDE KORREKTUR ---
+
+
+    // 3. "Alle Anfragen" rendern (für alle sichtbar)
+    if (queriesAnfragen.length === 0) {
+        queryListAnfragen.innerHTML = '<li style="color: #bdc3c7; padding: 20px; text-align: center;">Keine Anfragen für diesen Filter gefunden.</li>';
+    } else {
+        queriesAnfragen.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+        queriesAnfragen.forEach(query => {
+            queryListAnfragen.appendChild(createQueryElement(query));
+        });
     }
 
-    // Neueste zuerst (API sollte das schon tun, aber zur Sicherheit)
-    allQueriesCache.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
-
-    allQueriesCache.forEach(query => {
-        const li = document.createElement('li');
-        li.className = 'query-item';
-        li.dataset.id = query.id;
-
-        // --- START: NEUE HIGHLIGHT-LOGIK ---
-        // (Diese Logik spiegelt die Header-Logik wider)
-        let actionRequired = false;
-        if (query.status === 'offen') {
-            if (query.last_replier_id === null) {
-                // Fall 1: Keine Antworten
-                if (query.sender_user_id !== user.id) {
-                    actionRequired = true; // Neu, von anderem
-                }
-            } else if (query.last_replier_id !== user.id) {
-                // Fall 2: Letzte Antwort von anderem
-                actionRequired = true;
-            }
+    // 4. "Wunsch-Anfragen" rendern (nur wenn Admin)
+    if (isAdmin) {
+        if (queriesWunsch.length === 0) {
+            queryListWunsch.innerHTML = '<li style="color: #bdc3c7; padding: 20px; text-align: center;">Keine Wunsch-Anfragen für diesen Filter gefunden.</li>';
+        } else {
+            queriesWunsch.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
+            queriesWunsch.forEach(query => {
+                queryListWunsch.appendChild(createQueryElement(query));
+            });
         }
-
-        if (actionRequired) {
-            li.classList.add('action-required-highlight');
-        }
-        // --- ENDE: NEUE HIGHLIGHT-LOGIK ---
-
-
-        const queryDate = new Date(query.created_at).toLocaleString('de-DE', {
-            day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit'
-        });
-
-        const shiftDate = new Date(query.shift_date).toLocaleDateString('de-DE', {
-             day: '2-digit', month: '2-digit', year: 'numeric'
-        });
-
-        // --- START: ANPASSUNG (Rollenbasierte Aktions-Buttons) ---
-        let actionButtons = '';
-
-        // "Zum Termin" Button ist für alle Rollen auf dieser Seite sichtbar
-        actionButtons += `<button class="btn-goto-date" data-action="goto-date" style="background: #9b59b6; color: white;">Zum Termin</button>`;
-
-        if (isAdmin || isScheduler) {
-            // Admins/Planschreiber sehen Status-Buttons
-            if (query.status === 'offen') {
-                actionButtons += `<button class="btn-done" data-action="erledigt">Als 'erledigt' markieren</button>`;
-            } else {
-                actionButtons += `<button class="btn-reopen" data-action="offen">Wieder öffnen</button>`;
-            }
-            // Admins/Planschreiber sehen immer den Löschen-Button
-            actionButtons += `<button class="btn-delete-query" data-action="delete">Löschen</button>`;
-        } else if (isHundefuehrer) {
-            // Hundeführer sieht Löschen-Button NUR, wenn er der Sender ist
-            if (query.sender_user_id === user.id) {
-                 actionButtons += `<button class="btn-delete-query" data-action="delete">Anfrage zurückziehen</button>`;
-            }
-        }
-        // --- ENDE: ANPASSUNG ---
-
-
-        // --- START ANPASSUNG (Button-Layout und Abstand) ---
-        const conversationSection = `
-            <div class="conversation-container">
-                <div id="replies-loader-${query.id}" style="text-align: center; color: #888; margin: 10px; display: none;">Lade Konversation...</div>
-                <ul id="replies-${query.id}" class="query-replies-list">
-                    </ul>
-            </div>
-
-            <div class="reply-form" style="margin-top: 20px; padding-top: 10px; border-top: 1px dashed #ddd; margin-bottom: 20px;">
-                <label for="reply-input-${query.id}" style="font-size: 13px; color: #3498db; font-weight: 600;">Antwort senden:</label>
-                <textarea id="reply-input-${query.id}" rows="2" style="width: 100%; padding: 8px; border: 1px solid #ccc; border-radius: 5px; font-size: 14px; box-sizing: border-box; resize: vertical;"></textarea>
-                <button type="button" class="btn-primary btn-reply-submit" data-id="${query.id}" id="reply-submit-${query.id}" style="margin-top: 10px; padding: 10px 15px; font-size: 14px; font-weight: 600;">Antwort senden</button>
-            </div>
-        `;
-        // --- ENDE ANPASSUNG ---
-
-        li.innerHTML = `
-            <div class="item-header" data-action="toggle-body">
-                <span>Von: <strong>${query.sender_name}</strong></span>
-                <span>Für: <strong>${query.target_name}</strong></span>
-                <span>Anfrage für Datum: <strong>${shiftDate}</strong></span>
-                <span>Gesendet am: <strong>${queryDate} Uhr</strong></span>
-                <span class="item-status" data-status="${query.status}">${query.status}</span>
-            </div>
-            <div class="item-body" data-loaded="false" data-query-id="${query.id}">
-                ${conversationSection}
-                <div class="item-actions" style="margin-top: 20px;">
-                    ${actionButtons}
-                </div>
-            </div>
-        `;
-        queryList.appendChild(li);
-    });
+    }
+    // --- ENDE: GEÄNDERTE LOGIK ---
 }
+
 
 /**
  * Aktualisiert den Status einer Anfrage
  */
 async function handleUpdateStatus(id, newStatus) {
-    const item = queryList.querySelector(`.query-item[data-id="${id}"]`);
+    // --- START: GEÄNDERT (findet Item in beiden Listen) ---
+    const item = document.querySelector(`.query-item[data-id="${id}"]`);
+    // --- ENDE: GEÄNDERT ---
     if (!item) return;
 
     try {
@@ -432,8 +544,9 @@ async function handleUpdateStatus(id, newStatus) {
         }
 
         // --- KORREKTUR: API neu laden statt nur rendern, damit Highlights stimmen ---
+        // Wir laden die Daten basierend auf dem aktuellen Tab neu
+        // (loadQueries lädt ALLES neu und renderQueries filtert neu)
         await loadQueries();
-        // renderQueries(); // (Nicht mehr nötig, da loadQueries() das übernimmt)
         // --- ENDE KORREKTUR ---
 
         // --- START ANPASSUNG (Regel 2: Event-Dispatching) ---
@@ -450,7 +563,9 @@ async function handleUpdateStatus(id, newStatus) {
  * Löscht eine Anfrage
  */
 async function handleDelete(id) {
-    const item = queryList.querySelector(`.query-item[data-id="${id}"]`);
+    // --- START: GEÄNDERT (findet Item in beiden Listen) ---
+    const item = document.querySelector(`.query-item[data-id="${id}"]`);
+    // --- ENDE: GEÄNDERT ---
     if (!item) return;
 
     if (!confirm("Sind Sie sicher, dass Sie diese Anfrage endgültig löschen/zurückziehen möchten?")) {
@@ -477,35 +592,163 @@ async function handleDelete(id) {
     }
 }
 
+// --- START: NEUE FUNKTION (REGEL 1) ---
+/**
+ * Genehmigt eine Wunsch-Anfrage (Admin only)
+ */
+async function handleApprove(queryId) {
+    const query = allQueriesCache.find(q => q.id == queryId);
+    if (!query) { alert("Fehler: Anfrage nicht gefunden."); return; }
+
+    // 1. Parse abbreviation (z.B. "T.") from message (z.B. "Anfrage für: T.?")
+    const prefix = "Anfrage für:";
+    let abbrev = query.message.substring(prefix.length).trim();
+    abbrev = abbrev.endsWith('?') ? abbrev.slice(0, -1) : abbrev; // Entfernt '?' -> "T."
+
+    // 2. Finde shifttype_id
+    const shiftType = allShiftTypesList.find(st => st.abbreviation === abbrev);
+    if (!shiftType) {
+        alert(`Fehler: Schichtart "${abbrev}" nicht im System gefunden. Kann nicht genehmigen.`);
+        return;
+    }
+
+    // 3. Zeige Lade-Feedback (z.B. am Button)
+    const item = document.querySelector(`.query-item[data-id="${queryId}"]`);
+    const approveBtn = item ? item.querySelector('[data-action="approve"]') : null;
+    if (approveBtn) {
+        approveBtn.disabled = true;
+        approveBtn.textContent = 'Speichere...';
+    }
+
+    try {
+        // 4. Rufe 'saveShift' API auf (/api/shifts)
+        await apiFetch('/api/shifts', 'POST', {
+            user_id: query.target_user_id,
+            date: query.shift_date,
+            shifttype_id: shiftType.id
+        });
+
+        // 5. Schließe die Anfrage (markiere als 'erledigt')
+        // (handleUpdateStatus ruft intern loadQueries() und triggerNotificationUpdate())
+        await handleUpdateStatus(queryId, 'erledigt');
+
+    } catch (error) {
+        // Wenn ein Fehler auftritt (z.B. Plan gesperrt), wird der Button wiederhergestellt
+        alert(`Fehler beim Genehmigen: ${error.message}`);
+        if (approveBtn) {
+            approveBtn.disabled = false;
+            approveBtn.textContent = 'Genehmigen';
+        }
+    }
+}
+
+/**
+ * Lehnt eine Wunsch-Anfrage ab (Admin only)
+ * Setzt die Schicht auf FREI und löscht die Anfrage.
+ */
+async function handleReject(queryId) {
+    const query = allQueriesCache.find(q => q.id == queryId);
+    if (!query) { alert("Fehler: Anfrage nicht gefunden."); return; }
+
+    if (!confirm("Sind Sie sicher, dass Sie diese Anfrage ABLEHNEN möchten? \n(Die Schicht im Plan wird auf 'FREI' gesetzt und die Anfrage gelöscht.)")) {
+        return;
+    }
+
+    // 1. Zeige Lade-Feedback
+    const item = document.querySelector(`.query-item[data-id="${queryId}"]`);
+    const rejectBtn = item ? item.querySelector('[data-action="reject"]') : null;
+    if (rejectBtn) {
+        rejectBtn.disabled = true;
+        rejectBtn.textContent = 'Lehne ab...';
+    }
+
+    try {
+        // 2. Lösche die Schicht im Plan (setze auf 'FREI'/null)
+        // (Die 'saveShift'-Route /api/shifts prüft auf Plan-Sperre)
+        await apiFetch('/api/shifts', 'POST', {
+            user_id: query.target_user_id,
+            date: query.shift_date,
+            shifttype_id: null // Setzt auf "FREI"
+        });
+
+        // 3. Lösche die Anfrage selbst (API-Aufruf /api/queries/id)
+        await apiFetch(`/api/queries/${queryId}`, 'DELETE');
+
+        // Cache aktualisieren
+        allQueriesCache = allQueriesCache.filter(q => q.id !== parseInt(queryId));
+
+        // Neu rendern
+        renderQueries();
+        triggerNotificationUpdate();
+
+    } catch (error) {
+        // Fehler (z.B. Plan gesperrt)
+        alert(`Fehler beim Ablehnen: ${error.message}`);
+        if (rejectBtn) {
+            rejectBtn.disabled = false;
+            rejectBtn.textContent = 'Ablehnen';
+        }
+    }
+}
+// --- ENDE: NEUE FUNKTIONEN ---
+
 
 /**
  * Event Listener für Filter-Buttons
  */
-filterButtonsContainer.addEventListener('click', (e) => {
+// --- START: GEÄNDERT (Zwei Listener) ---
+filterButtonsAnfragen.addEventListener('click', (e) => {
     if (e.target.tagName === 'BUTTON') {
-        // (Aktiven Status umschalten)
-        const currentActive = filterButtonsContainer.querySelector('button.active');
+        const currentActive = filterButtonsAnfragen.querySelector('button.active');
         if (currentActive) currentActive.classList.remove('active');
-
         e.target.classList.add('active');
 
-        currentFilter = e.target.dataset.filter;
-
-        // API neu laden (filtert jetzt nur nach Status)
-        loadQueries();
+        currentFilterAnfragen = e.target.dataset.filter;
+        renderQueries(); // Nur neu rendern, da Cache schon da ist
     }
 });
 
+if (isAdmin) { // Nur wenn Admin, Listener für zweiten Filter hinzufügen
+    filterButtonsWunsch.addEventListener('click', (e) => {
+        if (e.target.tagName === 'BUTTON') {
+            const currentActive = filterButtonsWunsch.querySelector('button.active');
+            if (currentActive) currentActive.classList.remove('active');
+            e.target.classList.add('active');
+
+            currentFilterWunsch = e.target.dataset.filter;
+            renderQueries(); // Nur neu rendern, da Cache schon da ist
+        }
+    });
+}
+// --- ENDE: GEÄNDERT ---
+
+
 /**
  * Event Listener für die Ticket-Liste (Aktionen & Aufklappen)
+ * (Event Delegation an den Wrapper)
  */
-queryList.addEventListener('click', (e) => {
+// --- START: GEÄNDERT (Listener an contentWrapper) ---
+contentWrapper.addEventListener('click', (e) => {
     const button = e.target.closest('button');
     const header = e.target.closest('.item-header');
 
+    // Finde das übergeordnete query-item, egal in welcher Liste
+    const queryItem = e.target.closest('.query-item');
+    if (!queryItem) {
+         // Klick war außerhalb eines Items (z.B. Header der Card)
+         // Speziell für den Fall, dass auf den Sende-Button im Reply-Form geklickt wird
+         if (button && button.classList.contains('btn-reply-submit')) {
+             const id = button.dataset.id;
+             e.preventDefault();
+             sendReply(id);
+         }
+         return;
+    }
+
+    const id = queryItem.dataset.id;
+
     if (button) {
         const action = button.dataset.action;
-        const id = e.target.closest('.query-item').dataset.id;
 
         // --- START ANPASSUNG (Button "Zum Termin") ---
         if (action === 'offen' || action === 'erledigt') {
@@ -514,8 +757,14 @@ queryList.addEventListener('click', (e) => {
             handleDelete(id);
         } else if (action === 'goto-date') {
             handleGoToDate(id);
+        // --- START: NEUE ACTIONS (REGEL 1) ---
+        } else if (action === 'approve') {
+            handleApprove(id);
+        } else if (action === 'reject') {
+            handleReject(id);
+        // --- ENDE: NEUE ACTIONS ---
         } else if (button.classList.contains('btn-reply-submit')) {
-            // NEU: Antwort senden
+            // NEU: Antwort senden (wird jetzt hier korrekt abgefangen)
             e.preventDefault(); // Verhindert ggf. ungewollte Aktionen
             sendReply(id);
         }
@@ -535,14 +784,15 @@ queryList.addEventListener('click', (e) => {
         }
     }
 });
+// --- ENDE: GEÄNDERT ---
 
-// --- START ANPASSUNG (Enter-Taste zum Senden) ---
+// --- START ANPASSUNG (Enter-Taste zum Senden - Listener an contentWrapper) ---
 /**
  * Event Listener für Keydown-Events in der Query-Liste (für Textareas).
  * Löst das Senden der Antwort bei "Enter" aus.
  * Erlaubt "Shift + Enter" für einen Zeilenumbruch.
  */
-queryList.addEventListener('keydown', (e) => {
+contentWrapper.addEventListener('keydown', (e) => {
     // Prüfen, ob das Ziel eine Textarea für Antworten ist UND die "Enter"-Taste gedrückt wurde
     if (e.target.tagName === 'TEXTAREA' && e.target.id.startsWith('reply-input-') && e.key === 'Enter') {
 
@@ -584,9 +834,64 @@ function escapeHTML(str) {
 }
 
 
-// --- Initialisierung ---
-// --- START: ANPASSUNG (Auch Hundeführer lädt) ---
-if (isAdmin || isScheduler || isHundefuehrer) {
-    loadQueries(); // (Starte mit Filter "Offen")
+// --- START: NEUE INITIALISIERUNGSFUNKTION ---
+async function initializePage() {
+    // Auth-Check (schon im globalen Scope passiert, wir nutzen 'isAdmin')
+    if (isAdmin) {
+        tabWunsch.style.display = 'inline-block';
+        // --- KORREKTUR: Inhalt des Wunsch-Tabs standardmäßig verstecken, bis er geklickt wird ---
+        tabContentWunsch.style.display = 'none';
+        // --- ENDE KORREKTUR ---
+    }
+
+    // Tab-Listener
+    tabAnfragen.addEventListener('click', (e) => {
+        e.preventDefault();
+        if (currentView === 'anfragen') {
+            loadQueries(); // Trotzdem neuladen, falls sich Filter geändert haben
+            return;
+        }
+        currentView = 'anfragen';
+
+        tabAnfragen.classList.add('active');
+        tabWunsch.classList.remove('active');
+
+        tabContentAnfragen.style.display = 'block';
+        tabContentWunsch.style.display = 'none';
+
+        // Lade Daten für die neue Ansicht
+        loadQueries();
+    });
+
+    // Nur Admin darf den Wunsch-Tab sehen UND klicken
+    if (isAdmin) {
+        tabWunsch.addEventListener('click', (e) => {
+            e.preventDefault();
+            if (currentView === 'wunsch') {
+                loadQueries(); // Neuladen bei Klick auf aktiven Tab
+                return;
+            }
+            currentView = 'wunsch';
+
+            tabWunsch.classList.add('active');
+            tabAnfragen.classList.remove('active');
+
+            tabContentAnfragen.style.display = 'none';
+            tabContentWunsch.style.display = 'block';
+
+            loadQueries();
+        });
+    }
+
+    // --- NEU: Schichtarten für Genehmigung laden (Regel 1) ---
+    await loadAllShiftTypes();
+
+    // Erster Ladevorgang
+    loadQueries();
 }
-// --- ENDE: ANPASSUNG ---
+
+// Initialisierung
+if (isAdmin || isScheduler || isHundefuehrer) {
+    initializePage();
+}
+// --- ENDE: NEUE INITIALISIERUNGSFUNKTION ---

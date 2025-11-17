@@ -90,9 +90,24 @@ const replyMessageInput = document.getElementById('reply-message-input');
 const replySubmitBtn = document.getElementById('reply-submit-btn');
 const queryRepliesList = document.getElementById('query-replies-list');
 
-// --- START: NEUES KONTEXTMENÜ ---
-const contextMenu = document.getElementById('shift-context-menu');
-// --- ENDE: NEUES KONTEXTMENÜ ---
+// --- START: NEUES CLICK-MODAL (ERSETZT KONTEXTMENÜ) ---
+const clickActionModal = document.getElementById('click-action-modal');
+const camTitle = document.getElementById('cam-title');
+const camSubtitle = document.getElementById('cam-subtitle');
+// Sektionen
+const camAdminWunschActions = document.getElementById('cam-admin-wunsch-actions');
+const camAdminShifts = document.getElementById('cam-admin-shifts');
+const camHundefuehrerRequests = document.getElementById('cam-hundefuehrer-requests');
+const camNotizActions = document.getElementById('cam-notiz-actions');
+const camHundefuehrerDelete = document.getElementById('cam-hundefuehrer-delete');
+// Buttons
+const camBtnApprove = document.getElementById('cam-btn-approve');
+const camBtnReject = document.getElementById('cam-btn-reject');
+const camLinkNotiz = document.getElementById('cam-link-notiz');
+const camLinkDelete = document.getElementById('cam-link-delete');
+// Globaler Kontext für das Klick-Modal
+let clickModalContext = null;
+// --- ENDE: NEUES CLICK-MODAL ---
 
 let modalQueryContext = { userId: null, dateStr: null, userName: null, queryId: null };
 // --- ENDE NEU ---
@@ -250,181 +265,227 @@ async function loadColorSettings() {
 
 function closeModal(modalEl) { modalEl.style.display = 'none'; }
 
-// --- START: KONTEXTMENÜ-FUNKTIONEN ---
+// --- START: NEUE CLICK-MODAL FUNKTIONEN ---
+
 /**
- * Versteckt das benutzerdefinierte Kontextmenü
+ * Versteckt das neue Klick-Modal
  */
-function hideContextMenu() {
-    if (contextMenu) {
-        contextMenu.style.display = 'none';
+function hideClickActionModal() {
+    if (clickActionModal) {
+        clickActionModal.style.display = 'none';
     }
+    clickModalContext = null; // Kontext löschen
 }
 
 /**
- * Zeigt das benutzerdefinierte Kontextmenü für eine Zelle an
- * NEU: Parameter 'isCellOnOwnRow' hinzugefügt
+ * Definiert, ob eine Anfrage eine "Wunsch-Anfrage" ist.
+ * (Kopiert von anfragen.js)
  */
-function showContextMenu(event, user, dateStr, cell, isCellOnOwnRow) {
-    event.preventDefault();
-    hideContextMenu(); // Schließe alle vorherigen
+const isWunschAnfrage = (q) => {
+    // Prüft auf Rolle 'Hundeführer' UND ob die Nachricht mit "Anfrage für:" beginnt
+    return q.sender_role_name === 'Hundeführer' && q.message.startsWith("Anfrage für:");
+};
 
-    // Kontext für Klick-Aktionen speichern
+/**
+ * Zeigt das neue Linksklick-Aktions-Modal für eine Zelle an
+ */
+function showClickActionModal(event, user, dateStr, cell, isCellOnOwnRow) {
+    event.preventDefault();
+    hideClickActionModal(); // Schließe alle vorherigen
+
     const userName = `${user.vorname} ${user.name}`;
+    const d = new Date(dateStr);
+    const dateDisplay = d.toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit' });
+
+    // 1. Kontext für Aktionen speichern
     const queryId = cell.dataset.queryId;
     const query = queryId ? currentShiftQueries.find(q => q.id == queryId) : null;
+    const isWunsch = query && isWunschAnfrage(query);
+    const planGesperrt = (currentPlanStatus && currentPlanStatus.is_locked);
 
-    // Menü leeren
-    contextMenu.innerHTML = '';
+    clickModalContext = {
+        userId: user.id,
+        dateStr: dateStr,
+        userName: userName,
+        queryId: queryId,
+        query: query,
+        isWunsch: isWunsch,
+        isPlanGesperrt: planGesperrt
+    };
+
+    // 2. Modal-Header füllen
+    camTitle.textContent = `${userName}`;
+    camSubtitle.textContent = `${dateDisplay}`;
+
+    // 3. Alle Sektionen verstecken (Reset)
+    camAdminWunschActions.style.display = 'none';
+    camAdminShifts.style.display = 'none';
+    camHundefuehrerRequests.style.display = 'none';
+    camNotizActions.style.display = 'none';
+    camHundefuehrerDelete.style.display = 'none';
+
     let hasContent = false;
 
-    // 1. Admin-Aktionen (Schichtzuweisung)
-    if (isAdmin && !(currentPlanStatus && currentPlanStatus.is_locked)) {
-        hasContent = true;
-        // Finde die Top 6 Schichten (basierend auf der Shortcut-Map)
-        const topAbbrevs = ['T.', 'N.', '6', 'FREI', 'U', 'X'];
+    // 4. Logik-Baum: Wer sieht was?
 
-        topAbbrevs.forEach(abbrev => {
-            const shiftType = allShiftTypesList.find(st => st.abbreviation === abbrev);
-            if (shiftType) {
-                const item = document.createElement('div');
-                item.className = 'context-menu-item';
-                // Finde Shortcut-Taste (z.B. 't') über Abkürzung (z.B. 'T.')
-                const shortcutKey = Object.keys(shortcutMap).find(key => shortcutMap[key] === abbrev) || '';
-
-                item.innerHTML = `
-                    <span><strong>${shiftType.abbreviation}</strong> (${shiftType.name})</span>
-                    ${shortcutKey ? `<span class="shortcut-hint">${shortcutKey}</span>` : ''}
-                `;
-                item.onclick = () => {
-                    saveShift(shiftType.id, user.id, dateStr);
-                    // hideContextMenu(); // Wird von saveShift() erledigt
-                };
-                contextMenu.appendChild(item);
-            }
-        });
-
-        // Trennlinie
-        contextMenu.appendChild(document.createElement('div')).className = 'context-menu-divider';
-
-        // "Alle Schichten..." (öffnet das alte Modal)
-        const allItem = document.createElement('div');
-        allItem.className = 'context-menu-item';
-        allItem.textContent = 'Alle Schichten...';
-        allItem.onclick = () => {
-            openShiftModal(user.id, dateStr, userName); // Ruft das alte Modal auf
-            hideContextMenu();
-        };
-        contextMenu.appendChild(allItem);
-    }
-    // --- START: ANGEPASSTER BLOCK FÜR HUNDEFÜHRER ---
-    // Zeige dieses Menü, wenn der Benutzer ein Hundeführer ist,
-    // es seine eigene Zeile ist UND der Plan offen ist.
-    else if (isHundefuehrer && isCellOnOwnRow && !(currentPlanStatus && currentPlanStatus.is_locked)) {
-        hasContent = true;
-
-        if (query && query.sender_user_id === loggedInUser.id) {
-            // FALL 1: Es GIBT eine EIGENE Anfrage auf dieser Zelle
-            const deleteItem = document.createElement('div');
-            deleteItem.className = 'context-menu-item';
-
-            // Text anpassen: Wenn es eine Schicht-Anfrage war (z.B. "T.?"), zeige "Zurückziehen"
-            // Wenn es eine Text-Notiz war, zeige "Notiz löschen"
-            const isShiftRequest = query.message.startsWith("Anfrage für:");
-            const deleteText = isShiftRequest ? "Anfrage zurückziehen" : "Notiz löschen";
-
-            deleteItem.innerHTML = `<span><strong style="color: #e74c3c;">${deleteText}</strong></span>`;
-            deleteItem.onclick = () => {
-                // Ruft die bestehende Löschfunktion auf (OHNE POPUP)
-                deleteShiftQueryFromModal(queryId, true); // true = force delete
-                hideContextMenu();
-            };
-            contextMenu.appendChild(deleteItem);
-
-        } else if (!query) {
-            // FALL 2: Es gibt KEINE Anfrage (leere Zelle oder Admin-Schicht)
-            // Zeige die Standard-Wunschliste
-            const requestAbbrevs = ['T.?', 'N.?', '6?', 'X?', '24?'];
-
-            requestAbbrevs.forEach(abbrev => {
-                const item = document.createElement('div');
-                item.className = 'context-menu-item';
-                item.innerHTML = `<span>Anfrage: <strong>${abbrev}</strong></span>`;
-                item.onclick = () => {
-                    requestShift(abbrev, user.id, dateStr);
-                    hideContextMenu();
-                };
-                contextMenu.appendChild(item);
-            });
+    if (isAdmin) {
+        // --- ADMIN-LOGIK ---
+        if (isWunsch && query.status === 'offen' && !planGesperrt) {
+            // FALL A1: Admin + Offene Wunsch-Anfrage + Plan offen
+            // Zeige Genehmigen/Ablehnen
+            camAdminWunschActions.style.display = 'grid';
+            camBtnApprove.textContent = `Genehmigen (${query.message.replace('Anfrage für:', '').trim()})`;
+            hasContent = true;
         }
-        // (Wenn eine Anfrage existiert, die NICHT vom Hundeführer ist (z.B. Admin-Notiz),
-        // wird hier nichts angezeigt, was korrekt ist.)
-    }
-    // --- ENDE: ANGEPASSTER BLOCK FÜR HUNDEFÜHRER ---
 
-
-    // 2. Admin ODER Planschreiber Aktionen (Anfrage/Notiz)
-    // --- START: ANPASSUNG (Hundeführer sieht das nicht mehr) ---
-    if (isAdmin || isPlanschreiber) {
-    // --- ENDE: ANPASSUNG ---
-        if (hasContent) {
-            // Trennlinie, wenn schon Aktionen da sind
-            contextMenu.appendChild(document.createElement('div')).className = 'context-menu-divider';
+        if (!planGesperrt) {
+            // FALL A2: Admin + Plan offen
+            // Zeige immer Schicht-Zuweisung
+            camAdminShifts.style.display = 'grid';
+            populateClickModalShiftButtons('admin'); // Füllt die Buttons (T., N., 6, etc.)
+            hasContent = true;
         }
+
+        // FALL A3: Admin + Plan gesperrt ODER offen
+        // Zeige immer Notiz-Aktion
+        camNotizActions.style.display = 'block';
+        camLinkNotiz.textContent = queryId ? '❓ Anfrage/Notiz ansehen...' : '❓ Text-Notiz erstellen...';
         hasContent = true;
 
-        const queryItem = document.createElement('div');
-        queryItem.className = 'context-menu-item query-item'; // Spezielle Klasse für Anfragen
-        queryItem.textContent = queryId ? '❓ Anfrage/Notiz ansehen...' : '❓ Text-Notiz erstellen...';
-        queryItem.onclick = () => {
-            openQueryModal(user.id, dateStr, userName, queryId);
-            hideContextMenu();
-        };
-        contextMenu.appendChild(queryItem);
+    } else if (isPlanschreiber) {
+        // --- PLANSCHREIBER-LOGIK ---
+        // (Darf keine Wünsche genehmigen oder Schichten zuweisen)
+        // Zeige immer Notiz-Aktion (auch wenn Plan gesperrt)
+        camNotizActions.style.display = 'block';
+        camLinkNotiz.textContent = queryId ? '❓ Anfrage/Notiz ansehen...' : '❓ Text-Notiz erstellen...';
+        hasContent = true;
+
+    } else if (isHundefuehrer && isCellOnOwnRow) {
+        // --- HUNDEFÜHRER-LOGIK (nur eigene Zeile) ---
+        if (query && query.sender_user_id === loggedInUser.id && !planGesperrt) {
+            // FALL C1: Eigene Anfrage + Plan offen
+            // Zeige "Zurückziehen"
+            camHundefuehrerDelete.style.display = 'block';
+            camLinkDelete.textContent = isWunsch ? 'Wunsch-Anfrage zurückziehen' : 'Notiz löschen';
+            hasContent = true;
+
+        } else if (!query && !planGesperrt) {
+            // FALL C2: Leere Zelle + Plan offen
+            // Zeige Wunsch-Buttons
+            camHundefuehrerRequests.style.display = 'grid';
+            populateClickModalShiftButtons('hundefuehrer'); // Füllt die Buttons (T.?, N.?, X?)
+            hasContent = true;
+        }
     }
 
-    // 3. Positionieren und anzeigen (nur wenn Inhalt vorhanden)
+    // 5. Modal positionieren und anzeigen
     if (!hasContent) {
-        hideContextMenu(); // Nichts zu zeigen
+        hideClickActionModal(); // Nichts zu zeigen (z.B. Hundeführer klickt auf fremde Zeile)
         return;
     }
 
-    // Verhindern, dass das Menü außerhalb des Bildschirms gerendert wird
-    const menuWidth = contextMenu.offsetWidth || 200;
-    const menuHeight = contextMenu.offsetHeight || 150;
+    // Positionierung (in der Nähe des Klicks, aber intelligent)
+    const cellRect = cell.getBoundingClientRect();
+    const modalWidth = clickActionModal.offsetWidth || 300;
+    const modalHeight = clickActionModal.offsetHeight;
     const docWidth = document.documentElement.clientWidth;
     const docHeight = document.documentElement.clientHeight;
 
-    let left = event.pageX;
-    let top = event.pageY;
+    let left = cellRect.left + window.scrollX;
+    let top = cellRect.bottom + window.scrollY + 5; // Standard: unter der Zelle
 
-    if (event.pageX + menuWidth > docWidth) {
-        left = docWidth - menuWidth - 5; // 5px Puffer
+    // Passt Modal an, wenn es außerhalb des Viewports wäre
+    if (left + modalWidth > docWidth) {
+        left = docWidth - modalWidth - 10; // Rechtsbündig
     }
-    if (event.pageY + menuHeight > docHeight) {
-        top = docHeight - menuHeight - 5; // 5px Puffer
+    if (cellRect.bottom + modalHeight + 5 > docHeight) {
+        top = cellRect.top + window.scrollY - modalHeight - 5; // Über der Zelle
     }
 
-    contextMenu.style.left = `${left}px`;
-    contextMenu.style.top = `${top}px`;
-    contextMenu.style.display = 'block';
+    clickActionModal.style.left = `${left}px`;
+    clickActionModal.style.top = `${top}px`;
+    clickActionModal.style.display = 'block';
 }
 
-// Globaler Klick-Listener, um das Kontextmenü zu schließen
+/**
+ * Füllt die Buttons im Klick-Modal (Admin-Schichten oder HF-Wünsche)
+ */
+function populateClickModalShiftButtons(mode) {
+    let targetContainer;
+    let buttonDefs;
+
+    if (mode === 'admin') {
+        targetContainer = camAdminShifts;
+        // Top 6 Schichten + "Alle..."
+        buttonDefs = [
+            { abbrev: 'T.', title: 'Tag (T.)' },
+            { abbrev: 'N.', title: 'Nacht (N.)' },
+            { abbrev: '6', title: 'Kurz (6)' },
+            { abbrev: 'FREI', title: 'FREI' },
+            { abbrev: 'U', title: 'Urlaub (U)' },
+            { abbrev: 'X', title: 'Wunschfrei (X)' },
+            { abbrev: 'Alle...', title: 'Alle Schichten anzeigen', isAll: true }
+        ];
+    } else { // 'hundefuehrer'
+        targetContainer = camHundefuehrerRequests;
+        // Wunsch-Anfragen
+        buttonDefs = [
+            { abbrev: 'T.?', title: 'Tag-Wunsch' },
+            { abbrev: 'N.?', title: 'Nacht-Wunsch' },
+            { abbrev: '6?', title: 'Kurz-Wunsch' },
+            { abbrev: 'X?', title: 'Wunschfrei' },
+            { abbrev: '24?', title: '24h-Wunsch' }
+            // (Hundeführer sehen keine "Alle" Option)
+        ];
+    }
+
+    targetContainer.innerHTML = `<div class="cam-section-title">${mode === 'admin' ? 'Schicht zuweisen' : 'Wunsch-Anfrage'}</div>`; // Titel neu setzen
+
+    buttonDefs.forEach(def => {
+        const btn = document.createElement('button');
+        btn.className = def.isAll ? 'cam-shift-button all' : 'cam-shift-button';
+        btn.textContent = def.abbrev;
+        btn.title = def.title;
+
+        btn.onclick = () => {
+            if (mode === 'admin') {
+                if (def.isAll) {
+                    // Öffne das alte Fallback-Modal
+                    openShiftModal(clickModalContext.userId, clickModalContext.dateStr, clickModalContext.userName);
+                } else {
+                    // Finde die Schicht-ID und speichere
+                    const shiftType = allShiftTypesList.find(st => st.abbreviation === def.abbrev);
+                    if (shiftType) {
+                        saveShift(shiftType.id, clickModalContext.userId, clickModalContext.dateStr);
+                    }
+                }
+            } else { // 'hundefuehrer'
+                // Rufe die Wunsch-Anfrage-Funktion auf
+                requestShift(def.abbrev, clickModalContext.userId, clickModalContext.dateStr);
+            }
+            hideClickActionModal(); // Modal nach Aktion schließen
+        };
+        targetContainer.appendChild(btn);
+    });
+}
+
+
+// --- Globale Klick-Listener (ersetzen Kontextmenü-Listener) ---
 window.addEventListener('click', (e) => {
-    // Schließe das Kontextmenü, wenn der Klick NICHT auf einem Menü-Item war
-    if (e.target.closest('#shift-context-menu') === null) {
-        hideContextMenu();
+    // Schließe das Klick-Modal, wenn der Klick AUSSENHALB des Modals ODER AUSSENHALB einer Zelle stattfindet
+    if (!e.target.closest('.grid-cell') && !e.target.closest('#click-action-modal')) {
+        hideClickActionModal();
     }
 }, true); // Use capture phase
 
-// --- ENDE: KONTEXTMENÜ-FUNKTIONEN ---
+// --- ENDE: NEUE CLICK-MODAL FUNKTIONEN ---
 
 
 /**
  * Öffnet das (alte) Modal für "Alle Schichten..."
  */
 function openShiftModal(userId, dateStr, userName) {
-    // Diese Funktion wird jetzt nur noch als Fallback vom Kontextmenü aufgerufen
+    // Diese Funktion wird jetzt nur noch als Fallback vom Klick-Modal aufgerufen
     if (!isAdmin || (currentPlanStatus && currentPlanStatus.is_locked)) {
         return;
     }
@@ -454,17 +515,49 @@ if (queryDeleteBtn) {
 if (replySubmitBtn) {
     replySubmitBtn.onclick = () => sendReply();
 }
+
+// --- NEU: Listener für das Klick-Modal ---
+if (camLinkNotiz) {
+    camLinkNotiz.onclick = () => {
+        // Öffnet das (zweite) Query/Notiz-Modal
+        openQueryModal(clickModalContext.userId, clickModalContext.dateStr, clickModalContext.userName, clickModalContext.queryId);
+        hideClickActionModal();
+    };
+}
+if (camLinkDelete) {
+    camLinkDelete.onclick = () => {
+        // Ruft die Löschfunktion direkt auf (mit Bestätigung)
+        deleteShiftQueryFromModal(clickModalContext.queryId, false); // false = nicht erzwingen, Bestätigung anzeigen
+        hideClickActionModal();
+    };
+}
+if (camBtnApprove) {
+    camBtnApprove.onclick = () => {
+        // Ruft die neue Genehmigen-Funktion auf
+        handleAdminApprove(clickModalContext.query);
+        hideClickActionModal();
+    };
+}
+if (camBtnReject) {
+    camBtnReject.onclick = () => {
+        // Ruft die neue Ablehnen-Funktion auf
+        handleAdminReject(clickModalContext.query);
+        hideClickActionModal();
+    };
+}
 // --- ENDE NEU ---
+
 
 window.onclick = (event) => {
     if (event.target == shiftModal) closeModal(shiftModal);
     if (event.target == queryModal) closeModal(queryModal); // <<< NEU
 
-    // --- NEU: Kontextmenü schließen ---
-    if (event.target.closest('#shift-context-menu') === null) {
-        hideContextMenu();
+    // --- START: GEÄNDERT (Schließt Klick-Modal) ---
+    // Schließe das Klick-Modal, wenn der Klick AUSSENHALB des Modals ODER AUSSENHALB einer Zelle stattfindet
+    if (!event.target.closest('.grid-cell') && !event.target.closest('#click-action-modal')) {
+        hideClickActionModal();
     }
-    // --- ENDE NEU ---
+    // --- ENDE: GEÄNDERT ---
 
 }
 
@@ -620,8 +713,7 @@ function updatePlanStatusUI(statusData) {
     } else {
         planLockBtn.textContent = "Offen";
         planLockBtn.title = "Plan sperren, um Bearbeitung zu verhindern";
-        planLockBtn.classList.remove('locked');
-        document.body.classList.remove('plan-locked'); // CSS-Klasse entfernen
+        planLockBtn.classList.remove('locked'); // CSS-Klasse entfernen
     }
 
     // 3. Status-Toggle-Button (nur für Admins)
@@ -824,14 +916,13 @@ function buildGridDOM() {
             }
 
             // Prüfen, ob es eine Schicht-Anfrage ist (z.B. "Anfrage für: T.?")
-            const requestPrefix = "Anfrage für: ";
-            let isShiftRequest = false;
+            // (Hilfsfunktion 'isWunschAnfrage' wird hier wiederverwendet)
+            const isShiftRequest = queryForCell && isWunschAnfrage(queryForCell);
             let shiftRequestText = "";
 
-            if (queryForCell && queryForCell.message.startsWith(requestPrefix)) {
-                isShiftRequest = true;
+            if (isShiftRequest) {
                 // Schneidet "Anfrage für: " ab, z.B. "T.?"
-                shiftRequestText = queryForCell.message.substring(requestPrefix.length);
+                shiftRequestText = queryForCell.message.substring("Anfrage für:".length).trim();
             }
 
             if (shiftType) {
@@ -885,15 +976,18 @@ function buildGridDOM() {
             if (textColor) { cell.style.color = textColor; }
             cell.dataset.key = key;
 
-            // --- START: ÜBERARBEITETE EVENT HANDLER (MIT HUNDEFÜHRER) ---
+            // --- START: ÜBERARBEITETE EVENT HANDLER (JETZT LINKSKLICK) ---
 
             const isCellOnOwnRow = isCurrentUser;
 
-            // Rechtsklick-Handler (Kontextmenü)
-            const handleContextMenu = (e) => {
+            // LINKSKLICK-Handler (ersetzt Rechtsklick)
+            const handleClick = (e) => {
                 e.preventDefault();
+                // Besucher dürfen nie klicken
+                if (isVisitor) return;
+
                 // Wir übergeben den *Zeilen-Benutzer* (user) und ob es die *eigene Zeile* ist (isCellOnOwnRow)
-                showContextMenu(e, user, dateStr, cell, isCellOnOwnRow);
+                showClickActionModal(e, user, dateStr, cell, isCellOnOwnRow);
             };
 
             // Maus-Hover-Handler (für Shortcuts & Visuelles Feedback)
@@ -903,9 +997,9 @@ function buildGridDOM() {
                     userName: `${user.vorname} ${user.name}`,
                     cellElement: cell
                 };
-                // Visueller Hover-Effekt nur für Admins mit offenem Plan
-                if (isAdmin && !(currentPlanStatus && currentPlanStatus.is_locked)) {
-                    cell.classList.add('hovered');
+                // Visueller Hover-Effekt (nur wenn Plan offen ODER wenn man nur liest)
+                if (!(currentPlanStatus && currentPlanStatus.is_locked) || isVisitor || isPlanschreiber || isHundefuehrer) {
+                     cell.classList.add('hovered');
                 }
             };
             const handleMouseLeave = () => {
@@ -914,17 +1008,19 @@ function buildGridDOM() {
             };
 
             // Wer darf was?
-            if (isAdmin || isPlanschreiber) {
-                // Admins & Planschreiber: Rechtsklick überall, Hover überall
-                cell.addEventListener('contextmenu', handleContextMenu);
+            if (isVisitor) {
+                // Besucher: Nur Hover
                 cell.addEventListener('mouseenter', handleMouseEnter);
                 cell.addEventListener('mouseleave', handleMouseLeave);
-            } else if (isHundefuehrer && isCellOnOwnRow) {
-                // Hundeführer: Rechtsklick nur auf eigener Zeile, Hover nur auf eigener Zeile
-                cell.addEventListener('contextmenu', handleContextMenu);
+            } else {
+                // Alle anderen (Admin, Planschreiber, Hundeführer): Linksklick + Hover
+                cell.addEventListener('click', handleClick);
                 cell.addEventListener('mouseenter', handleMouseEnter);
                 cell.addEventListener('mouseleave', handleMouseLeave);
             }
+
+            // Verhindere das Standard-Kontextmenü (Rechtsklick) auf ALLEN Zellen
+            cell.addEventListener('contextmenu', e => e.preventDefault());
 
             // --- ENDE: ÜBERARBEITETE EVENT HANDLER ---
 
@@ -1309,6 +1405,10 @@ async function saveShift(shifttypeId, userId, dateStr) {
     // --- NEU: Sperr-Check (redundant zur API, aber gut für UX) ---
     if (currentPlanStatus && currentPlanStatus.is_locked) {
         console.warn("Plan ist gesperrt. Speichern blockiert.");
+        // --- START: NEU (REGEL 1) ---
+        // Zeige den Fehler auch als Alert an, da dies eine direkte Aktion ist
+        alert(`Aktion blockiert: Der Schichtplan für ${currentMonth}/${currentYear} ist gesperrt.`);
+        // --- ENDE: NEU ---
         return;
     }
     // --- ENDE NEU ---
@@ -1324,10 +1424,10 @@ async function saveShift(shifttypeId, userId, dateStr) {
             shifttype_id: shifttypeId
         });
 
-        // --- START: MODAL/MENÜ SCHLIESSEN ---
-        // Schließe EGAL WELCHES Menü offen war (altes Modal oder neues Kontextmenü)
+        // --- START: MODAL/MENÜ SCHLIESSEN (GEÄNDERT) ---
+        // Schließe EGAL WELCHES Menü offen war (altes Modal oder neues Klick-Modal)
         closeModal(shiftModal);
-        hideContextMenu();
+        hideClickActionModal();
         // --- ENDE: MODAL/MENÜ SCHLIESSEN ---
 
 
@@ -1472,8 +1572,10 @@ window.addEventListener('keydown', async (event) => {
     if (currentPlanStatus && currentPlanStatus.is_locked) return;
     // --- ENDE NEU ---
 
-    // Blockieren, wenn ein Modal (alt oder neu) offen ist ODER das Kontextmenü
-    if (shiftModal.style.display === 'block' || queryModal.style.display === 'block' || contextMenu.style.display === 'block') {
+    // Blockieren, wenn ein Modal (alt oder neu) offen ist ODER das Klick-Modal
+    if (shiftModal.style.display === 'block' ||
+        queryModal.style.display === 'block' ||
+        (clickActionModal && clickActionModal.style.display === 'block')) { // <-- GEÄNDERT
         return;
     }
 
@@ -1500,7 +1602,10 @@ window.addEventListener('keydown', async (event) => {
  */
 async function requestShift(shiftAbbrev, userId, dateStr) {
     // (Doppelter Check, aber sicher ist sicher)
-    if (!isHundefuehrer || (currentPlanStatus && currentPlanStatus.is_locked)) {
+    // --- START: GEÄNDERT (Auch Admin kann das jetzt, um einen Fehler zu testen) ---
+    // if (!isHundefuehrer || (currentPlanStatus && currentPlanStatus.is_locked)) {
+    if (isVisitor || (currentPlanStatus && currentPlanStatus.is_locked)) {
+    // --- ENDE: GEÄNDERT ---
         return;
     }
 
@@ -1524,7 +1629,7 @@ async function requestShift(shiftAbbrev, userId, dateStr) {
 
         // Daten neu laden und Grid neu zeichnen, um das ❓ Icon anzuzeigen
         await loadShiftQueries();
-        buildGridDOM(); // Baut das Grid neu auf
+        buildGridDOM();
 
         // --- START ANPASSUNG (Regel 2: Event-Dispatching) ---
         triggerNotificationUpdate();
@@ -1918,12 +2023,13 @@ async function resolveShiftQuery() {
 async function deleteShiftQueryFromModal(queryId, force = false) {
 
     // --- START: ANPASSUNG (Verwende Parameter oder globalen Kontext) ---
+    // Bestimme die ID entweder aus dem Argument (vom Klick-Modal) oder dem globalen Kontext (vom Query-Modal)
     const qId = queryId || modalQueryContext.queryId;
     if (!qId) return;
+    // --- ENDE: ANPASSUNG ---
 
     // (Berechtigungscheck)
     if (!isAdmin && !isPlanschreiber && !isHundefuehrer) return;
-    // --- ENDE: ANPASSUNG ---
 
     // (Hundeführer-Check: Darf er diese löschen?)
     if (isHundefuehrer && !isAdmin && !isPlanschreiber) {
@@ -1968,6 +2074,108 @@ async function deleteShiftQueryFromModal(queryId, force = false) {
     }
 }
 // --- ENDE NEUE FUNKTIONEN ---
+
+
+// --- START: NEUE FUNKTIONEN FÜR GENEHMIGEN/ABLEHNEN (Admin) ---
+/**
+ * Genehmigt eine Wunsch-Anfrage (Admin only)
+ */
+async function handleAdminApprove(query) {
+    if (!isAdmin || !query) {
+        alert("Fehler: Nur Admins können genehmigen."); return;
+    }
+    if (clickModalContext.isPlanGesperrt) {
+        alert(`Aktion blockiert: Der Schichtplan für ${currentMonth}/${currentYear} ist gesperrt.`);
+        return;
+    }
+
+    // 1. Parse abbreviation (z.B. "T.") from message (z.B. "Anfrage für: T.?")
+    const prefix = "Anfrage für:";
+    let abbrev = query.message.substring(prefix.length).trim();
+    abbrev = abbrev.endsWith('?') ? abbrev.slice(0, -1) : abbrev; // Entfernt '?' -> "T."
+
+    // 2. Finde shifttype_id
+    const shiftType = allShiftTypesList.find(st => st.abbreviation === abbrev);
+    if (!shiftType) {
+        alert(`Fehler: Schichtart "${abbrev}" nicht im System gefunden. Kann nicht genehmigen.`);
+        return;
+    }
+
+    // 3. Zeige Lade-Feedback (im Grid)
+    const cell = findCellByKey(`${query.target_user_id}-${query.shift_date}`);
+    if (cell) cell.textContent = '...';
+
+    try {
+        // 4. Rufe 'saveShift' API auf (/api/shifts)
+        // (Diese Funktion nutzt 'apiFetch' und fängt 403-Sperrfehler ab)
+        await apiFetch('/api/shifts', 'POST', {
+            user_id: query.target_user_id,
+            date: query.shift_date,
+            shifttype_id: shiftType.id
+        });
+
+        // 5. Schließe die Anfrage (markiere als 'erledigt')
+        await apiFetch(`/api/queries/${query.id}/status`, 'PUT', { status: 'erledigt' });
+
+        // 6. Lade ALLES neu (effizientester Weg, um Grid + Notizen zu aktualisieren)
+        await loadShiftQueries();
+        await renderGrid(); // Ruft intern buildGridDOM + buildStaffingTable auf
+        triggerNotificationUpdate();
+
+    } catch (error) {
+        // Wenn ein Fehler auftritt (z.B. Plan gesperrt), wird der Button wiederhergestellt
+        alert(`Fehler beim Genehmigen: ${error.message}`);
+        // Grid neu laden, um den "..."-Status zurückzusetzen
+        buildGridDOM();
+    }
+}
+
+/**
+ * Lehnt eine Wunsch-Anfrage ab (Admin only)
+ * Setzt die Schicht auf FREI und löscht die Anfrage.
+ */
+async function handleAdminReject(query) {
+    if (!isAdmin || !query) {
+        alert("Fehler: Nur Admins können ablehnen."); return;
+    }
+    if (clickModalContext.isPlanGesperrt) {
+        alert(`Aktion blockiert: Der Schichtplan für ${currentMonth}/${currentYear} ist gesperrt.`);
+        return;
+    }
+
+    if (!confirm("Sind Sie sicher, dass Sie diese Anfrage ABLEHNEN möchten? \n(Die Schicht im Plan wird auf 'FREI' gesetzt und die Anfrage gelöscht.)")) {
+        return;
+    }
+
+    // 1. Zeige Lade-Feedback
+    const cell = findCellByKey(`${query.target_user_id}-${query.shift_date}`);
+    if (cell) cell.textContent = '...';
+
+    try {
+        // 2. Lösche die Schicht im Plan (setze auf 'FREI'/null)
+        // (Die 'saveShift'-Route /api/shifts prüft auf Plan-Sperre)
+        await apiFetch('/api/shifts', 'POST', {
+            user_id: query.target_user_id,
+            date: query.shift_date,
+            shifttype_id: null // Setzt auf "FREI"
+        });
+
+        // 3. Lösche die Anfrage selbst (API-Aufruf /api/queries/id)
+        await apiFetch(`/api/queries/${query.id}`, 'DELETE');
+
+        // 4. Lade ALLES neu
+        await loadShiftQueries();
+        await renderGrid();
+        triggerNotificationUpdate();
+
+    } catch (error) {
+        // Fehler (z.B. Plan gesperrt)
+        alert(`Fehler beim Ablehnen: ${error.message}`);
+        buildGridDOM(); // Grid zurücksetzen
+    }
+}
+// --- ENDE: NEUE FUNKTIONEN FÜR GENEHMIGEN/ABLEHNEN ---
+
 
 
 // --- Initialisierung ---

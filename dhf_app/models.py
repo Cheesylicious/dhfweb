@@ -1,3 +1,4 @@
+# cheesylicious/dhfweb/dhfweb-ec604d738e9bd121b65cc8557f8bb98d2aa18062/dhf_app/models.py
 from .extensions import db
 from flask_login import UserMixin
 from datetime import datetime
@@ -303,10 +304,18 @@ class ShiftQuery(db.Model):
 
     def to_dict(self):
         target_name = f"{self.target_user.vorname} {self.target_user.name}" if self.target_user else "Thema des Tages / Allgemein"
+
+        # --- START: NEU (Fügt Rolle des Absenders hinzu) ---
+        sender_role = "Unbekannt"
+        if self.sender and self.sender.role:
+            sender_role = self.sender.role.name
+        # --- ENDE: NEU ---
+
         return {
             "id": self.id,
             "sender_user_id": self.sender_user_id,
             "sender_name": f"{self.sender.vorname} {self.sender.name}" if self.sender else "Unbekannt",
+            "sender_role_name": sender_role,  # <<< NEUES FELD
             "target_user_id": self.target_user_id,
             "target_name": target_name,
             "shift_date": self.shift_date.isoformat(),
