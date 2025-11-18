@@ -133,6 +133,7 @@ async function loadAllShiftTypes() {
  */
 async function loadQueries() {
     const currentList = (currentView === 'anfragen') ? queryListAnfragen : queryListWunsch;
+
     currentList.innerHTML = '<li>Lade Anfragen...</li>';
 
     try {
@@ -360,7 +361,6 @@ function renderQueries() {
         queriesAnfragen.forEach(query => queryListAnfragen.appendChild(createQueryElement(query)));
     }
 
-    // --- WICHTIGE KORREKTUR: AUCH HUNDEFÜHRER DARF WÜNSCHE SEHEN ---
     if (isAdmin || isHundefuehrer) {
         if (queriesWunsch.length === 0) {
             queryListWunsch.innerHTML = '<li style="color: #bdc3c7; padding: 20px; text-align: center;">Keine Wunsch-Anfragen für diesen Filter gefunden.</li>';
@@ -447,31 +447,34 @@ function escapeHTML(str) {
 // --- Init ---
 
 async function initializePage() {
-    // 1. Tab Sichtbarkeit: Auch für Hundeführer!
+    // --- KORREKTUR: Tab-Steuerung für Hundeführer ---
     if (isAdmin || isHundefuehrer) {
         tabWunsch.style.display = 'inline-block';
-        // Inhalt aber erstmal verstecken, es sei denn... (siehe unten)
         tabContentWunsch.style.display = 'none';
     }
 
-    // 2. URL Parameter auswerten
+    if (isHundefuehrer) {
+        // Hundeführer sieht den "Alle Anfragen"-Tab nicht
+        tabAnfragen.style.display = 'none';
+    }
+
     const urlParams = new URLSearchParams(window.location.search);
     const tabParam = urlParams.get('tab');
 
-    // Wenn Parameter da ist UND User berechtigt, Tab wechseln
-    if (tabParam === 'wunsch' && (isAdmin || isHundefuehrer)) {
+    // --- KORREKTUR: Automatischer Tab-Wechsel ---
+    // Wenn (Parameter gesetzt ODER Hundeführer) UND Berechtigung
+    if ((tabParam === 'wunsch' || isHundefuehrer) && (isAdmin || isHundefuehrer)) {
          currentView = 'wunsch';
          tabWunsch.classList.add('active');
          tabAnfragen.classList.remove('active');
          tabContentAnfragen.style.display = 'none';
          tabContentWunsch.style.display = 'block';
     } else {
-         // Default (Anfragen-Tab)
+         // Standard (nur Admin/Planschreiber)
          tabAnfragen.classList.add('active');
          tabContentAnfragen.style.display = 'block';
     }
 
-    // 3. Event Listener für Tabs
     tabAnfragen.addEventListener('click', (e) => {
         e.preventDefault();
         if (currentView === 'anfragen') { loadQueries(); return; }
@@ -483,7 +486,6 @@ async function initializePage() {
         loadQueries();
     });
 
-    // WICHTIG: Listener auch für Hundeführer
     if (isAdmin || isHundefuehrer) {
         tabWunsch.addEventListener('click', (e) => {
             e.preventDefault();
@@ -565,7 +567,6 @@ async function initializePage() {
     loadQueries();
 }
 
-// Starten der Init-Funktion für berechtigte Rollen
 if (isAdmin || isScheduler || isHundefuehrer) {
     initializePage();
 }
