@@ -306,7 +306,6 @@ function showClickActionModal(event, user, dateStr, cell, isCellOnOwnRow) {
         // 3. Notiz-Aktion (Bezieht sich jetzt auf 'notizQuery')
         camNotizActions.style.display = 'block';
         camLinkNotiz.textContent = notizQuery ? '❓ Text-Notiz ansehen...' : '❓ Text-Notiz erstellen...';
-        // Wir merken uns die relevante ID für den Klick
         camLinkNotiz.dataset.targetQueryId = notizQuery ? notizQuery.id : "";
         hasContent = true;
 
@@ -1890,9 +1889,14 @@ async function initialize() {
             highlightData = JSON.parse(data);
             localStorage.removeItem(DHF_HIGHLIGHT_KEY);
 
-            const targetDate = new Date(highlightData.date);
-            currentYear = targetDate.getFullYear();
-            currentMonth = targetDate.getMonth() + 1;
+            // --- KORREKTUR: Manuelles Parsen des Datums ---
+            const parts = highlightData.date.split('-'); // YYYY-MM-DD
+            const year = parseInt(parts[0]);
+            const month = parseInt(parts[1]);
+            // Tag wird in highlightCells berechnet
+
+            currentYear = year;
+            currentMonth = month;
         }
     } catch (e) {
         console.error("Fehler beim Lesen der Highlight-Daten:", e);
@@ -1901,8 +1905,11 @@ async function initialize() {
 
     await renderGrid();
 
+    // --- KORREKTUR: Kurze Verzögerung für DOM-Aufbau ---
     if (highlightData) {
-        highlightCells(highlightData.date, highlightData.targetUserId);
+        setTimeout(() => {
+            highlightCells(highlightData.date, highlightData.targetUserId);
+        }, 300);
     }
 }
 

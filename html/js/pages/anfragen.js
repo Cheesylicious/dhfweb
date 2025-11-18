@@ -1,33 +1,35 @@
-// js/pages/anfragen.js
-
-// --- IMPORTE (Regel 4: Wiederverwendung) ---
-import { API_URL, DHF_HIGHLIGHT_KEY } from '../utils/constants.js';
-import { apiFetch } from '../utils/api.js';
-import { initAuthCheck, logout } from '../utils/auth.js';
-import { triggerNotificationUpdate, isWunschAnfrage, escapeHTML } from '../utils/helpers.js';
+// cheesylicious/dhfweb/dhfweb-ec604d738e9bd121b65cc8557f8bb98d2aa18062/html/anfragen.js
 
 // --- Globales Setup ---
+const API_URL = 'http://46.224.63.203:5000';
 let user;
 let isAdmin = false;
 let isScheduler = false; // "Planschreiber"
 let isHundefuehrer = false;
 
-// --- Auth-Check (Regel 4: Zentralisiert) ---
-try {
-    // Ruft die zentrale Auth-Prüfung auf.
-    // Diese Funktion kümmert sich um:
-    // 1. User-Prüfung (localStorage)
-    // 2. Rollen-Zuweisung (isAdmin, etc.)
-    // 3. Navigations-Anpassung (Links ein/ausblenden)
-    // 4. Logout-Button-Listener
-    // 5. Auto-Logout-Timer (aus shared_feedback.js)
-    const authData = initAuthCheck();
-    user = authData.user;
-    isAdmin = authData.isAdmin;
-    isScheduler = authData.isPlanschreiber;
-    isHundefuehrer = authData.isHundefuehrer;
+// Key für localStorage (zum Springen in den Schichtplan)
+const DHF_HIGHLIGHT_KEY = 'dhf_highlight_goto';
 
-    // *** SEHR WICHTIG: Zugriffsschutz (Spezifisch für diese Seite) ***
+// --- Auth-Check und Logout-Setup ---
+async function logout() {
+    try { await apiFetch('/api/logout', 'POST'); }
+    catch (e) { console.error(e); }
+    finally {
+        localStorage.removeItem('dhf_user');
+        window.location.href = 'index.html?logout=true';
+    }
+}
+
+try {
+    user = JSON.parse(localStorage.getItem('dhf_user'));
+    if (!user || !user.vorname || !user.role) { throw new Error("Kein User oder fehlende Rolle"); }
+    document.getElementById('welcome-user').textContent = `Willkommen, ${user.vorname}!`;
+
+    isAdmin = user.role.name === 'admin';
+    isScheduler = user.role.name === 'Planschreiber';
+    isHundefuehrer = user.role.name === 'Hundeführer';
+
+    // *** Zugriffsschutz ***
     if (!isAdmin && !isScheduler && !isHundefuehrer) {
         const wrapper = document.getElementById('content-wrapper');
         wrapper.classList.add('restricted-view');
@@ -39,37 +41,65 @@ try {
         throw new Error("Keine berechtigte Rolle für Anfragen-Verwaltung.");
     }
 
-    // UI-Anpassung (spezifisch für diese Seite)
+    // UI-Anpassung
     if (isAdmin) {
-         document.getElementById('sub-nav-feedback').style.display = 'inline-block';
+        document.getElementById('nav-users').style.display = 'inline-flex';
+        document.getElementById('nav-feedback').style.display = 'inline-flex';
+        document.getElementById('sub-nav-feedback').style.display = 'inline-block';
     } else {
+        document.getElementById('nav-users').style.display = 'none';
         if (isScheduler) {
-             // Planschreiber sieht Feedback-Hauptlink (wg. initAuthCheck), aber nicht den Sub-Nav-Link
+             document.getElementById('nav-feedback').style.display = 'inline-flex';
              document.getElementById('sub-nav-feedback').style.display = 'none';
         } else {
-             // Hundeführer sieht beides nicht (wg. initAuthCheck)
+             document.getElementById('nav-feedback').style.display = 'none';
              document.getElementById('sub-nav-feedback').style.display = 'none';
         }
     }
+    document.getElementById('nav-dashboard').style.display = 'inline-flex';
+
+    document.getElementById('logout-btn').onclick = logout;
 
 } catch (e) {
-    // Wenn initAuthCheck fehlschlägt (z.B. kein User) ODER der Zugriffsschutz oben greift,
-    // wird die Ausführung dieser Datei gestoppt. Der User wird bereits umgeleitet (via auth.js).
-    console.error("Fehler bei der Initialisierung von anfragen.js:", e.message);
-
-    // Wir stoppen die weitere Ausführung des Skripts, indem wir einen leeren Error werfen
-    // (um zu verhindern, dass initializePage() unten aufgerufen wird)
-    throw new Error("Initialisierung gestoppt.");
+    if (!e.message.includes("berechtigte Rolle")) {
+         logout();
+    }
 }
 
-// (Die redundante apiFetch-Funktion wurde entfernt)
+// --- Globale API-Funktion ---
+async function apiFetch(endpoint, method = 'GET', body = null) {
+    const options = {
+        method,
+        headers: { 'Content-Type': 'application/json' },
+        credentials: 'include'
+    };
+    if (body) { options.body = JSON.stringify(body); }
+    const response = await fetch(API_URL + endpoint, options);
+    if (response.status === 401 || response.status === 403) {
+        if (response.status === 401) { logout(); }
+        throw new Error('Sitzung ungültig oder fehlende Rechte.');
+    }
+    const contentType = response.headers.get("content-type");
+    let data;
+    if (contentType && contentType.indexOf("application/json") !== -1) {
+        data = await response.json();
+    } else {
+        data = { message: await response.text() };
+    }
+    if (!response.ok) {
+        throw new Error(data.message || 'API-Fehler');
+    }
+    return data;
+}
 
-// --- Seitenlogik für Anfragen-Verwaltung ---
+
+// --- Seitenlogik ---
 
 const queryListAnfragen = document.getElementById('query-list-anfragen');
 const queryListWunsch = document.getElementById('query-list-wunsch');
 const filterButtonsAnfragen = document.getElementById('filter-buttons-anfragen');
 const filterButtonsWunsch = document.getElementById('filter-buttons-wunsch');
+
 const tabAnfragen = document.getElementById('sub-nav-anfragen');
 const tabWunsch = document.getElementById('sub-nav-wunsch');
 const tabContentAnfragen = document.getElementById('tab-content-anfragen');
@@ -79,32 +109,34 @@ const contentWrapper = document.getElementById('content-wrapper');
 let currentFilterAnfragen = "offen";
 let currentFilterWunsch = "offen";
 let currentView = 'anfragen';
+
 let allQueriesCache = [];
 let allShiftTypesList = [];
 
-// (Die redundante triggerNotificationUpdate-Funktion wurde entfernt)
+function triggerNotificationUpdate() {
+    window.dispatchEvent(new CustomEvent('dhf:notification_update'));
+}
 
 /**
- * Lädt alle Schichtarten, damit wir "T.?" zu einer ID zuordnen können.
+ * Lädt Schichtarten für Genehmigung (Admin only)
  */
 async function loadAllShiftTypes() {
     try {
         allShiftTypesList = await apiFetch('/api/shifttypes');
     } catch (e) {
         console.error("Fehler beim Laden der Schichtarten:", e);
-        alert("Kritischer Fehler: Schichtarten konnten nicht geladen werden. Genehmigen/Ablehnen ist deaktiviert.");
     }
 }
 
 /**
- * Lädt die Anfragen von der API (wird bei Tab-Wechsel und Initialisierung aufgerufen)
+ * Lädt Anfragen
  */
 async function loadQueries() {
     const currentList = (currentView === 'anfragen') ? queryListAnfragen : queryListWunsch;
     currentList.innerHTML = '<li>Lade Anfragen...</li>';
 
     try {
-        // Lade IMMER alle, der Cache wird in renderQueries() gefiltert (Regel 2: Effizient)
+        // Lade ALLE, Filterung erfolgt im Client (renderQueries)
         const queries = await apiFetch(`/api/queries?status=`);
         allQueriesCache = queries;
         renderQueries();
@@ -113,7 +145,7 @@ async function loadQueries() {
     }
 }
 
-// --- Konversations-Logik (Seiten-spezifisch) ---
+// --- Konversations-Logik ---
 
 function renderReplies(queryId, originalQuery, replies) {
     const repliesContainer = document.getElementById(`replies-${queryId}`);
@@ -200,14 +232,12 @@ async function sendReply(queryId) {
         const itemBody = document.querySelector(`.query-item[data-id="${queryId}"] .item-body`);
         itemBody.dataset.loaded = 'false';
 
-        triggerNotificationUpdate(); // (Importiert)
-        await loadQueries(); // (Importiert)
+        triggerNotificationUpdate();
+        await loadQueries();
 
         if (itemBody.style.display === 'block') {
             const originalQuery = allQueriesCache.find(q => q.id == queryId);
-            if(originalQuery) {
-                 await loadConversation(queryId);
-            }
+            if(originalQuery) await loadConversation(queryId);
         }
     } catch (e) {
         alert(`Fehler beim Senden der Antwort: ${e.message}`);
@@ -217,13 +247,12 @@ async function sendReply(queryId) {
     }
 }
 
-// --- Navigations- & Render-Logik (Seiten-spezifisch) ---
+// --- Helper ---
 
 function handleGoToDate(queryId) {
     const query = allQueriesCache.find(q => q.id == queryId);
-    if (!query) {
-        alert("Fehler: Anfrage nicht im Cache gefunden."); return;
-    }
+    if (!query) { alert("Fehler: Anfrage nicht im Cache."); return; }
+
     const highlightData = {
         date: query.shift_date,
         targetUserId: query.target_user_id
@@ -232,12 +261,13 @@ function handleGoToDate(queryId) {
         localStorage.setItem(DHF_HIGHLIGHT_KEY, JSON.stringify(highlightData));
         window.location.href = 'schichtplan.html';
     } catch (e) {
-        console.error("Fehler beim Speichern im localStorage:", e);
-        alert("Fehler bei der Weiterleitung.");
+        console.error("LocalStorage Fehler:", e);
     }
 }
 
-// (Die redundante isWunschAnfrage-Funktion wurde entfernt)
+const isWunschAnfrage = (q) => {
+    return q.sender_role_name === 'Hundeführer' && q.message.startsWith("Anfrage für:");
+};
 
 function createQueryElement(query) {
     const li = document.createElement('li');
@@ -258,14 +288,14 @@ function createQueryElement(query) {
     const shiftDate = new Date(query.shift_date).toLocaleDateString('de-DE', {day: '2-digit', month: '2-digit', year: 'numeric'});
 
     let actionButtons = '';
-    const isWunsch = isWunschAnfrage(query); // (Importiert)
+    const isWunsch = isWunschAnfrage(query);
 
-    actionButtons += `<button class="btn-goto-date" data-action="goto-date" title="Zum Tag im Schichtplan springen">Zum Termin</button>`;
+    actionButtons += `<button class="btn-goto-date" data-action="goto-date">Zum Termin</button>`;
 
     if (isWunsch && query.status === 'offen' && (isAdmin)) {
-        actionButtons += `<button class="btn-approve" data-action="approve" title="Trägt die Schicht '${query.message.replace('Anfrage für:', '').trim()}' im Plan ein und schließt die Anfrage.">Genehmigen</button>`;
-        actionButtons += `<button class="btn-reject" data-action="reject" title="Lehnt die Anfrage ab, setzt die Schicht auf 'FREI' und löscht die Anfrage.">Ablehnen</button>`;
-        actionButtons += `<button class="btn-delete-query" data-action="delete" title="Löscht die Anfrage, ändert aber NICHTS am Schichtplan.">Löschen</button>`;
+        actionButtons += `<button class="btn-approve" data-action="approve">Genehmigen</button>`;
+        actionButtons += `<button class="btn-reject" data-action="reject">Ablehnen</button>`;
+        actionButtons += `<button class="btn-delete-query" data-action="delete">Löschen</button>`;
     } else if (isAdmin || isScheduler) {
         if (query.status === 'offen') {
             actionButtons += `<button class="btn-done" data-action="erledigt">Als 'erledigt' markieren</button>`;
@@ -315,12 +345,12 @@ function renderQueries() {
 
     const queriesWunsch = allQueriesCache.filter(q => {
         if (currentFilterWunsch !== '' && q.status !== currentFilterWunsch) return false;
-        return isWunschAnfrage(q); // (Importiert)
+        return isWunschAnfrage(q);
     });
 
     const queriesAnfragen = allQueriesCache.filter(q => {
         if (currentFilterAnfragen !== '' && q.status !== currentFilterAnfragen) return false;
-        return !isWunschAnfrage(q); // (Importiert)
+        return !isWunschAnfrage(q);
     });
 
     if (queriesAnfragen.length === 0) {
@@ -330,7 +360,8 @@ function renderQueries() {
         queriesAnfragen.forEach(query => queryListAnfragen.appendChild(createQueryElement(query)));
     }
 
-    if (isAdmin) {
+    // --- WICHTIGE KORREKTUR: AUCH HUNDEFÜHRER DARF WÜNSCHE SEHEN ---
+    if (isAdmin || isHundefuehrer) {
         if (queriesWunsch.length === 0) {
             queryListWunsch.innerHTML = '<li style="color: #bdc3c7; padding: 20px; text-align: center;">Keine Wunsch-Anfragen für diesen Filter gefunden.</li>';
         } else {
@@ -340,32 +371,24 @@ function renderQueries() {
     }
 }
 
-// --- Aktions-Handler (Seiten-spezifisch) ---
+// --- Actions ---
 
 async function handleUpdateStatus(id, newStatus) {
-    const item = document.querySelector(`.query-item[data-id="${id}"]`);
-    if (!item) return;
     try {
         const updatedQuery = await apiFetch(`/api/queries/${id}/status`, 'PUT', { status: newStatus });
-        const index = allQueriesCache.findIndex(q => q.id === updatedQuery.id);
-        if (index > -1) allQueriesCache[index] = updatedQuery;
-        else allQueriesCache.push(updatedQuery);
-        await loadQueries(); // Neu laden, um Highlights korrekt zu setzen
-        triggerNotificationUpdate(); // (Importiert)
+        await loadQueries();
+        triggerNotificationUpdate();
     } catch (error) {
         alert(`Fehler beim Aktualisieren: ${error.message}`);
     }
 }
 
 async function handleDelete(id) {
-    const item = document.querySelector(`.query-item[data-id="${id}"]`);
-    if (!item) return;
     if (!confirm("Sind Sie sicher, dass Sie diese Anfrage endgültig löschen/zurückziehen möchten?")) return;
     try {
         await apiFetch(`/api/queries/${id}`, 'DELETE');
-        allQueriesCache = allQueriesCache.filter(q => q.id !== parseInt(id));
-        renderQueries();
-        triggerNotificationUpdate(); // (Importiert)
+        await loadQueries();
+        triggerNotificationUpdate();
     } catch (error) {
         alert(`Fehler beim Löschen: ${error.message}`);
     }
@@ -380,12 +403,9 @@ async function handleApprove(queryId) {
     const shiftType = allShiftTypesList.find(st => st.abbreviation === abbrev);
 
     if (!shiftType) {
-        alert(`Fehler: Schichtart "${abbrev}" nicht im System gefunden. Kann nicht genehmigen.`);
+        alert(`Fehler: Schichtart "${abbrev}" nicht im System gefunden.`);
         return;
     }
-    const item = document.querySelector(`.query-item[data-id="${queryId}"]`);
-    const approveBtn = item ? item.querySelector('[data-action="approve"]') : null;
-    if (approveBtn) { approveBtn.disabled = true; approveBtn.textContent = 'Speichere...'; }
 
     try {
         await apiFetch('/api/shifts', 'POST', {
@@ -393,10 +413,9 @@ async function handleApprove(queryId) {
             date: query.shift_date,
             shifttype_id: shiftType.id
         });
-        await handleUpdateStatus(queryId, 'erledigt'); // Diese Funktion lädt neu
+        await handleUpdateStatus(queryId, 'erledigt');
     } catch (error) {
         alert(`Fehler beim Genehmigen: ${error.message}`);
-        if (approveBtn) { approveBtn.disabled = false; approveBtn.textContent = 'Genehmigen'; }
     }
 }
 
@@ -405,10 +424,6 @@ async function handleReject(queryId) {
     if (!query) { alert("Fehler: Anfrage nicht gefunden."); return; }
     if (!confirm("Sind Sie sicher, dass Sie diese Anfrage ABLEHNEN möchten? \n(Die Schicht im Plan wird auf 'FREI' gesetzt und die Anfrage gelöscht.)")) return;
 
-    const item = document.querySelector(`.query-item[data-id="${queryId}"]`);
-    const rejectBtn = item ? item.querySelector('[data-action="reject"]') : null;
-    if (rejectBtn) { rejectBtn.disabled = true; rejectBtn.textContent = 'Lehne ab...'; }
-
     try {
         await apiFetch('/api/shifts', 'POST', {
             user_id: query.target_user_id,
@@ -416,25 +431,47 @@ async function handleReject(queryId) {
             shifttype_id: null
         });
         await apiFetch(`/api/queries/${queryId}`, 'DELETE');
-        allQueriesCache = allQueriesCache.filter(q => q.id !== parseInt(queryId));
-        renderQueries();
+        await loadQueries();
         triggerNotificationUpdate();
     } catch (error) {
         alert(`Fehler beim Ablehnen: ${error.message}`);
-        if (rejectBtn) { rejectBtn.disabled = false; rejectBtn.textContent = 'Ablehnen'; }
     }
 }
 
-// (Die redundante escapeHTML-Funktion wurde entfernt)
+function escapeHTML(str) {
+    return str.replace(/[&<>"']/g, function(m) {
+        return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m];
+    });
+}
 
-// --- Event-Listener (Seiten-spezifisch) ---
+// --- Init ---
 
-function initializePage() {
-    if (isAdmin) {
+async function initializePage() {
+    // 1. Tab Sichtbarkeit: Auch für Hundeführer!
+    if (isAdmin || isHundefuehrer) {
         tabWunsch.style.display = 'inline-block';
+        // Inhalt aber erstmal verstecken, es sei denn... (siehe unten)
         tabContentWunsch.style.display = 'none';
     }
 
+    // 2. URL Parameter auswerten
+    const urlParams = new URLSearchParams(window.location.search);
+    const tabParam = urlParams.get('tab');
+
+    // Wenn Parameter da ist UND User berechtigt, Tab wechseln
+    if (tabParam === 'wunsch' && (isAdmin || isHundefuehrer)) {
+         currentView = 'wunsch';
+         tabWunsch.classList.add('active');
+         tabAnfragen.classList.remove('active');
+         tabContentAnfragen.style.display = 'none';
+         tabContentWunsch.style.display = 'block';
+    } else {
+         // Default (Anfragen-Tab)
+         tabAnfragen.classList.add('active');
+         tabContentAnfragen.style.display = 'block';
+    }
+
+    // 3. Event Listener für Tabs
     tabAnfragen.addEventListener('click', (e) => {
         e.preventDefault();
         if (currentView === 'anfragen') { loadQueries(); return; }
@@ -446,7 +483,8 @@ function initializePage() {
         loadQueries();
     });
 
-    if (isAdmin) {
+    // WICHTIG: Listener auch für Hundeführer
+    if (isAdmin || isHundefuehrer) {
         tabWunsch.addEventListener('click', (e) => {
             e.preventDefault();
             if (currentView === 'wunsch') { loadQueries(); return; }
@@ -464,17 +502,17 @@ function initializePage() {
             filterButtonsAnfragen.querySelector('button.active')?.classList.remove('active');
             e.target.classList.add('active');
             currentFilterAnfragen = e.target.dataset.filter;
-            renderQueries();
+            loadQueries();
         }
     });
 
-    if (isAdmin) {
+    if (isAdmin || isHundefuehrer) {
         filterButtonsWunsch.addEventListener('click', (e) => {
             if (e.target.tagName === 'BUTTON') {
                 filterButtonsWunsch.querySelector('button.active')?.classList.remove('active');
                 e.target.classList.add('active');
                 currentFilterWunsch = e.target.dataset.filter;
-                renderQueries();
+                loadQueries();
             }
         });
     }
@@ -519,17 +557,15 @@ function initializePage() {
             e.preventDefault();
             const queryId = e.target.closest('.item-body').dataset.queryId;
             const submitBtn = document.getElementById(`reply-submit-${queryId}`);
-            if (submitBtn && !submitBtn.disabled) {
-                submitBtn.click();
-            }
+            if (submitBtn && !submitBtn.disabled) submitBtn.click();
         }
     });
 
-    // Erster Ladevorgang
-    loadAllShiftTypes().then(() => {
-        loadQueries();
-    });
+    await loadAllShiftTypes();
+    loadQueries();
 }
 
-// Startet die Initialisierung (der Auth-Check oben hat bereits stattgefunden)
-initializePage();
+// Starten der Init-Funktion für berechtigte Rollen
+if (isAdmin || isScheduler || isHundefuehrer) {
+    initializePage();
+}

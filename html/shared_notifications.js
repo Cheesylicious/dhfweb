@@ -1,191 +1,234 @@
+// cheesylicious/dhfweb/dhfweb-ec604d738e9bd121b65cc8557f8bb98d2aa18062/html/shared_notifications.js
 /**
- * DHF-Planer - Geteiltes Benachrichtigungs-Modul (Refaktorisiert)
- *
- * Nutzt jetzt importierte Module für Auth und API (Regel 4).
+ * DHF-Planer - Geteiltes Benachrichtigungs-Modul
+ * V6: Hundeführer sieht Banner mit korrektem Link und Tab-Switching.
  */
-
-// --- IMPORTE (Regel 4) ---
-// (Pfade sind relativ zur HTML-Datei, die dieses Skript lädt)
-import { API_URL } from './js/utils/constants.js';
-import { apiFetch } from './js/utils/api.js';
-import { initAuthCheck } from './js/utils/auth.js';
-
 (function() {
-    // Stellt sicher, dass das Skript nur einmal ausgeführt wird
-    if (document.getElementById('notification-subheader-styles')) {
+    // Alte Styles aufräumen
+    const oldIds = ['notification-styles', 'notification-styles-v2', 'notification-styles-v3', 'notification-styles-v4', 'notification-styles-v5'];
+    oldIds.forEach(id => {
+        const el = document.getElementById(id);
+        if (el) el.remove();
+    });
+
+    if (document.getElementById('notification-styles-v6')) { return; }
+
+    if (window.location.pathname.endsWith('change_password.html')) {
         return;
     }
 
-    let user, isAdmin, isScheduler, isHundefuehrer;
+    const API_URL = 'http://46.224.63.203:5000';
+    let user, isAdmin = false, isScheduler = false, isHundefuehrer = false;
 
-    // 1. Authentifizierung (Regel 4: Wiederverwendung)
     try {
-        // Wir rufen die zentrale Auth-Prüfung auf.
-        // Diese Funktion kümmert sich um:
-        // 1. User-Prüfung (localStorage)
-        // 2. Rollen-Zuweisung (isAdmin, etc.)
-        // 3. Navigations-Anpassung
-        // 4. Logout-Button-Listener
-        // 5. Auto-Logout-Timer
-        const authData = initAuthCheck();
-        user = authData.user;
-        isAdmin = authData.isAdmin;
-        isScheduler = authData.isPlanschreiber;
-        isHundefuehrer = authData.isHundefuehrer;
+        user = JSON.parse(localStorage.getItem('dhf_user'));
+        if (!user || !user.role) return;
+        isAdmin = user.role.name === 'admin';
+        isScheduler = user.role.name === 'Planschreiber';
+        isHundefuehrer = user.role.name === 'Hundeführer';
+    } catch (e) { return; }
 
-    } catch (e) {
-        // Auth-Fehler (z.B. auf Login-Seite oder Session abgelaufen)
-        // Die Benachrichtigungsleiste wird nicht initialisiert.
-        console.log("shared_notifications.js: Auth-Check fehlgeschlagen, Leiste wird nicht geladen.");
-        return;
-    }
+    if (!isAdmin && !isScheduler && !isHundefuehrer) return;
 
-    // (Der manuelle Check für change_password.html ist nicht mehr nötig,
-    // da initAuthCheck() dort fehlschlägt und 'return' auslöst)
-
-    // Nur Admins, Planschreiber oder Hundeführer benötigen diese Leiste
-    if (!isAdmin && !isScheduler && !isHundefuehrer) {
-        return;
-    }
-
-    // --- 2. CSS-Stile dynamisch injizieren ---
-    // (Unverändert, 1:1 kopiert)
+    // --- 1. CSS ---
     const styles = `
-        .notification-subheader {
-            background: #f0ad4e; color: #1a1a1a; padding: 10px 30px;
-            display: flex; justify-content: space-between; align-items: center;
-            font-weight: 600; font-size: 15px; cursor: pointer;
-            position: relative; z-index: 100003;
-            border-bottom: 1px solid rgba(0,0,0,0.2);
+        #notification-container {
+            display: flex;
+            flex-direction: row;
+            flex-wrap: wrap;
+            width: 100%;
+            z-index: 100003;
+            position: relative;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.2);
         }
-        .notification-subheader:hover { background: #e69524; }
-        .notification-subheader-left { display: flex; align-items: center; gap: 10px; }
-        .notification-badge {
-            background-color: #e74c3c; color: white; font-size: 12px; font-weight: 700;
-            padding: 3px 8px; border-radius: 10px; min-width: 10px; text-align: center;
+
+        .notification-banner {
+            flex: 1 1 auto;
+            min-width: 200px;
+            padding: 0;
+            display: flex;
+            align-items: stretch;
+            font-weight: 600;
+            font-size: 14px;
+            color: white;
+            border-right: 1px solid rgba(255,255,255,0.1);
+            transition: all 0.2s ease-in-out;
+            position: relative;
         }
-        .notification-chevron { font-size: 20px; transition: transform 0.2s; }
-        .notification-subheader.open .notification-chevron { transform: rotate(180deg); }
-        .notification-dropdown {
-            display: none; position: absolute; top: 100%; left: 0; right: 0;
-            background: rgba(40, 40, 40, 0.95); backdrop-filter: blur(10px);
-            -webkit-backdrop-filter: blur(10px); border: 1px solid rgba(255, 255, 255, 0.1);
-            color: #ffffff; box-shadow: 0 8px 16px rgba(0,0,0,0.3); z-index: 1;
+        .notification-banner:last-child {
+            border-right: none;
         }
-        .notification-subheader.open .notification-dropdown { display: block; }
-        .notification-dropdown ul { list-style: none; padding: 10px 0; margin: 0; }
-        .notification-dropdown li { padding: 12px 30px; border-bottom: 1px solid rgba(255, 255, 255, 0.1); }
-        .notification-dropdown li:last-child { border-bottom: none; }
-        .notification-dropdown a {
-            color: #ffffff; text-decoration: none; display: flex;
-            justify-content: space-between; align-items: center; font-weight: 400;
+
+        /* HOVER-EFFEKT */
+        .notification-banner:hover {
+            filter: brightness(1.15);
+            transform: scale(1.05);
+            z-index: 10;
+            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+            border-right-color: transparent;
         }
-        .notification-dropdown a:hover { color: #3498db; }
-        .notification-dropdown a .badge-detail {
-            background: #3498db; color: white; padding: 4px 8px;
-            border-radius: 5px; font-size: 13px;
+
+        /* Farben */
+        .banner-wishes { background-color: #f39c12; color: #1a1a1a; } /* Orange */
+        .banner-notes { background-color: #3498db; } /* Blau */
+        .banner-feedback { background-color: #e74c3c; } /* Rot */
+        .banner-waiting { background-color: #7f8c8d; } /* Grau */
+
+        .banner-link {
+            text-decoration: none;
+            color: inherit;
+            display: flex;
+            width: 100%;
+            justify-content: center;
+            align-items: center;
+            padding: 12px 15px;
         }
-        .notification-dropdown a .badge-detail.priority-high { background: #e74c3c; }
-        .notification-dropdown a .badge-detail.priority-low { background: #95a5a6; }
+
+        .notification-content {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            white-space: nowrap;
+        }
+
+        .notification-count {
+            background: rgba(0,0,0,0.25);
+            padding: 2px 8px;
+            border-radius: 10px;
+            font-weight: 700;
+            font-size: 12px;
+        }
     `;
+
     const styleSheet = document.createElement("style");
-    styleSheet.id = "notification-subheader-styles";
+    styleSheet.id = "notification-styles-v6";
     styleSheet.innerText = styles;
     document.head.appendChild(styleSheet);
 
+    // --- 2. Container erstellen ---
+    function ensureContainer() {
+        let container = document.getElementById('notification-container');
+        if (!container) {
+            container = document.createElement('div');
+            container.id = 'notification-container';
+            const mainHeader = document.querySelector('header');
+            if (mainHeader) {
+                mainHeader.insertAdjacentElement('afterend', container);
+            } else {
+                document.body.prepend(container);
+            }
+        }
+        return container;
+    }
 
-    // --- 3. API-Aufruf und DOM-Erstellung ---
+    // --- 3. API Abruf & Render ---
     async function fetchAndBuildNotifications() {
         try {
-            // Regel 4: Nutzt die importierte, zentrale apiFetch-Funktion
-            const counts = await apiFetch('/api/queries/notifications_summary');
+            const response = await fetch(API_URL + '/api/queries/notifications_summary', {
+                method: 'GET', credentials: 'include'
+            });
 
-            const existingSubheader = document.getElementById('notification-subheader');
-
-            const feedbackCount = counts.new_feedback_count || 0;
-            const newRepliesCount = counts.new_replies_count || 0;
-            const waitingCount = counts.waiting_on_others_count || 0;
-            const totalActionRequiredCount = feedbackCount + newRepliesCount;
-
-            // Wenn es nichts zu tun gibt, Leiste entfernen und stoppen
-            if (totalActionRequiredCount + waitingCount === 0) {
-                if (existingSubheader) existingSubheader.remove();
+            if (!response.ok) {
+                const container = document.getElementById('notification-container');
+                if(container) container.innerHTML = '';
                 return;
             }
 
-            if (existingSubheader) existingSubheader.remove();
+            const counts = await response.json();
+            const container = ensureContainer();
+            container.innerHTML = ''; // Reset
 
-            // --- 4. HTML-Struktur aufbauen (Unverändert) ---
-            const subheader = document.createElement('div');
-            subheader.className = 'notification-subheader';
-            subheader.id = 'notification-subheader';
-            const leftDiv = document.createElement('div');
-            leftDiv.className = 'notification-subheader-left';
-
-            const messages = [];
-            if (newRepliesCount > 0) messages.push(`Neue Antworten / Aufgaben: ${newRepliesCount}`);
-            if (isAdmin && feedbackCount > 0) messages.push(`Neue Meldungen: ${feedbackCount}`);
-            if (waitingCount > 0) messages.push(`Warte auf Antwort: ${waitingCount}`);
-            const headerText = messages.join('  |  ');
-
-            leftDiv.innerHTML = `
-                <span class"notification-badge">${totalActionRequiredCount}</span>
-                <span>${headerText}</span>
-            `;
-
-            const rightDiv = document.createElement('div');
-            rightDiv.className = 'notification-chevron';
-            rightDiv.innerHTML = '&#9660;';
-            const dropdown = document.createElement('div');
-            dropdown.className = 'notification-dropdown';
-
-            let listHtml = '<ul>';
-            if (newRepliesCount > 0) {
-                listHtml += `<li><a href="anfragen.html"><span>Neue Antworten / Aufgaben</span><span class="badge-detail priority-high">${newRepliesCount}</span></a></li>`;
+            // 1. FEEDBACK (Admin only)
+            if (isAdmin && counts.new_feedback_count > 0) {
+                const div = document.createElement('div');
+                div.className = 'notification-banner banner-feedback';
+                div.title = "Neue Meldungen / Bugs";
+                div.innerHTML = `
+                    <a href="feedback.html" class="banner-link">
+                        <div class="notification-content">
+                            <span class="notification-count">${counts.new_feedback_count}</span>
+                            <span>Meldungen</span>
+                        </div>
+                    </a>
+                `;
+                container.appendChild(div);
             }
-            if (isAdmin && feedbackCount > 0) {
-                listHtml += `<li><a href="feedback.html"><span>Neue Meldungen / Feedback</span><span class="badge-detail priority-high">${feedbackCount}</span></a></li>`;
+
+            // 2. WUNSCH-ANFRAGEN (Admin + HF)
+            if (counts.new_wishes_count > 0) {
+                const div = document.createElement('div');
+                div.className = 'notification-banner banner-wishes';
+                div.title = "Offene Wunsch-Anfragen";
+                // --- KORREKTUR: Link mit Parameter für Tab-Switch ---
+                const targetUrl = "anfragen.html?tab=wunsch";
+                div.innerHTML = `
+                    <a href="${targetUrl}" class="banner-link">
+                        <div class="notification-content">
+                            <span class="notification-count">${counts.new_wishes_count}</span>
+                            <span>Wünsche</span>
+                        </div>
+                    </a>
+                `;
+
+                // --- KORREKTUR: Click-Handler auch für Hundeführer ---
+                if (isAdmin || isHundefuehrer) {
+                    div.onclick = (e) => {
+                        if (window.location.pathname.endsWith('anfragen.html')) {
+                            e.preventDefault();
+                            const tabBtn = document.getElementById('sub-nav-wunsch');
+                            if(tabBtn) tabBtn.click();
+                        }
+                    };
+                }
+                container.appendChild(div);
             }
-            if (waitingCount > 0) {
-                 listHtml += `<li><a href="anfragen.html"><span>Warte auf Antwort</span><span class="badge-detail priority-low">${waitingCount}</span></a></li>`;
+
+            // 3. SCHICHT-NOTIZEN (Admin + Planschreiber) - HF AUSGEBLENDET
+            if (!isHundefuehrer && counts.new_notes_count > 0) {
+                const div = document.createElement('div');
+                div.className = 'notification-banner banner-notes';
+                div.title = "Neue Schicht-Notizen / Aufgaben";
+                div.innerHTML = `
+                    <a href="anfragen.html" class="banner-link">
+                        <div class="notification-content">
+                            <span class="notification-count">${counts.new_notes_count}</span>
+                            <span>Aufgaben</span>
+                        </div>
+                    </a>
+                `;
+                if (isAdmin && window.location.pathname.endsWith('anfragen.html')) {
+                     div.onclick = (e) => {
+                        const tabBtn = document.getElementById('sub-nav-anfragen');
+                        if(tabBtn) tabBtn.click();
+                    };
+                }
+                container.appendChild(div);
             }
-            listHtml += '</ul>';
-            dropdown.innerHTML = listHtml;
 
-            subheader.appendChild(leftDiv);
-            subheader.appendChild(rightDiv);
-            subheader.appendChild(dropdown);
-
-            subheader.onclick = (e) => {
-                if (e.target.closest('a')) return;
-                e.currentTarget.classList.toggle('open');
-            };
-
-            const mainHeader = document.querySelector('header');
-            if (mainHeader) {
-                mainHeader.insertAdjacentElement('afterend', subheader);
-            } else {
-                document.body.prepend(subheader);
+            // 4. WARTE AUF ANTWORT (Admin + Planschreiber) - HF AUSGEBLENDET
+            if (!isHundefuehrer && counts.waiting_on_others_count > 0) {
+                const div = document.createElement('div');
+                div.className = 'notification-banner banner-waiting';
+                div.title = "Warte auf Antwort";
+                div.innerHTML = `
+                    <a href="anfragen.html" class="banner-link">
+                        <div class="notification-content">
+                            <span class="notification-count">${counts.waiting_on_others_count}</span>
+                            <span>Wartend</span>
+                        </div>
+                    </a>
+                `;
+                container.appendChild(div);
             }
 
         } catch (error) {
-            // apiFetch kümmert sich um 401/403. Dies fängt Server-Fehler (500)
-            // oder Netzwerkprobleme ab.
-            console.error("Fehler beim Laden der Benachrichtigungen:", error);
-            const existingSubheader = document.getElementById('notification-subheader');
-            if (existingSubheader) existingSubheader.remove();
+            console.error("Fehler bei Notifications:", error);
         }
     }
 
-    // Führe die Funktion aus, sobald das DOM geladen ist
     document.addEventListener('DOMContentLoaded', fetchAndBuildNotifications);
-
-    // Polling (Unverändert)
     setInterval(fetchAndBuildNotifications, 30000);
-
-    // Globaler Event-Listener (Unverändert)
     window.addEventListener('dhf:notification_update', () => {
-        console.log("Event 'dhf:notification_update' empfangen. Lade Zähler neu.");
         setTimeout(fetchAndBuildNotifications, 100);
     });
 

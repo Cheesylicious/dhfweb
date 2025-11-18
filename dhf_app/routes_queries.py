@@ -2,30 +2,22 @@
 # Neue Datei: dhf_app/routes_queries.py
 
 from flask import Blueprint, request, jsonify, current_app
-# --- NEUE IMPORTE ---
-# --- START: Role und joinedload hinzugefügt ---
+# --- IMPORTE ---
 from .models import ShiftQuery, User, FeedbackReport, UpdateLog, ShiftQueryReply, Role
 from .extensions import db
 from sqlalchemy.orm import joinedload
-# --- ENDE: Role und joinedload hinzugefügt ---
-# --- START: KORRIGIERTER IMPORT ---
 from .utils import admin_required, scheduler_or_admin_required, query_roles_required
-# --- ENDE: KORRIGIERTER IMPORT ---
 from flask_login import login_required, current_user
-# --- START: 'or_' importiert ---
 from sqlalchemy import extract, func, or_
-# --- ENDE: 'or_' importiert ---
 from datetime import datetime
-# --- START: HINZUGEFÜGT (Für performante Zählung) ---
 from sqlalchemy.sql import select
-
-# --- ENDE: HINZUGEFÜGT ---
+from sqlalchemy.exc import IntegrityError
 
 # Erstellt einen Blueprint. Alle Routen hier beginnen mit /api/queries
 query_bp = Blueprint('query', __name__, url_prefix='/api/queries')
 
 
-# --- NEU: Hilfsfunktion (kopiert von routes_admin) ---
+# --- Hilfsfunktion ---
 def _log_update_event(area, description):
     """
     Erstellt einen Eintrag im UpdateLog.
@@ -36,29 +28,22 @@ def _log_update_event(area, description):
         updated_at=datetime.utcnow()
     )
     db.session.add(new_log)
-    # Wichtig: KEIN db.session.commit() hier, da dies in der aufrufenden Funktion geschieht.
 
 
-# --- ENDE NEU ---
-
-
-# --- NEUE ROUTE FÜR BENACHRICHTIGUNGS-ZÄHLER ---
+# --- ROUTE FÜR BENACHRICHTIGUNGS-ZÄHLER ---
 @query_bp.route('/notifications_summary', methods=['GET'])
 @login_required
-# (Hier bleibt @login_required, da JEDER seinen Zähler abrufen darf, auch wenn er 0 ist)
 def get_notifications_summary():
     """
     Ruft eine Zusammenfassung aller relevanten Benachrichtigungs-Zähler
     für den aktuell eingeloggten Benutzer ab.
-
-    ANGEPASST: Zählt jetzt intelligent, wer zuletzt geantwortet hat.
-    NEU: Ignoriert Wunsch-Anfragen für 'Planschreiber'.
     """
 
     response = {
         "new_feedback_count": 0,
-        "new_replies_count": 0,  # (Umbenannt: Action Required)
-        "waiting_on_others_count": 0  # (Umbenannt: Waiting)
+        "new_wishes_count": 0,
+        "new_notes_count": 0,
+        "waiting_on_others_count": 0
     }
 
     try:
@@ -72,22 +57,16 @@ def get_notifications_summary():
             response["new_feedback_count"] = count
 
         # 2. Zähler für Admins UND Planschreiber UND Hundeführer
-        # --- START: Rollenprüfung erweitert ---
         if user_role in ['admin', 'Planschreiber', 'Hundeführer']:
-            # --- ENDE: Rollenprüfung erweitert ---
 
             current_user_id = current_user.id
 
-            # --- START: KOMPLETT NEUE ZÄHL-LOGIK ---
-
-            # A) Finde die ID des letzten Antwortenden für JEDE Anfrage
-            # A.1: Subquery findet die *letzte* Antwort-Zeit für jede Query
+            # A) Subqueries für letzte Antwort
             last_reply_sq = db.session.query(
                 ShiftQueryReply.query_id,
                 func.max(ShiftQueryReply.created_at).label('last_reply_time')
             ).group_by(ShiftQueryReply.query_id).subquery()
 
-            # A.2: Subquery findet die user_id, die zur *letzten* Antwort-Zeit gehört
             last_reply_user_sq = db.session.query(
                 ShiftQueryReply.query_id,
                 ShiftQueryReply.user_id
@@ -99,9 +78,7 @@ def get_notifications_summary():
                 )
             ).distinct(ShiftQueryReply.query_id).subquery()
 
-            # B) Hole ALLE offenen Anfragen (ggf. gefiltert für Hundeführer)
-            #    und verknüpfe sie (LEFT JOIN) mit dem letzten Antwortenden.
-
+            # B) Basis-Query
             base_query = db.session.query(
                 ShiftQuery,
                 last_reply_user_sq.c.user_id.label('last_replier_id')
@@ -111,13 +88,9 @@ def get_notifications_summary():
                 last_reply_user_sq,
                 ShiftQuery.id == last_reply_user_sq.c.query_id
             ).options(
-                # --- START: NEU (Performance: Lade Sender und Rolle) ---
                 joinedload(ShiftQuery.sender).joinedload(User.role)
-                # --- ENDE: NEU ---
             )
 
-
-            # --- START: NEUER FILTER FÜR HUNDEFÜHRER ---
             if user_role == 'Hundeführer':
                 base_query = base_query.filter(
                     or_(
@@ -125,70 +98,57 @@ def get_notifications_summary():
                         ShiftQuery.target_user_id == current_user_id
                     )
                 )
-            # --- ENDE: NEUER FILTER FÜR HUNDEFÜHRER ---
 
             query_results = base_query.all()
 
-            # C) Initialisiere Zähler
-            new_replies_count = 0  # (Action Required)
-            waiting_on_others_count = 0  # (Waiting)
+            # C) Zählen
+            new_wishes = 0
+            new_notes = 0
+            waiting = 0
 
-            # D) Sortiere die Anfragen in die beiden Kategorien
             for query, last_replier_id in query_results:
 
-                # --- START: NEUE FILTERLOGIK FÜR PLANSCHREIBER ---
-                if user_role == 'Planschreiber':
-                    # Prüfe, ob es eine Wunsch-Anfrage von einem Hundeführer ist
-                    sender_role_name = query.sender.role.name if query.sender and query.sender.role else ""
-                    is_wunsch_anfrage = (
-                        sender_role_name == 'Hundeführer' and
-                        query.message.startswith("Anfrage für:")
-                    )
-                    # Wenn ja, ignoriere diese Anfrage für den Planschreiber
-                    if is_wunsch_anfrage:
-                        continue
-                # --- ENDE: NEUE FILTERLOGIK FÜR PLANSCHREIBER ---
+                # Filter für Planschreiber: Wünsche ignorieren
+                sender_role_name = query.sender.role.name if query.sender and query.sender.role else ""
+                is_wunsch = (sender_role_name == 'Hundeführer' and query.message.startswith("Anfrage für:"))
+
+                if user_role == 'Planschreiber' and is_wunsch:
+                    continue
+
+                action_required = False
 
                 if last_replier_id is None:
-                    # FALL 1: Keine Antworten vorhanden
                     if query.sender_user_id == current_user_id:
-                        # Ich habe sie erstellt, niemand hat geantwortet.
-                        waiting_on_others_count += 1
+                        waiting += 1
                     else:
-                        # Jemand anderes hat sie erstellt, niemand hat geantwortet.
-                        new_replies_count += 1  # (Neue Aufgabe für mich)
-
+                        action_required = True
                 elif last_replier_id == current_user_id:
-                    # FALL 2: ICH war der letzte Antwortende
-                    waiting_on_others_count += 1
-
+                    waiting += 1
                 else:
-                    # FALL 3: Jemand ANDERES war der letzte Antwortende
-                    new_replies_count += 1  # (Action Required)
+                    action_required = True
 
-            response["new_replies_count"] = new_replies_count
-            response["waiting_on_others_count"] = waiting_on_others_count
+                if action_required:
+                    if is_wunsch:
+                        new_wishes += 1
+                    else:
+                        new_notes += 1
 
-            # --- ENDE: KOMPLETT NEUE ZÄHL-LOGIK ---
+            response["new_wishes_count"] = new_wishes
+            response["new_notes_count"] = new_notes
+            response["waiting_on_others_count"] = waiting
 
         return jsonify(response), 200
 
     except Exception as e:
         current_app.logger.error(f"Fehler beim Erstellen von Notification Summary: {str(e)}")
-        # (Selbst bei Fehler senden wir ein leeres 200 OK, damit das UI nicht blockiert)
         return jsonify(response), 200
 
 
-# --- ENDE NEUE ROUTE ---
-
-
 @query_bp.route('', methods=['POST'])
-# --- START: Decorator geändert ---
-@query_roles_required  # Planschreiber, Admin oder Hundeführer darf erstellen
-# --- ENDE: Decorator geändert ---
+@query_roles_required
 def create_shift_query():
     """
-    Erstellt eine neue Schicht-Anfrage oder aktualisiert eine bestehende offene Anfrage.
+    Erstellt eine neue Schicht-Anfrage oder aktualisiert eine EIGENE bestehende.
     """
     data = request.get_json()
     try:
@@ -196,11 +156,9 @@ def create_shift_query():
         shift_date_str = data.get('shift_date')
         message = data.get('message')
 
-        # target_user_id_raw ist jetzt OPTIONAL. Wir prüfen nur auf Datum und Nachricht.
         if not shift_date_str or not message:
             return jsonify({"message": "shift_date und message sind erforderlich"}), 400
 
-        # Sichere Umwandlung: Konvertiere nur wenn Wert vorhanden, sonst None
         if target_user_id_raw is None or target_user_id_raw == 'null' or target_user_id_raw == '':
             target_user_id = None
         else:
@@ -211,28 +169,22 @@ def create_shift_query():
 
         shift_date = datetime.fromisoformat(shift_date_str).date()
 
-        # --- START: NEUE LOGIK FÜR HUNDEFÜHRER ---
-        # Ein Hundeführer darf NUR Anfragen für sich selbst (target_user_id = eigene ID) erstellen.
-        # Admins/Planschreiber dürfen für jeden (oder null).
         user_role = current_user.role.name if current_user.role else ""
         if user_role == 'Hundeführer':
             if target_user_id != current_user.id:
                 return jsonify({"message": "Hundeführer dürfen Anfragen nur für sich selbst erstellen."}), 403
-        # --- ENDE: NEUE LOGIK FÜR HUNDEFÜHRER ---
 
-        # --- START: KORREKTUR (Kein Überschreiben fremder Anfragen) ---
-        # Prüfen, ob für diese Zelle schon eine offene Anfrage VOM AKTUELLEN BENUTZER existiert
+        # --- WICHTIG: Prüfen, ob eine offene Anfrage VOM AKTUELLEN BENUTZER existiert ---
         existing_query = ShiftQuery.query.filter_by(
             target_user_id=target_user_id,
             shift_date=shift_date,
             status='offen',
-            sender_user_id=current_user.id  # <<< WICHTIG: Nur eigene aktualisieren!
+            sender_user_id=current_user.id  # <<< KORREKTUR: Nur eigene Anfragen aktualisieren
         ).first()
 
         if existing_query:
-            # Alte EIGENE Anfrage aktualisieren
+            # Eigene Anfrage aktualisieren
             existing_query.message = message
-            # sender_user_id ist bereits current_user.id
             existing_query.created_at = datetime.utcnow()
             db.session.add(existing_query)
         else:
@@ -245,7 +197,6 @@ def create_shift_query():
                 status='offen'
             )
             db.session.add(new_query)
-        # --- ENDE: KORREKTUR ---
 
         db.session.commit()
         return jsonify({"message": "Anfrage gespeichert."}), 201
@@ -257,32 +208,21 @@ def create_shift_query():
 
 
 @query_bp.route('', methods=['GET'])
-# --- START: Decorator geändert ---
-@query_roles_required  # Planschreiber, Admin oder Hundeführer darf lesen
-# --- ENDE: Decorator geändert ---
+@query_roles_required
 def get_shift_queries():
     """
     Ruft alle Schicht-Anfragen ab.
-    Optional filterbar nach Jahr/Monat UND Status.
-
-    NEU: Liefert jetzt 'last_replier_id' mit, um "Neue Antwort"
-    im Frontend zu signalisieren.
-
-    NEU: Hundeführer sehen nur ihre eigenen Anfragen.
     """
     year = request.args.get('year')
     month = request.args.get('month')
-    status = request.args.get('status')  # Optional: 'offen' oder 'erledigt'
+    status = request.args.get('status')
 
     try:
-        # --- START: Subquery für letzten Antwortenden (identisch zu summary) ---
-        # A.1: Subquery findet die *letzte* Antwort-Zeit für jede Query
         last_reply_sq = db.session.query(
             ShiftQueryReply.query_id,
             func.max(ShiftQueryReply.created_at).label('last_reply_time')
         ).group_by(ShiftQueryReply.query_id).subquery()
 
-        # A.2: Subquery findet die user_id, die zur *letzten* Antwort-Zeit gehört
         last_reply_user_sq = db.session.query(
             ShiftQueryReply.query_id,
             ShiftQueryReply.user_id
@@ -293,18 +233,18 @@ def get_shift_queries():
                 ShiftQueryReply.created_at == last_reply_sq.c.last_reply_time
             )
         ).distinct(ShiftQueryReply.query_id).subquery()
-        # --- ENDE: Subquery ---
 
-        # Beginne mit der Basis-Abfrage
         query = db.session.query(
             ShiftQuery,
             last_reply_user_sq.c.user_id.label('last_replier_id')
         ).outerjoin(
             last_reply_user_sq,
             ShiftQuery.id == last_reply_user_sq.c.query_id
+        ).options(
+            # Performance: Lade Sender und Rolle für Frontend-Filterung
+            joinedload(ShiftQuery.sender).joinedload(User.role)
         )
 
-        # Wende Datumsfilter nur an, wenn BEIDE (year und month) vorhanden sind
         if year and month:
             try:
                 query = query.filter(
@@ -314,11 +254,9 @@ def get_shift_queries():
             except ValueError:
                 return jsonify({"message": "Ungültiges Jahr oder Monat"}), 400
 
-        # Wende Statusfilter an, falls vorhanden
         if status in ['offen', 'erledigt']:
             query = query.filter(ShiftQuery.status == status)
 
-        # --- START: NEUER FILTER FÜR HUNDEFÜHRER ---
         user_role = current_user.role.name if current_user.role else ""
         if user_role == 'Hundeführer':
             query = query.filter(
@@ -327,12 +265,9 @@ def get_shift_queries():
                     ShiftQuery.target_user_id == current_user.id
                 )
             )
-        # --- ENDE: NEUER FILTER FÜR HUNDEFÜHRER ---
 
-        # Sortiere
         query_results = query.order_by(ShiftQuery.created_at.desc()).all()
 
-        # --- Manuelles Erstellen der Dictionaries ---
         response_list = []
         for query, last_replier_id in query_results:
             q_dict = query.to_dict()
@@ -347,18 +282,23 @@ def get_shift_queries():
 
 
 @query_bp.route('/<int:query_id>/status', methods=['PUT'])
-# --- START: Decorator geändert (Nur Admins/Planschreiber dürfen Status ändern) ---
 @scheduler_or_admin_required
-# --- ENDE: Decorator geändert ---
 def update_query_status(query_id):
     """
-    Aktualisiert den Status einer Anfrage (z.B. 'offen' -> 'erledigt').
-    Jetzt für Admins UND Planschreiber.
-    (Hundeführer dürfen dies NICHT)
+    Aktualisiert den Status einer Anfrage.
     """
     query = db.session.get(ShiftQuery, query_id)
     if not query:
         return jsonify({"message": "Anfrage nicht gefunden"}), 404
+
+    # --- START: SCHUTZ FÜR PLANSCHREIBER ---
+    user_role = current_user.role.name if current_user.role else ""
+    if user_role == 'Planschreiber':
+        sender_role = query.sender.role.name if query.sender and query.sender.role else ""
+        is_wunsch = (sender_role == 'Hundeführer' and query.message.startswith("Anfrage für:"))
+        if is_wunsch:
+            return jsonify({"message": "Planschreiber dürfen Wunsch-Anfragen nicht bearbeiten."}), 403
+    # --- ENDE: SCHUTZ ---
 
     data = request.get_json()
     new_status = data.get('status')
@@ -368,51 +308,57 @@ def update_query_status(query_id):
 
     try:
         query.status = new_status
-
-        # --- START: ANPASSUNG (Überschrift statt ID) ---
         date_str = query.shift_date.strftime('%d.%m.%Y')
         target_name = f"{query.target_user.vorname} {query.target_user.name}" if query.target_user else "Thema des Tages"
-        log_msg = f"Anfrage ({target_name} am {date_str}) als '{new_status}' markiert."
-        _log_update_event("Schicht-Anfragen", log_msg)
-        # --- ENDE: ANPASSUNG ---
+        _log_update_event("Schicht-Anfragen", f"Anfrage ({target_name} am {date_str}) als '{new_status}' markiert.")
 
         db.session.commit()
         return jsonify(query.to_dict()), 200
+
+    except IntegrityError as e:
+        db.session.rollback()
+        # Fallback für Duplicate Entry bei 'erledigt'
+        if "Duplicate entry" in str(e) and new_status == 'erledigt':
+            try:
+                db.session.delete(query)
+                db.session.commit()
+                return jsonify(query.to_dict()), 200
+            except:
+                pass
+        return jsonify({"message": f"Datenbank-Integritätsfehler: {str(e)}"}), 500
     except Exception as e:
         db.session.rollback()
         return jsonify({"message": f"Datenbankfehler: {str(e)}"}), 500
 
 
-# --- START: NEUE ROUTE (Regel 1, Regel 4) ---
 @query_bp.route('/<int:query_id>', methods=['DELETE'])
-# --- START: Decorator geändert ---
-@query_roles_required  # Admins, Planschreiber oder Hundeführer
-# --- ENDE: Decorator geändert ---
+@query_roles_required
 def delete_shift_query(query_id):
     """
     Löscht eine Schicht-Anfrage endgültig.
-    Admins/Planschreiber dürfen alle löschen.
-    Hundeführer dürfen nur ihre EIGENEN (selbst erstellten) löschen.
     """
     query = db.session.get(ShiftQuery, query_id)
     if not query:
         return jsonify({"message": "Anfrage nicht gefunden"}), 404
 
-    # --- START: NEUE BERECHTIGUNGSPRÜFUNG FÜR HUNDEFÜHRER ---
     user_role = current_user.role.name if current_user.role else ""
-    if user_role == 'Hundeführer':
-        # Darf der Hundeführer diese löschen? Nur wenn er der Sender ist.
-        if query.sender_user_id != current_user.id:
-            return jsonify({"message": "Sie dürfen nur Ihre eigenen Anfragen löschen."}), 403
-    # --- ENDE: NEUE BERECHTIGUNGSPRÜFUNG ---
+
+    # Schutz für Hundeführer
+    if user_role == 'Hundeführer' and query.sender_user_id != current_user.id:
+        return jsonify({"message": "Sie dürfen nur Ihre eigenen Anfragen löschen."}), 403
+
+    # --- START: SCHUTZ FÜR PLANSCHREIBER ---
+    if user_role == 'Planschreiber':
+        sender_role = query.sender.role.name if query.sender and query.sender.role else ""
+        is_wunsch = (sender_role == 'Hundeführer' and query.message.startswith("Anfrage für:"))
+        if is_wunsch:
+            return jsonify({"message": "Planschreiber dürfen Wunsch-Anfragen nicht löschen."}), 403
+    # --- ENDE: SCHUTZ ---
 
     try:
-        # --- START: ANPASSUNG (Überschrift statt ID) ---
-        # Protokollieren VOR dem Löschen
         date_str = query.shift_date.strftime('%d.%m.%Y')
         target_name = f"{query.target_user.vorname} {query.target_user.name}" if query.target_user else "Thema des Tages"
         _log_update_event("Schicht-Anfragen", f"Anfrage ({target_name} am {date_str}) gelöscht.")
-        # --- ENDE: ANPASSUNG ---
 
         db.session.delete(query)
         db.session.commit()
@@ -423,56 +369,33 @@ def delete_shift_query(query_id):
         return jsonify({"message": f"Datenbankfehler: {str(e)}"}), 500
 
 
-# --- ENDE: NEUE ROUTE ---
-
-
-# --- START: NEUE ROUTEN FÜR ANTWORTEN (Replies) ---
-
 @query_bp.route('/<int:query_id>/replies', methods=['GET'])
-# --- START: Decorator geändert ---
-@query_roles_required  # Admins, Planschreiber und Hundeführer dürfen Konversationen sehen
-# --- ENDE: Decorator geändert ---
+@query_roles_required
 def get_query_replies(query_id):
-    """
-    Ruft alle Antworten für eine spezifische ShiftQuery ab.
-    NEU: Hundeführer dürfen nur Antworten zu ihren eigenen Anfragen sehen.
-    """
     query = db.session.get(ShiftQuery, query_id)
     if not query:
         return jsonify({"message": "Anfrage nicht gefunden"}), 404
 
-    # --- START: NEUE BERECHTIGUNGSPRÜFUNG FÜR HUNDEFÜHRER ---
     user_role = current_user.role.name if current_user.role else ""
     if user_role == 'Hundeführer':
         if query.sender_user_id != current_user.id and query.target_user_id != current_user.id:
             return jsonify({"message": "Sie dürfen diese Konversation nicht einsehen."}), 403
-    # --- ENDE: NEUE BERECHTIGUNGSPRÜFUNG ---
 
-    # Sortiere nach Erstellungsdatum (älteste zuerst)
-    replies = query.replies
-
+    replies = query.replies.order_by(ShiftQueryReply.created_at.asc()).all()
     return jsonify([reply.to_dict() for reply in replies]), 200
 
 
 @query_bp.route('/<int:query_id>/replies', methods=['POST'])
-# --- START: Decorator geändert ---
-@query_roles_required  # Admins, Planschreiber und Hundeführer dürfen antworten
-# --- ENDE: Decorator geändert ---
+@query_roles_required
 def create_query_reply(query_id):
-    """
-    Erstellt eine neue Antwort auf eine ShiftQuery.
-    NEU: Hundeführer dürfen nur auf ihre eigenen Anfragen antworten.
-    """
     query = db.session.get(ShiftQuery, query_id)
     if not query:
         return jsonify({"message": "Anfrage nicht gefunden"}), 404
 
-    # --- START: NEUE BERECHTIGUNGSPRÜFUNG FÜR HUNDEFÜHRER ---
     user_role = current_user.role.name if current_user.role else ""
     if user_role == 'Hundeführer':
         if query.sender_user_id != current_user.id and query.target_user_id != current_user.id:
             return jsonify({"message": "Sie dürfen auf diese Anfrage nicht antworten."}), 403
-    # --- ENDE: NEUE BERECHTIGUNGSPRÜFUNG ---
 
     data = request.get_json()
     message = data.get('message')
@@ -489,19 +412,12 @@ def create_query_reply(query_id):
 
     try:
         db.session.add(new_reply)
-
-        # --- START: ANPASSUNG (Überschrift statt ID) ---
         date_str = query.shift_date.strftime('%d.%m.%Y')
         target_name = f"{query.target_user.vorname} {query.target_user.name}" if query.target_user else "Thema des Tages"
-        log_msg = f"Neue Antwort für '{target_name}' am {date_str} (von {current_user.vorname})."
-        _log_update_event("Schicht-Anfragen", log_msg)
-        # --- ENDE: ANPASSUNG ---
-
+        _log_update_event("Schicht-Anfragen", f"Neue Antwort für '{target_name}' am {date_str}.")
         db.session.commit()
         return jsonify(new_reply.to_dict()), 201
     except Exception as e:
         db.session.rollback()
         current_app.logger.error(f"Fehler beim Erstellen der Antwort für Query {query_id}: {str(e)}")
         return jsonify({"message": f"Datenbankfehler: {str(e)}"}), 500
-
-# --- ENDE NEUE ROUTEN ---

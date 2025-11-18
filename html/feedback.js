@@ -1,9 +1,10 @@
+// cheesylicious/dhfweb/dhfweb-ec604d738e9bd121b65cc8557f8bb98d2aa18062/html/feedback.js
 // --- Globales Setup ---
 const API_URL = 'http://46.224.63.203:5000';
 let user;
 let isAdmin = false;
 
-// --- Auth-Check und Logout-Setup (Standard) ---
+// --- Auth-Check und Logout-Setup ---
 async function logout() {
     try { await apiFetch('/api/logout', 'POST'); }
     catch (e) { console.error(e); }
@@ -20,77 +21,49 @@ try {
 
     isAdmin = user.role.name === 'admin';
     const isVisitor = user.role.name === 'Besucher';
-    // --- START NEU: Planschreiber-Rolle hinzugefügt ---
     const isPlanschreiber = user.role.name === 'Planschreiber';
-    // --- START: NEU: Hundeführer-Rolle hinzugefügt ---
     const isHundefuehrer = user.role.name === 'Hundeführer';
-    // --- ENDE: NEU ---
 
-    // *** SEHR WICHTIG: Zugriffsschutz ***
-    // --- START NEU: Zugriff für Planschreiber erlaubt (mit Umleitung) ---
-    // --- START: NEU: Hundeführer wird jetzt auch blockiert ---
-    if (!isAdmin && !isPlanschreiber) {
-    // --- ENDE: NEU ---
-        // Wenn weder Admin noch Planschreiber, ersetze den Inhalt
-    // --- ENDE NEU ---
+    // *** Zugriffsschutz (Nur Admin) ***
+    if (!isAdmin) {
         const wrapper = document.getElementById('content-wrapper');
         wrapper.classList.add('restricted-view');
         wrapper.innerHTML = `
             <h2 style="color: #e74c3c;">Zugriff verweigert</h2>
-            <p>Nur Administratoren oder Planschreiber dürfen auf die Meldungsverwaltung zugreifen.</p>
+            <p>Nur Administratoren dürfen auf die Meldungsverwaltung zugreifen.</p>
         `;
-        // Verhindere das Ausführen weiterer Logik
-        // --- START NEU: Fehlermeldung angepasst ---
-        throw new Error("Keine Admin/Planschreiber-Rechte für Feedback-Verwaltung.");
-        // --- ENDE NEU ---
+        // Verstecke Sub-Nav, falls vorhanden
+        const subNav = document.getElementById('sub-nav-tasks');
+        if(subNav) subNav.style.display = 'none';
+
+        throw new Error("Keine Admin-Rechte für Feedback-Verwaltung.");
     }
 
-    // --- START NEU: Umleitung für Planschreiber ---
-    // Wenn der Benutzer Planschreiber, ABER NICHT Admin ist,
-    // wird er von der feedback.html (Bugs) sofort auf anfragen.html umgeleitet.
-    if (isPlanschreiber && !isAdmin) {
-        window.location.href = 'anfragen.html';
-        // Wir werfen einen Fehler, um das Laden der restlichen Seite zu stoppen.
-        throw new Error("Umleitung für Planschreiber zu anfragen.html.");
-    }
-    // --- ENDE NEU ---
-
-
-    // --- KORREKTUR: Robuste Navigationsanpassung für ALLE eingeloggten Benutzer ---
+    // Navigation anpassen
     const navDashboard = document.getElementById('nav-dashboard');
     const navUsers = document.getElementById('nav-users');
     const navFeedback = document.getElementById('nav-feedback');
 
-    // KORRIGIERTE LOGIK: Dashboard ist für alle NICHT-Besucher sichtbar
     if (navDashboard) navDashboard.style.display = isVisitor ? 'none' : 'inline-flex';
 
-    // Admin sieht alle Haupt-Navigationspunkte
     if (isAdmin) {
-        // Überprüfen, ob das Element existiert, bevor der Stil gesetzt wird
         if (navUsers) navUsers.style.display = 'inline-flex';
-        if (navFeedback) navFeedback.style.display = 'inline-flex'; // Meldungen anzeigen (ist aktiv)
-    }
-    // --- START NEU: Planschreiber-Navigationslogik ---
-    else if (isPlanschreiber) {
+        if (navFeedback) navFeedback.style.display = 'inline-flex';
+    } else if (isPlanschreiber) {
          if (navUsers) navUsers.style.display = 'none';
          if (navFeedback) navFeedback.style.display = 'inline-flex';
     }
-    // --- ENDE NEU ---
-    // --- ENDE KORREKTUR ---
 
-    // (Navigation wird in Schritt 6 global hinzugefügt, hier nur der Logout)
     document.getElementById('logout-btn').onclick = logout;
 
 } catch (e) {
-    // --- START NEU: Fehlermeldung angepasst ---
-    if (!e.message.includes("Admin/Planschreiber-Rechte") && !e.message.includes("Umleitung für Planschreiber")) {
-         logout();
+    if (!e.message.includes("Keine Admin-Rechte")) {
+         // Nur ausloggen, wenn es ein echter Fehler ist, nicht beim Zugriffsschutz
+         if (!user) logout();
     }
-    // --- ENDE NEU ---
-    // (Stoppt die Ausführung, wenn der Fehler geworfen wurde)
 }
 
-// --- Globale API-Funktion (Standard) ---
+// --- Globale API-Funktion ---
 async function apiFetch(endpoint, method = 'GET', body = null) {
     const options = {
         method,
@@ -123,30 +96,30 @@ const feedbackList = document.getElementById('feedback-list');
 const filterButtonsContainer = document.querySelector('.filter-buttons');
 let currentFilter = ""; // (Startet mit "Alle")
 
-/**
- * Lädt die Berichte von der API, basierend auf dem aktuellen Filter
- */
 async function loadReports() {
+    if (!feedbackList) return;
     feedbackList.innerHTML = '<li>Lade Meldungen...</li>';
 
     try {
         const reports = await apiFetch(`/api/feedback?status=${currentFilter}`);
         renderReports(reports);
     } catch (error) {
+        console.error("Fehler beim Laden der Reports:", error);
         feedbackList.innerHTML = `<li style="color: var(--status-neu); padding: 20px;">Fehler beim Laden: ${error.message}</li>`;
     }
 }
 
-/**
- * Stellt die geladenen Berichte in der Liste dar
- */
 function renderReports(reports) {
+    if (!feedbackList) return;
     feedbackList.innerHTML = '';
 
-    if (reports.length === 0) {
+    if (!reports || reports.length === 0) {
         feedbackList.innerHTML = '<li style="color: #bdc3c7; padding: 20px; text-align: center;">Keine Meldungen für diesen Filter gefunden.</li>';
         return;
     }
+
+    // Sortieren: Neueste zuerst
+    reports.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
 
     reports.forEach(report => {
         const li = document.createElement('li');
@@ -157,8 +130,8 @@ function renderReports(reports) {
             day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit'
         });
 
-        // (Aktions-Buttons je nach Status anpassen)
         let actionButtons = '';
+        // Buttons nur anzeigen, wenn Status passend
         if (report.status !== 'gesehen') {
             actionButtons += `<button class="btn-seen" data-action="gesehen">Als 'gesehen' markieren</button>`;
         }
@@ -188,38 +161,43 @@ function renderReports(reports) {
     });
 }
 
-/**
- * Aktualisiert den Status eines Berichts
- */
 async function handleUpdateStatus(id, newStatus) {
     const item = feedbackList.querySelector(`.feedback-item[data-id="${id}"]`);
     if (!item) return;
 
     try {
         await apiFetch(`/api/feedback/${id}`, 'PUT', { status: newStatus });
-        // (Innovativ: Statt Neuladen, nur das Element aktualisieren oder ausblenden)
 
+        // Wenn der neue Status nicht dem Filter entspricht, ausblenden
         if (currentFilter && currentFilter !== newStatus) {
-            // Wenn der neue Status nicht dem Filter entspricht, ausblenden
             item.classList.add('fade-out');
             setTimeout(() => item.remove(), 500);
+
+            // Prüfen ob Liste leer ist nach Entfernen
+            setTimeout(() => {
+                if(feedbackList.children.length === 0) {
+                     feedbackList.innerHTML = '<li style="color: #bdc3c7; padding: 20px; text-align: center;">Keine Meldungen für diesen Filter gefunden.</li>';
+                }
+            }, 550);
+
         } else {
-            // Status im DOM aktualisieren
             const statusBadge = item.querySelector('.item-status');
-            statusBadge.dataset.status = newStatus;
-            statusBadge.textContent = newStatus;
-            // (Buttons neu laden, indem wir die Liste neu laden - einfacher)
+            if(statusBadge) {
+                statusBadge.dataset.status = newStatus;
+                statusBadge.textContent = newStatus;
+            }
+            // Liste neu laden um Buttons zu aktualisieren
             loadReports();
         }
+
+        // Trigger Update für Banner
+        if(window.triggerNotificationUpdate) window.triggerNotificationUpdate();
 
     } catch (error) {
         alert(`Fehler beim Aktualisieren: ${error.message}`);
     }
 }
 
-/**
- * Löscht einen Bericht
- */
 async function handleDelete(id) {
     const item = feedbackList.querySelector(`.feedback-item[data-id="${id}"]`);
     if (!item) return;
@@ -230,57 +208,53 @@ async function handleDelete(id) {
 
     try {
         await apiFetch(`/api/feedback/${id}`, 'DELETE');
-        // (Innovativ: Fade-Out-Effekt statt Neuladen)
         item.classList.add('fade-out');
         setTimeout(() => item.remove(), 500);
+
+        // Trigger Update für Banner
+        if(window.triggerNotificationUpdate) window.triggerNotificationUpdate();
+
     } catch (error) {
         alert(`Fehler beim Löschen: ${error.message}`);
     }
 }
 
-/**
- * Event Listener für Filter-Buttons
- */
-filterButtonsContainer.addEventListener('click', (e) => {
-    if (e.target.tagName === 'BUTTON') {
-        // (Aktiven Status umschalten)
-        filterButtonsContainer.querySelector('button.active').classList.remove('active');
-        e.target.classList.add('active');
+if (filterButtonsContainer) {
+    filterButtonsContainer.addEventListener('click', (e) => {
+        if (e.target.tagName === 'BUTTON') {
+            const currentActive = filterButtonsContainer.querySelector('button.active');
+            if(currentActive) currentActive.classList.remove('active');
+            e.target.classList.add('active');
 
-        currentFilter = e.target.dataset.filter;
-        loadReports();
-    }
-});
-
-/**
- * Event Listener für die Ticket-Liste (Aktionen & Aufklappen)
- * (Event Delegation)
- */
-feedbackList.addEventListener('click', (e) => {
-    const button = e.target.closest('button');
-    const header = e.target.closest('.item-header');
-
-    if (button) {
-        // (Aktions-Button geklickt)
-        const action = button.dataset.action;
-        const id = e.target.closest('.feedback-item').dataset.id;
-
-        if (action === 'delete') {
-            handleDelete(id);
-        } else if (action === 'neu' || action === 'gesehen' || action === 'archiviert') {
-            handleUpdateStatus(id, action);
+            currentFilter = e.target.dataset.filter;
+            loadReports();
         }
-    } else if (header) {
-        // (Header geklickt -> Aufklappen)
-        const body = header.nextElementSibling;
-        body.style.display = (body.style.display === 'block') ? 'none' : 'block';
-    }
-});
+    });
+}
 
-/**
- * (Hilfsfunktion zum Entschärfen von HTML in Nachrichten)
- */
+if (feedbackList) {
+    feedbackList.addEventListener('click', (e) => {
+        const button = e.target.closest('button');
+        const header = e.target.closest('.item-header');
+
+        if (button) {
+            const action = button.dataset.action;
+            const id = e.target.closest('.feedback-item').dataset.id;
+
+            if (action === 'delete') {
+                handleDelete(id);
+            } else if (action === 'neu' || action === 'gesehen' || action === 'archiviert') {
+                handleUpdateStatus(id, action);
+            }
+        } else if (header) {
+            const body = header.nextElementSibling;
+            body.style.display = (body.style.display === 'block') ? 'none' : 'block';
+        }
+    });
+}
+
 function escapeHTML(str) {
+    if (!str) return "";
     return str.replace(/[&<>"']/g, function(m) {
         return {
             '&': '&amp;',
@@ -292,10 +266,7 @@ function escapeHTML(str) {
     });
 }
 
-
 // --- Initialisierung ---
-// --- START NEU: Prüfung auf Admin (Planschreiber wird vorher umgeleitet) ---
 if (isAdmin) {
-    loadReports(); // (Starte mit Filter "Alle")
+    loadReports();
 }
-// --- ENDE NEU ---
