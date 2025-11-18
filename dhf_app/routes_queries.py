@@ -18,13 +18,8 @@ from sqlalchemy import extract, func, or_
 from datetime import datetime
 # --- START: HINZUGEFÜGT (Für performante Zählung) ---
 from sqlalchemy.sql import select
+
 # --- ENDE: HINZUGEFÜGT ---
-
-# --- START: KORREKTUR (Regel 1) - Import für IntegrityError ---
-from sqlalchemy.exc import IntegrityError
-
-# --- ENDE: KORREKTUR ---
-
 
 # Erstellt einen Blueprint. Alle Routen hier beginnen mit /api/queries
 query_bp = Blueprint('query', __name__, url_prefix='/api/queries')
@@ -121,6 +116,7 @@ def get_notifications_summary():
                 # --- ENDE: NEU ---
             )
 
+
             # --- START: NEUER FILTER FÜR HUNDEFÜHRER ---
             if user_role == 'Hundeführer':
                 base_query = base_query.filter(
@@ -145,8 +141,8 @@ def get_notifications_summary():
                     # Prüfe, ob es eine Wunsch-Anfrage von einem Hundeführer ist
                     sender_role_name = query.sender.role.name if query.sender and query.sender.role else ""
                     is_wunsch_anfrage = (
-                            sender_role_name == 'Hundeführer' and
-                            query.message.startswith("Anfrage für:")
+                        sender_role_name == 'Hundeführer' and
+                        query.message.startswith("Anfrage für:")
                     )
                     # Wenn ja, ignoriere diese Anfrage für den Planschreiber
                     if is_wunsch_anfrage:
@@ -224,21 +220,23 @@ def create_shift_query():
                 return jsonify({"message": "Hundeführer dürfen Anfragen nur für sich selbst erstellen."}), 403
         # --- ENDE: NEUE LOGIK FÜR HUNDEFÜHRER ---
 
-        # Prüfen, ob für diese Zelle schon eine offene Anfrage existiert
+        # --- START: KORREKTUR (Kein Überschreiben fremder Anfragen) ---
+        # Prüfen, ob für diese Zelle schon eine offene Anfrage VOM AKTUELLEN BENUTZER existiert
         existing_query = ShiftQuery.query.filter_by(
             target_user_id=target_user_id,
             shift_date=shift_date,
-            status='offen'
+            status='offen',
+            sender_user_id=current_user.id  # <<< WICHTIG: Nur eigene aktualisieren!
         ).first()
 
         if existing_query:
-            # Alte Anfrage aktualisieren
+            # Alte EIGENE Anfrage aktualisieren
             existing_query.message = message
-            existing_query.sender_user_id = current_user.id
+            # sender_user_id ist bereits current_user.id
             existing_query.created_at = datetime.utcnow()
             db.session.add(existing_query)
         else:
-            # Neue Anfrage erstellen
+            # Neue Anfrage erstellen (auch wenn schon eine von einem anderen User da ist)
             new_query = ShiftQuery(
                 sender_user_id=current_user.id,
                 target_user_id=target_user_id,
@@ -247,6 +245,7 @@ def create_shift_query():
                 status='offen'
             )
             db.session.add(new_query)
+        # --- ENDE: KORREKTUR ---
 
         db.session.commit()
         return jsonify({"message": "Anfrage gespeichert."}), 201
@@ -356,9 +355,6 @@ def update_query_status(query_id):
     Aktualisiert den Status einer Anfrage (z.B. 'offen' -> 'erledigt').
     Jetzt für Admins UND Planschreiber.
     (Hundeführer dürfen dies NICHT)
-
-    KORRIGIERT (Regel 1): Fängt IntegrityError (Duplicate Key) ab, falls eine
-    andere Anfrage für diesen Tag/User bereits 'erledigt' ist.
     """
     query = db.session.get(ShiftQuery, query_id)
     if not query:
@@ -382,35 +378,6 @@ def update_query_status(query_id):
 
         db.session.commit()
         return jsonify(query.to_dict()), 200
-
-    except IntegrityError as e:
-        # --- START: NEUE FEHLERBEHANDLUNG (Regel 1) ---
-        db.session.rollback()
-        # Prüfen, ob es der "Duplicate Key" Fehler wegen 'erledigt' war
-        # (Der Name des Keys ist _user_date_status_uc)
-        if "Duplicate entry" in str(e) and "_user_date_status_uc" in str(e) and new_status == 'erledigt':
-            # Der UNIQUE KEY (_user_date_status_uc) hat zugeschlagen.
-            # Das bedeutet, eine andere Anfrage für diesen Tag/User ist BEREITS 'erledigt'.
-            # Wir behandeln dies als "Erfolg", da das Ziel (erledigt) bereits erreicht ist.
-
-            # WICHTIG: Wir löschen die *aktuelle* Anfrage, die wir bearbeiten wollten,
-            # da sie redundant ist (z.B. die Textnotiz ❓).
-            # Der Benutzer wollte "erledigen", also entfernen wir die offene Notiz.
-            try:
-                db.session.delete(query)
-                db.session.commit()
-                # Wir geben die (jetzt gelöschten) Daten zurück, als ob es geklappt hätte
-                return jsonify(query.to_dict()), 200
-            except Exception as e_del:
-                db.session.rollback()
-                current_app.logger.error(
-                    f"Konnte redundante ShiftQuery {query_id} nach IntegrityError nicht löschen: {e_del}")
-                return jsonify({"message": f"Konflikt beim Aufräumen: {e_del}"}), 500
-
-        # Falls es ein anderer IntegrityError war
-        return jsonify({"message": f"Datenbank-Integritätsfehler: {str(e)}"}), 500
-        # --- ENDE: NEUE FEHLERBEHANDLUNG ---
-
     except Exception as e:
         db.session.rollback()
         return jsonify({"message": f"Datenbankfehler: {str(e)}"}), 500
@@ -482,7 +449,7 @@ def get_query_replies(query_id):
     # --- ENDE: NEUE BERECHTIGUNGSPRÜFUNG ---
 
     # Sortiere nach Erstellungsdatum (älteste zuerst)
-    replies = query.replies.order_by(ShiftQueryReply.created_at.asc()).all()
+    replies = query.replies
 
     return jsonify([reply.to_dict() for reply in replies]), 200
 

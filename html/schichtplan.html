@@ -174,23 +174,81 @@
 
         /* --- Grid Styles --- */
 
+        /* --- START NEU/ANGEPASST: Zentrierung & Hervorhebung (Regel 1) --- */
         .plan-nav {
-            display: flex; justify-content: space-between; align-items: center;
+            display: flex;
+            justify-content: space-between; /* Hält Elemente auseinander */
+            align-items: center;
             padding: 20px;
             background-color: #fcfcfc;
             border-bottom: 1px solid #eee;
-            /* --- NEU: Flex-Wrap für mobile Ansicht --- */
             flex-wrap: wrap;
             gap: 15px;
         }
-        /* --- NEU: Monat/Jahr-Container --- */
-        .plan-nav-month-year {
+
+        /* Linke Seite (Button) */
+        .plan-nav-left {
+            flex: 1;
+            display: flex;
+            justify-content: flex-start;
+            /* Sorgt dafür, dass die linke Seite nicht mehr Platz als nötig einnimmt */
+            min-width: 150px;
+        }
+
+        /* Rechte Seite (Button) */
+        .plan-nav-right {
+            flex: 1;
+            display: flex;
+            justify-content: flex-end;
+            align-items: center;
+            gap: 10px;
+            min-width: 150px;
+        }
+
+        /* Mitte (Zentriert) */
+        .plan-nav-center {
+            display: flex;
+            flex-direction: column; /* Monat oben, Status unten */
+            align-items: center;
+            justify-content: center;
+            flex-grow: 2; /* Nimmt zentralen Platz ein */
+            gap: 10px;
+        }
+
+        .plan-nav-center h2 {
+            margin: 0;
+            font-size: 24px; /* Größer für Zentralität */
+            color: #333;
+        }
+
+        #plan-status-container {
             display: flex;
             align-items: center;
-            gap: 15px;
-            flex-grow: 1; /* Nimmt Platz ein */
+            gap: 10px;
+            /* (Hintergrund entfernt, Badge ist jetzt prominent) */
         }
-        .plan-nav h2 { margin: 0; font-size: 22px; color: #333; }
+
+        /* Status-Badge Hervorhebung (wie gewünscht) */
+        #plan-status-badge {
+            font-weight: 700; /* Fetter */
+            padding: 8px 14px; /* Größer */
+            border-radius: 6px;
+            font-size: 16px; /* Größer */
+            border: 2px solid; /* Rand für Definition */
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1); /* Leichter Schatten */
+        }
+        #plan-status-badge.status-in-bearbeitung {
+            background-color: #fff3cd; /* Gelb */
+            color: #856404;
+            border-color: #ffeeba;
+        }
+        #plan-status-badge.status-fertiggestellt {
+            background-color: #d4edda; /* Grün */
+            color: #155724;
+            border-color: #c3e6cb;
+        }
+        /* --- ENDE NEU/ANGEPASST --- */
+
 
         .plan-nav button {
             padding: 8px 16px; font-size: 15px;
@@ -204,31 +262,6 @@
             background: #e0e0e0;
         }
 
-        /* --- NEU: Plan-Status Container --- */
-        #plan-status-container {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            padding: 5px 10px;
-            background: #f4f4f4;
-            border-radius: 6px;
-        }
-        #plan-status-badge {
-            font-weight: 600;
-            padding: 5px 10px;
-            border-radius: 5px;
-            font-size: 14px;
-        }
-        /* Status-Farben */
-        #plan-status-badge.status-in-bearbeitung {
-            background-color: #fff3cd; /* Gelb */
-            color: #856404;
-        }
-        #plan-status-badge.status-fertiggestellt {
-            background-color: #d4edda; /* Grün */
-            color: #155724;
-        }
-
         /* Admin-Buttons im Status-Container */
         #plan-status-container .btn-admin-action {
             display: none; /* Standardmäßig versteckt */
@@ -240,7 +273,6 @@
             cursor: pointer;
             transition: background-color 0.3s;
         }
-        /* Admin-Modus zeigt die Buttons */
         body.admin-mode #plan-status-container .btn-admin-action {
             display: inline-block;
         }
@@ -258,14 +290,11 @@
             background-color: #cce5ff; /* Hellblau */
             color: #004085;
         }
-        /* --- ENDE NEU: Plan-Status --- */
 
 
-        /* (Kein Speicher-Button in dieser Version) */
         #save-staffing-order-btn { display: none; }
 
 
-        /* --- ANPASSUNG (Regel 1): Wrapper übernimmt Scrollen --- */
         #unified-grid-wrapper {
             overflow-x: auto;
         }
@@ -276,10 +305,7 @@
         #schichtplan-grid {
             display: grid;
         }
-        /* --- ENDE ANPASSUNG --- */
 
-
-        /* --- ANPASSUNG: "Ü"-Spalten hinzugefügt --- */
         .grid-header, .grid-cell, .grid-user-name, .grid-user-total, .grid-user-dog, .grid-header-uebertrag, .grid-user-uebertrag {
             padding: 10px;
             border-bottom: 1px solid #eee;
@@ -292,40 +318,27 @@
         .grid-header {
             background: #fcfcfc;
             font-weight: 600; position: sticky; top: 0;
-            z-index: 100; /* Z-Index erhöht, damit es über der Tagesmarkierung liegt */
+            z-index: 100;
         }
 
-        /* --- NEU: Schwarzer Trennstrich unter der zweiten Kopfzeile --- */
         .header-separator-bottom {
-            border-bottom: 2px solid #000000 !important; /* Fetter schwarzer Strich */
+            border-bottom: 2px solid #000000 !important;
         }
-        /* --- ENDE NEU --- */
 
         .grid-header.weekend { background-color: var(--weekend-bg-color, #fff8f8); color: var(--weekend-text-color, #333); }
         .grid-cell.weekend { background-color: var(--weekend-bg-color, #fff8f8); color: var(--weekend-text-color, #333); }
 
-        /* --- ANPASSUNG (Regel 1) --- */
-        /* Feiertag (Holiday) färbt die GESAMTE Spalte (Header + Zellen) */
         .day-color-holiday { background-color: var(--holiday-bg-color, #ffddaa) !important; color: var(--text-color, #333); }
         .grid-header.day-color-holiday { color: var(--text-color, #333); }
 
-        /* Training/Schießen färbt NUR den Header */
         .grid-header.day-color-training { background-color: var(--training-bg-color, #daffdb) !important; color: var(--text-color, #333); }
         .grid-header.day-color-shooting { background-color: var(--shooting-bg-color, #ffb0b0) !important; color: var(--text-color, #333); }
-        /* --- ENDE ANPASSUNG --- */
 
-        /* --- Hervorhebung für den aktuellen Tag (Spalte) --- */
         .current-day-highlight {
-            /* Simuliert einen Rahmen links und rechts INNERHALB der Zelle mit box-shadow.
-               Verwendet das Blau #3498db für Konsistenz. */
             box-shadow: inset 2px 0 0 0 #3498db, inset -2px 0 0 0 #3498db !important;
-
-            /* KORREKTUR: KEIN !important bei background-color, damit Schichtfarben gewinnen! */
             background-color: rgba(52, 152, 219, 0.08);
-
-            z-index: 10; /* Über Standard-Zellen, aber unter Headern (z-index 100) */
+            z-index: 10;
         }
-        /* Spezifisch für Header: Hier wollen wir die Farbe erzwingen */
         .grid-header.current-day-highlight {
             color: #3498db !important;
             background-color: #eaf2ff !important;
@@ -335,30 +348,23 @@
             font-weight: 600; text-align: left;
             position: sticky; left: 0;
             background: #fcfcfc;
-            z-index: 100; /* Z-Index erhöht, damit es beim Scrollen sichtbar bleibt */
+            z-index: 100;
             border-left: 1px solid #eee;
         }
-
-        /* --- KORREKTUR: Textausrichtung für Spalten-Header und Inhalt --- */
         .grid-user-dog { font-weight: 500; text-align: left; background: #fcfcfc; color: #555; }
-        .grid-header-dog { font-weight: 600; background: #fcfcfc; text-align: center; } /* Zentriert 'Mitarbeiter' und 'Diensthund' Header */
-
-        /* --- KORREKTUR: Keine Truncation für Mitarbeiter und Diensthund --- */
+        .grid-header-dog { font-weight: 600; background: #fcfcfc; text-align: center; }
         .grid-user-name, .grid-user-dog, .grid-header-dog {
-            white-space: nowrap; /* Behalten wir bei, damit max-content funktioniert */
+            white-space: nowrap;
             overflow: visible !important;
             text-overflow: clip !important;
         }
-        /* --- ENDE KORREKTUR --- */
-
-        /* --- NEU: Stile für "Ü"-Spalte --- */
         .grid-header-uebertrag {
             font-weight: 600;
             background: #ffe8cc; /* Orange-Hintergrund */
             color: #8c5a00; /* Dunklerer Text für Kontrast */
             position: sticky;
             top: 0;
-            z-index: 100; /* Z-Index erhöht */
+            z-index: 100;
             border-right: 1px solid #ffcc99;
         }
         .grid-user-uebertrag {
@@ -367,19 +373,13 @@
             background: #fff3e6; /* Helleres Orange */
             color: #333;
             box-shadow: inset 0px 1px 3px rgba(0, 0, 0, 0.1);
-            border-right: 1px solid #ffcc99; /* Akzent-Rand */
+            border-right: 1px solid #ffcc99;
         }
-        /* --- ENDE NEU --- */
-
         .grid-user-total { font-weight: 600; background: #f8f9fa; text-align: center; }
-        .grid-header-total { font-weight: 600; background: #f8f9fa; text-align: center; } /* Zentriert 'Std.' Header */
+        .grid-header-total { font-weight: 600; background: #f8f9fa; text-align: center; }
 
         .grid-cell {
-            /* --- START: GEÄNDERT (cursor: pointer) --- */
-            /* Standardmäßig kein Cursor */
             cursor: default;
-            /* --- ENDE: GEÄNDERT --- */
-
             font-weight: 500;
             transition: background-color 0.2s, transform 0.2s, box-shadow 0.2s;
             box-shadow: inset 0px 1px 3px rgba(0, 0, 0, 0.2);
@@ -387,23 +387,16 @@
             z-index: 1;
         }
 
-        /* --- START: NEUE CURSOR-LOGIK FÜR LINKSKLICK --- */
-        /* Admins (wenn Plan offen) und Planschreiber (immer) bekommen Pointer für Linksklick */
         body.admin-mode:not(.plan-locked) .grid-cell,
         body.planschreiber-mode:not(.plan-locked) .grid-cell {
              cursor: pointer;
         }
-        /* Hundeführer bekommen Pointer nur auf eigener Zeile (wenn Plan offen) */
         body.hundefuehrer-mode:not(.plan-locked) .current-user-row.grid-cell {
             cursor: pointer;
         }
-        /* Besucher haben nie einen Pointer */
         body.visitor-mode .grid-cell {
             cursor: default !important;
         }
-        /* --- ENDE: NEUE CURSOR-LOGIK --- */
-
-
         .grid-cell.hovered {
             background-color: #d6eaff !important;
             box-shadow: 0px 2px 8px rgba(0, 0, 0, 0.3);
@@ -415,9 +408,8 @@
             cursor: default;
         }
 
-        /* --- NEU: Visuelles Feedback für gesperrten Plan --- */
         body.plan-locked .grid-cell {
-            cursor: not-allowed !important; /* Standard-Sperre */
+            cursor: not-allowed !important;
             background-image: repeating-linear-gradient(
                 -45deg,
                 transparent,
@@ -426,10 +418,6 @@
                 rgba(0, 0, 0, 0.02) 10px
             );
         }
-
-        /* --- START: GEÄNDERT (Linksklick auf gesperrt) --- */
-        /* Im gesperrten Modus dürfen Admins/Planschreiber/Hundeführer immer noch klicken,
-           um Notizen/Anfragen zu sehen (aber nicht zu ändern). */
         body.admin-mode.plan-locked .grid-cell,
         body.planschreiber-mode.plan-locked .grid-cell {
             cursor: pointer !important;
@@ -437,13 +425,10 @@
         body.hundefuehrer-mode.plan-locked .current-user-row.grid-cell {
              cursor: pointer !important;
         }
-        /* --- ENDE: GEÄNDERT --- */
-
         body.plan-locked .grid-cell:hover {
             transform: none;
             box-shadow: inset 0px 1px 3px rgba(0, 0, 0, 0.2);
         }
-        /* Hover-Effekt (visuell) soll auch im gesperrten Modus funktionieren */
         body.admin-mode.plan-locked .grid-cell.hovered,
         body.planschreiber-mode.plan-locked .grid-cell.hovered,
         body.hundefuehrer-mode.plan-locked .current-user-row.grid-cell.hovered {
@@ -452,32 +437,23 @@
              transform: scale(1.05);
              z-index: 20;
         }
-
-
-
         .grid-cell.violation {
             box-shadow: inset 0 0 0 3px #e74c3c !important;
             border: 1px solid #e74c3c !important;
         }
-
-        /* --- START: NEUES CSS FÜR HUNDEFÜHRER-ANFRAGEN (Regel 1) --- */
         .shift-request-cell {
-            background-color: #f0ad4e !important; /* Orange (passend zur Notification-Bar) */
-            color: #1a1a1a !important; /* Dunkler Text für Kontrast */
+            background-color: #f0ad4e !important;
+            color: #1a1a1a !important;
             font-weight: 600;
             font-style: italic;
             box-shadow: inset 0 0 0 1px rgba(0,0,0,0.2) !important;
         }
-        /* --- ENDE: NEU --- */
-
-
-        /* --- NEU: CSS FÜR SCHICHT-ANFRAGE-ICON --- */
         .shift-query-icon {
             position: absolute;
             top: 2px;
             right: 2px;
             font-size: 10px;
-            background: #f1c40f; /* Auffälliges Gelb */
+            background: #f1c40f;
             color: #333;
             border-radius: 50%;
             width: 14px;
@@ -487,16 +463,12 @@
             box-shadow: 0 0 3px rgba(0,0,0,0.5);
             font-weight: 600;
         }
-        /* --- ENDE NEU --- */
 
-
-        /* --- START: KORRIGIERTE LEGENDE (CSS-Grid) --- */
         .plan-legende {
             padding: 20px;
             display: grid;
-            /* --- KORREKTUR 1: Auf 3 Spalten gesetzt, um vollen Platz zu nutzen --- */
             grid-template-columns: repeat(3, 1fr);
-            gap: 25px; /* Abstand zwischen den Gruppen */
+            gap: 25px;
             background: #fcfcfc;
             color: #333;
             border-top: 1px solid #eee;
@@ -505,19 +477,18 @@
         .legende-titel {
             font-weight: 600;
             color: #333;
-            border-bottom: 2px solid #3498db; /* Blauer Akzent */
+            border-bottom: 2px solid #3498db;
             padding-bottom: 5px;
             margin-bottom: 10px;
             font-size: 15px;
         }
         .legende-items {
             display: flex;
-            flex-direction: column; /* Items untereinander */
-            gap: 8px; /* Kleinerer Abstand für Listen-Items */
+            flex-direction: column;
+            gap: 8px;
         }
         .legende-item {
             display: flex;
-            /* --- KORREKTUR 2: Bündig oben ausrichten statt zentriert --- */
             align-items: flex-start;
             gap: 8px;
         }
@@ -526,22 +497,18 @@
             height: 15px;
             border: 1px solid #ccc;
             border-radius: 3px;
-            flex-shrink: 0; /* Verhindert Schrumpfen */
-            /* --- NEU: Sorgt für korrekte Ausrichtung bei Umbruch --- */
+            flex-shrink: 0;
             margin-top: 3px;
         }
         .legende-name {
             font-size: 14px;
-            color: #333; /* Stellt sicher, dass Text lesbar ist */
-
-            /* --- KORREKTUR 3: Textumbruch erzwingen --- */
+            color: #333;
             white-space: normal;
             word-break: break-word;
         }
         .legende-name strong {
-            color: #000; /* Abkürzung fetter */
+            color: #000;
         }
-        /* --- ENDE: KORRIGIERTE LEGENDE --- */
 
         .modal {
             display: none; position: fixed; z-index: 100; left: 0; top: 0;
@@ -582,14 +549,11 @@
             display: none !important;
         }
 
-        /* --- NEU: CSS FÜR QUERY-MODAL (BASIEREND AUF SHIFT-MODAL) --- */
-
         #query-modal .modal-content {
-             max-width: 550px; /* Etwas breiter für Textarea */
+             max-width: 550px;
         }
 
         #query-admin-actions .btn-admin-action {
-             /* Style für den "Erledigt" Button */
             background: #2ecc71;
             color: white;
             border: none;
@@ -597,30 +561,26 @@
             border-radius: 5px;
             cursor: pointer;
             font-size: 14px;
-            font-weight: 600; /* NEU: Hervorhebung */
+            font-weight: 600;
         }
         #query-admin-actions .btn-admin-action:hover {
             opacity: 0.8;
         }
-
-        /* --- NEU: Style für Löschen Button (Regel 4) --- */
         .btn-delete-query {
-             background: #e74c3c !important; /* Rot */
+             background: #e74c3c !important;
              color: white !important;
         }
-        /* --- ENDE NEU: Style für Löschen Button --- */
-
         #query-existing-message {
             background: #eee;
             padding: 10px;
             border-radius: 5px;
-            white-space: pre-wrap; /* Behält Zeilenumbrüche aus der DB bei */
+            white-space: pre-wrap;
             font-size: 14px;
             color: #333;
             border: 1px solid #ddd;
         }
         #query-message-input {
-            width: 98%; /* Passt sich an Padding an */
+            width: 98%;
             padding: 10px;
             font-family: 'Poppins', sans-serif;
             border: 1px solid #ccc;
@@ -629,8 +589,6 @@
             min-height: 80px;
             resize: vertical;
         }
-
-        /* --- NEU: Konversations-Styles --- */
         #query-replies-list {
             padding-left: 0;
             margin-bottom: 0;
@@ -653,38 +611,25 @@
             white-space: pre-wrap;
             word-break: break-word;
         }
-        /* --- ENDE NEU --- */
-
-
-        /* --- STILE FÜR MINDESTBESETZUNG --- */
 
         #staffing-grid-container {
             border-top: 2px solid #3498db;
             padding-top: 5px;
             background: #fdfdfd;
         }
-
-        /* Container ist jetzt Flex-Column für die Zeilen */
         #staffing-grid {
             display: flex;
             flex-direction: column;
         }
-
-        /* Jede Zeile ist ein eigenes Grid */
         .staffing-row {
             display: grid;
-            /* grid-template-columns wird inline per JS gesetzt */
             border-bottom: 1px solid #eee;
             background: #fff;
-            /* WICHTIG: Textauswahl verhindern, wenn Sortiermodus an ist (via Klasse am Parent oder JS) */
         }
-
-        /* Klasse, die via JS auf die staffing-row gesetzt werden kann, um Auswahl zu verhindern */
         .staffing-row.sort-mode-active {
             user-select: none;
             cursor: grab;
         }
-
         .staffing-header, .staffing-cell, .staffing-label, .staffing-total-header {
             padding: 8px 10px;
             text-align: center;
@@ -694,7 +639,7 @@
             color: #333;
             overflow: hidden;
             text-overflow: ellipsis;
-            border-right: 1px solid #eee; /* Vertikale Trennlinien */
+            border-right: 1px solid #eee;
         }
         .staffing-label {
             font-weight: 600;
@@ -706,15 +651,11 @@
             border-left: 1px solid #eee;
         }
 
-        /* --- DRAG & DROP STYLES --- */
-
-        /* Globales Verhindern von Textauswahl beim Draggen */
         body.dragging, body.dragging * {
             user-select: none !important;
             -webkit-user-select: none !important;
             cursor: grabbing !important;
         }
-
         .staffing-drag-handle {
             cursor: grab;
             color: #777;
@@ -730,28 +671,20 @@
         .staffing-drag-handle:active {
             cursor: grabbing;
         }
-
-        /* KORRIGIERTES Styling für den "Ghost" (die Kopie beim Ziehen) */
-        /* Wir nutzen display: grid, damit die Spalten erhalten bleiben */
         .sortable-fallback {
-            display: grid !important; /* Zwingt Grid-Layout auf die Kopie */
-            /* Breite und Spalten werden vom Original geerbt (inline styles) */
+            display: grid !important;
             background-color: #ffffff;
             border: 1px solid #3498db;
             box-shadow: 0 5px 15px rgba(0,0,0,0.2);
             opacity: 1 !important;
             z-index: 9999;
-            pointer-events: none; /* Wichtig: Klicks durchlassen */
+            pointer-events: none;
         }
-
-        /* Im Fallback wollen wir alle Zellen sehen, damit es wie die echte Zeile aussieht */
         .sortable-fallback .staffing-cell,
         .sortable-fallback .staffing-total-header,
         .sortable-fallback .staffing-label {
-            display: block; /* Oder flex/grid item default */
+            display: block;
         }
-
-        /* Der Platzhalter (Lücke) */
         .sortable-ghost {
             opacity: 0.2;
             background: #3498db !important;
@@ -794,20 +727,18 @@
             font-weight: 700;
             box-shadow: inset 0 0 0 1px #e74c3c;
         }
-
         .staffing-untracked {
             background-color: #f8f9fa !important;
             color: #bbb;
         }
 
-        /* --- ACTIONS UNTEN (Links ausgerichtet) --- */
         .staffing-actions {
             padding: 10px 20px;
             background: #fcfcfc;
             border-top: 1px solid #eee;
             display: flex;
             align-items: center;
-            justify-content: flex-start; /* Linksbündig */
+            justify-content: flex-start;
         }
 
         #staffing-sort-toggle {
@@ -825,7 +756,6 @@
              background: #2980b9;
         }
 
-        /* Eigener Benutzer */
         .grid-user-name.current-user-row {
             background-color: #eaf2ff !important;
             border-left: 2px solid #3498db;
@@ -846,10 +776,9 @@
             padding-top: 8px; padding-bottom: 8px;
         }
 
-        /* --- START ANPASSUNG: BLINK-ANIMATION (Regel 1) --- */
         @keyframes grid-cell-blink {
             0% {
-                background-color: #9b59b6; /* Lila (aus anfragen.js) */
+                background-color: #9b59b6;
                 box-shadow: inset 0 0 0 3px #ffffff;
                 color: #ffffff;
             }
@@ -865,32 +794,23 @@
             }
         }
         .grid-cell-highlight {
-            /* 5 Sekunden Animation, 5 mal wiederholen (entspricht 5 Sekunden) */
             animation: grid-cell-blink 1s 5;
-            z-index: 50 !important; /* Muss über anderen Zellen liegen */
+            z-index: 50 !important;
         }
-        /* --- ENDE ANPASSUNG --- */
 
-
-        /* --- START: NEUES CLICK-MODAL (ERSETZT KONTEXTMENÜ) --- */
         #click-action-modal {
             display: none;
             position: absolute;
             z-index: 100005;
-
-            /* Glas-Effekt */
             background: rgba(40, 40, 40, 0.95);
             backdrop-filter: blur(10px);
             -webkit-backdrop-filter: blur(10px);
             border: 1px solid rgba(255, 255, 255, 0.1);
-
             color: #ffffff;
             border-radius: 8px;
             box-shadow: 0 5px 20px rgba(0,0,0,0.4);
             width: 300px;
             font-family: 'Poppins', sans-serif;
-
-            /* Verhindert Textauswahl im Modal */
             user-select: none;
             -webkit-user-select: none;
         }
@@ -909,22 +829,19 @@
             color: #bdc3c7;
         }
 
-        /* Sektionen im Modal */
         .cam-section {
             padding: 10px;
         }
-        /* Titel für Sektionen (z.B. "Wunsch-Anfrage") */
         .cam-section-title {
             font-size: 12px;
             font-weight: 600;
-            color: #3498db; /* Blau */
+            color: #3498db;
             text-transform: uppercase;
             padding: 0 5px 5px 5px;
             border-bottom: 1px solid rgba(255, 255, 255, 0.1);
             margin-bottom: 5px;
         }
 
-        /* Sektion für Admin-Schnell-Genehmigung (GRÜN/ROT) */
         #cam-admin-wunsch-actions {
             display: grid;
             grid-template-columns: 1fr 1fr;
@@ -952,7 +869,6 @@
             color: white;
         }
 
-        /* Sektion für Admin-Schichtauswahl (Grid) */
         #cam-admin-shifts {
             display: grid;
             grid-template-columns: 1fr 1fr 1fr;
@@ -977,21 +893,19 @@
         .cam-shift-button.all {
              background: rgba(255, 255, 255, 0.05);
              color: #3498db;
-             grid-column: 1 / -1; /* Volle Breite */
+             grid-column: 1 / -1;
         }
 
-        /* Sektion für Hundeführer-Anfragen (Grid) */
         #cam-hundefuehrer-requests {
              display: grid;
              grid-template-columns: 1fr 1fr 1fr;
              gap: 8px;
         }
 
-        /* Sektion für Admin/Planschreiber Notizen (Link) */
         .cam-action-link {
             padding: 10px 5px;
             font-size: 14px;
-            color: #f0ad4e; /* Orange/Gelb */
+            color: #f0ad4e;
             cursor: pointer;
         }
         .cam-action-link:hover {
@@ -999,7 +913,6 @@
             text-decoration: underline;
         }
 
-        /* Sektion für Hundeführer "Zurückziehen" (Rot) */
         .cam-action-link.delete {
             color: #e74c3c;
             font-weight: 600;
@@ -1007,8 +920,6 @@
         .cam-action-link.delete:hover {
              color: #c0392b;
         }
-
-        /* --- ENDE: NEUES CLICK-MODAL --- */
 
     </style>
 </head>
@@ -1018,15 +929,13 @@
 
     <header>
         <h1>DHF-Planer</h1>
-        <nav>
-            <a href="dashboard.html" id="nav-dashboard" style="display: none;">Dashboard</a>
+        <nav id="main-nav"> <a href="dashboard.html" id="nav-dashboard" style="display: none;">Dashboard</a>
             <a href="users.html" id="nav-users" style="display: none;">Benutzerverwaltung</a>
             <a href="feedback.html" id="nav-feedback" style="display: none;">
                 Meldungen
                 <span id="feedback-badge" class="nav-badge">0</span>
             </a>
-            <a href="schichtplan.html" class="active">Schichtplan</a>
-        </nav>
+            <a href="schichtplan.html" class="active" id="nav-shiftplan">Schichtplan</a> </nav>
         <div id="user-info">
             <span id="welcome-user"></span>
             <button class="report-btn" id="global-report-btn">🐞 Problem melden</button>
@@ -1049,12 +958,14 @@
 
     <main>
         <div class="card">
+
             <div class="plan-nav">
-                <button id="prev-month-btn">&laquo; Vorheriger</button>
+                <div class="plan-nav-left">
+                    <button id="prev-month-btn">&laquo; Vorheriger</button>
+                </div>
 
-                <div class="plan-nav-month-year">
+                <div class="plan-nav-center">
                     <h2 id="current-month-label">Lade...</h2>
-
                     <div id="plan-status-container" style="display: none;">
                         <span id="plan-status-badge"></span>
                         <button id="plan-lock-btn" class="btn-admin-action" title="Plan sperren/entsperren"></button>
@@ -1062,11 +973,10 @@
                     </div>
                 </div>
 
-                <div class="nav-buttons">
+                <div class="plan-nav-right">
                     <button id="next-month-btn">Nächster &raquo;</button>
                 </div>
             </div>
-
             <div id="unified-grid-wrapper">
 
                 <div id="schichtplan-grid-container">
@@ -1243,5 +1153,5 @@
     <script type="module" src="js/pages/schichtplan.js" defer></script>
     <script type="module" src="shared_feedback.js" defer></script>
     <script type="module" src="shared_notifications.js" defer></script>
-</body>
+    </body>
 </html>
