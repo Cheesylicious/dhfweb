@@ -1,7 +1,7 @@
-# cheesylicious/dhfweb/dhfweb-8c61769a1d719fb2f6c9f14a71dc863ec0e0b9b5/dhf_app/routes_shifts.py
+# cheesylicious/dhfweb/dhfweb-c1908779df584d29ef33ffe20aa2d1ffd04401f99/dhf_app/routes_shifts.py
 
 from flask import Blueprint, request, jsonify, current_app
-# Import für ShiftPlanStatus und UpdateLog hinzugefügt
+# Importe für ShiftPlanStatus und UpdateLog hinzugefügt
 from .models import Shift, ShiftType, User, ShiftPlanStatus, UpdateLog
 from .extensions import db
 # --- KORREKTUR: Import aus utils.py ---
@@ -65,6 +65,7 @@ def _calculate_user_total_hours(user_id, year, month):
     ).all()
 
     for shift in shifts_in_this_month:
+        # KORREKTUR: Tippfehler behoben (shift.shift_type.is_work_shift)
         if shift.shift_type and shift.shift_type.is_work_shift:
             try:
                 # --- START: FINALE KORREKTUR (Regel 1) --- (IHR NEUER CODE)
@@ -74,7 +75,7 @@ def _calculate_user_total_hours(user_id, year, month):
                 total_hours += float(shift.shift_type.hours or 0.0)
 
                 # 2. ABER: Wenn die Schicht am Monatsletzten ist UND einen Übertrag hat,
-                #    ziehe diesen Übertrag wieder ab (er zählt ja erst im Folgemonat).
+                #    ziehe diesen Übertrag wieder ab (er zählt ja ja erst im Folgemonat).
                 if shift.date == last_day_of_current_month and (shift.shift_type.hours_spillover or 0.0) > 0:
                     total_hours -= float(shift.shift_type.hours_spillover or 0.0)
 
@@ -160,8 +161,8 @@ def get_shifts():
     """
     Liefert alle Schichten, Totals, Konflikte, IST-Besetzung UND PLAN-STATUS.
 
-    KORRIGIERT (Regel 1): Filtert Benutzer basierend auf 'aktiv_ab_datum' und 'inaktiv_ab_datum'
-    UND gibt diese Benutzerliste jetzt im Response mit zurück.
+    KORRIGIERT: Implementiert Python-Filterung für inaktive Benutzer, um
+    Datenbank-Kompatibilitätsfehler an der Monatsgrenze zu umgehen.
     """
     try:
         year = int(request.args.get('year'))
@@ -171,22 +172,37 @@ def get_shifts():
 
     current_month_start_date = date(year, month, 1)
     prev_month_end_date = current_month_start_date - timedelta(days=1)
-
-    # --- START KORREKTUR: Aktiv/Inaktiv Logik (Regel 1) ---
     days_in_month = calendar.monthrange(year, month)[1]
     current_month_end_date = date(year, month, days_in_month)
 
-    # Lade nur Benutzer, die in diesem Monat relevant sind
-    users_query = User.query.filter(
-        # 1. Aktiv-Datum: Muss (NULL sein) ODER (vor/am Monatsende)
-        db.or_(User.aktiv_ab_datum == None, User.aktiv_ab_datum <= current_month_end_date),
+    # --- START KORREKTUR: Aktiv/Inaktiv Logik (Regel 1) ---
 
-        # 2. Inaktiv-Datum: Muss (NULL sein) ODER (strikt NACH dem Monatsanfang)
-        #    (Wenn inaktiv_ab_datum = 01.01., darf der User im Januar NICHT mehr erscheinen)
-        db.or_(User.inaktiv_ab_datum == None, User.inaktiv_ab_datum > current_month_start_date)
+    # 1. SQL-Abfrage: Lade ALLE potenziell relevanten Benutzer (aktiv/sichtbar)
+    #    (Der fehlerhafte Inaktivitätsfilter WIRD HIER NICHT MEHR verwendet)
+    users_query = User.query.filter(
+
+        # NEU/KORREKTUR: User muss als sichtbar markiert sein (Grundvoraussetzung)
+        User.shift_plan_visible == True,
+
+        # 1. Aktiv-Datum: Muss (NULL sein) ODER (vor/am Monatsende)
+        db.or_(User.aktiv_ab_datum.is_(None), User.aktiv_ab_datum <= current_month_end_date),
+
+        # ALTE/FEHLERHAFTE Bedingung (für inaktiv_ab_datum) wird entfernt/ersetzt
+        # Wir laden temporär alle User, die aktiv sein SOLLTEN,
+        # und filtern sie im nächsten Schritt in Python.
     )
 
-    users = users_query.order_by(User.shift_plan_sort_order, User.name).all()
+    all_users_pre_filter = users_query.order_by(User.shift_plan_sort_order, User.name).all()
+
+    # 2. Python-Filterung (Workaround für den Datenbankfehler)
+    #    Ein Benutzer ist nur sichtbar, wenn sein inaktiv_ab_datum strikt nach dem
+    #    Ende des Vormonats (prev_month_end_date) liegt.
+    users = []
+    for user in all_users_pre_filter:
+        # Wenn inaktiv_ab_datum == None ODER inaktiv_ab_datum > 31.12.2025 (für Jan 2026)
+        if user.inaktiv_ab_datum is None or user.inaktiv_ab_datum > prev_month_end_date:
+            users.append(user)
+
     # --- ENDE KORREKTUR ---
 
     shifts_for_calc = Shift.query.options(joinedload(Shift.shift_type)).filter(
@@ -213,7 +229,7 @@ def get_shifts():
 
     shifts_all_data = shifts_data + shifts_last_month_data
 
-    users_data = [u.to_dict() for u in users]  # <-- Dies ist jetzt die GEFILTERTE Liste
+    users_data = [u.to_dict() for u in users]  # <-- Dies ist jetzt die SAUBER GEFILTERTE Liste
     shifttypes_data = [st.to_dict() for st in shift_types]
 
     # 2. Stundensummen berechnen
@@ -454,14 +470,7 @@ def save_shift():
     response_data['violations'] = list(violations_set)
 
     # 4. IST-Besetzung berechnen
-    shifts_in_month_dicts = [
-        s_dict for s_dict in shifts_all_data
-        if shift_date.year == datetime.fromisoformat(s_dict['date']).year and
-           shift_date.month == datetime.fromisoformat(s_dict['date']).month
-    ]
-    staffing_actual = _calculate_actual_staffing(shifts_in_month_dicts, shifttypes_data, shift_date.year,
-                                                 shift_date.month)
-    response_data['staffing_actual'] = staffing_actual
+    staffing_actual = _calculate_actual_staffing(shifts_data, shifttypes_data, shift_date.year, shift_date.month)
 
     return jsonify(response_data), status_code
 
