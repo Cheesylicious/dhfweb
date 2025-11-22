@@ -1,13 +1,14 @@
+# dhf_app/routes_admin.py
+
 from flask import Blueprint, request, jsonify, current_app
-# Importe für Shift und GlobalSetting hinzugefügt (Regel 1)
-from .models import User, Role, ShiftType, Shift, GlobalSetting, UpdateLog
+# Alle Modelle importieren (UserShiftLimit, GlobalAnnouncement, UserAnnouncementAck sind neu)
+from .models import User, Role, ShiftType, Shift, GlobalSetting, UpdateLog, UserShiftLimit, GlobalAnnouncement, \
+    UserAnnouncementAck
 from .extensions import db, bcrypt
 from flask_login import login_required, current_user
-# --- KORREKTUR: Import aus utils.py (Löst zirkuläre Abhängigkeit) ---
 from .utils import admin_required
-# --- ENDE KORREKTUR ---
 from datetime import datetime
-from sqlalchemy import desc  # <<< desc importiert für Sortierung
+from sqlalchemy import desc, or_
 
 # Erstellt einen Blueprint. Alle Routen hier beginnen mit /api
 admin_bp = Blueprint('admin', __name__, url_prefix='/api')
@@ -32,11 +33,10 @@ def none_if_empty(value):
     return None if value == '' else value
 
 
-# ... (Unveränderte Routen: /users, /roles, /shifttypes) ...
-
+# --- ROUTEN FÜR BENUTZER ---
 
 @admin_bp.route('/users', methods=['GET'])
-@login_required  # <<< GEÄNDERT: Erlaubt allen eingeloggten Benutzern das Lesen
+@login_required
 def get_users():
     users = User.query.order_by(User.shift_plan_sort_order, User.name).all()
     return jsonify([user.to_dict() for user in users]), 200
@@ -48,29 +48,22 @@ def create_user():
     data = request.get_json()
     if not data or not data.get('vorname') or not data.get('passwort') or not data.get('role_id'):
         return jsonify({"message": "Fehlende Daten (Vorname, Passwort, role_id)"}), 400
-    passwort_hash = bcrypt.generate_password_hash(data['passwort']).decode('utf-8')  # <-- Verwendet bcrypt
+    passwort_hash = bcrypt.generate_password_hash(data['passwort']).decode('utf-8')
     new_user = User(
         vorname=data['vorname'], name=data['name'], passwort_hash=passwort_hash,
         password_geaendert=datetime.utcnow(), role_id=data['role_id'],
         geburtstag=none_if_empty(data.get('geburtstag')), telefon=data.get('telefon'),
         eintrittsdatum=none_if_empty(data.get('eintrittsdatum')),
         aktiv_ab_datum=none_if_empty(data.get('aktiv_ab_datum')),
-
-        # --- START NEU: Inaktiv-Datum ---
         inaktiv_ab_datum=none_if_empty(data.get('inaktiv_ab_datum')),
-        # --- ENDE NEU ---
-
         urlaub_gesamt=data.get('urlaub_gesamt', 0), urlaub_rest=data.get('urlaub_rest', 0),
         diensthund=data.get('diensthund'), tutorial_gesehen=data.get('tutorial_gesehen', False),
         shift_plan_visible=data.get('shift_plan_visible', False),
         shift_plan_sort_order=data.get('shift_plan_sort_order', 999),
-        # --- NEU: Passwortänderung beim ersten Login erzwingen ---
         force_password_change=True
-        # --- ENDE NEU ---
     )
     db.session.add(new_user)
 
-    # <<< UpdateLog HINZUGEFÜGT (angepasst) >>>
     _log_update_event("Benutzerverwaltung",
                       f"Neuer Benutzer '{data['vorname']} {data['name']}' erstellt. (PW-Änderung erzwungen)")
 
@@ -85,27 +78,20 @@ def update_user(user_id):
     if not user: return jsonify({"message": "Benutzer nicht gefunden"}), 404
     data = request.get_json()
 
-    # Protokollierung vorbereiten
     is_password_changed = data.get('passwort') is not None
 
     user.vorname = data.get('vorname', user.vorname)
     user.name = data.get('name', user.name)
     user.role_id = data.get('role_id', user.role_id)
     if is_password_changed:
-        user.passwort_hash = bcrypt.generate_password_hash(data['passwort']).decode('utf-8')  # <-- Verwendet bcrypt
+        user.passwort_hash = bcrypt.generate_password_hash(data['passwort']).decode('utf-8')
         user.password_geaendert = datetime.utcnow()
-        # WICHTIG: Wenn Admin ein PW ändert, wird der Zwang NICHT automatisch aktiviert.
-        # Das muss der Admin manuell über die neue Route (unten) tun, falls gewünscht.
     user.geburtstag = none_if_empty(data.get('geburtstag', user.geburtstag))
     user.telefon = data.get('telefon', user.telefon)
     user.eintrittsdatum = data.get('eintrittsdatum', user.eintrittsdatum)
     user.aktiv_ab_datum = none_if_empty(data.get('aktiv_ab_datum', user.aktiv_ab_datum))
-
-    # --- START NEU: Inaktiv-Datum ---
-    # Wir verwenden 'inaktiv_ab_datum' als Schlüssel, um das Feld auch auf NULL (None) setzen zu können
     if 'inaktiv_ab_datum' in data:
         user.inaktiv_ab_datum = none_if_empty(data.get('inaktiv_ab_datum'))
-    # --- ENDE NEU ---
 
     user.urlaub_gesamt = data.get('urlaub_gesamt', user.urlaub_gesamt)
     user.urlaub_rest = data.get('urlaub_rest', user.urlaub_rest)
@@ -113,9 +99,7 @@ def update_user(user_id):
     user.tutorial_gesehen = data.get('tutorial_gesehen', user.tutorial_gesehen)
     user.shift_plan_visible = data.get('shift_plan_visible', user.shift_plan_visible)
     user.shift_plan_sort_order = data.get('shift_plan_sort_order', user.shift_plan_sort_order)
-    # (Das Feld 'force_password_change' wird hier bewusst nicht angefasst)
 
-    # <<< UpdateLog HINZUGEFÜGT >>>
     desc_msg = f"Benutzer '{user.vorname} {user.name}' aktualisiert."
     if is_password_changed:
         desc_msg += " (Passwort geändert)"
@@ -125,32 +109,22 @@ def update_user(user_id):
     return jsonify(user.to_dict()), 200
 
 
-# --- NEUE ROUTE ---
 @admin_bp.route('/users/<int:user_id>/force_password_reset', methods=['POST'])
 @admin_required
 def force_password_reset(user_id):
-    """
-    Erzwingt, dass der Benutzer beim nächsten Login sein Passwort ändern muss.
-    (Setzt das Flag 'force_password_change' auf True)
-    """
     user = db.session.get(User, user_id)
     if not user:
         return jsonify({"message": "Benutzer nicht gefunden"}), 404
 
     try:
         user.force_password_change = True
-
         _log_update_event("Benutzerverwaltung", f"Passwort-Reset für '{user.vorname} {user.name}' erzwungen.")
-
         db.session.commit()
         return jsonify({"message": "Passwort-Änderung beim nächsten Login erzwungen."}), 200
     except Exception as e:
         db.session.rollback()
         current_app.logger.error(f"Fehler bei force_password_reset für User {user_id}: {str(e)}")
         return jsonify({"message": f"Datenbankfehler: {str(e)}"}), 500
-
-
-# --- ENDE NEUE ROUTE ---
 
 
 @admin_bp.route('/users/<int:user_id>', methods=['DELETE'])
@@ -160,11 +134,8 @@ def delete_user(user_id):
     user = db.session.get(User, user_id)
     if not user: return jsonify({"message": "Benutzer nicht gefunden"}), 404
 
-    # Protokollierung VOR dem Löschen
     name = f"{user.vorname} {user.name}"
-
     db.session.delete(user)
-
     _log_update_event("Benutzerverwaltung", f"Benutzer '{name}' gelöscht.")
 
     db.session.commit()
@@ -187,7 +158,6 @@ def update_user_display_settings():
                 user.shift_plan_visible = item.get('visible', user.shift_plan_visible)
                 user.shift_plan_sort_order = item.get('order', user.shift_plan_sort_order)
 
-        # <<< UpdateLog HINZUGEFÜGT >>>
         _log_update_event("Mitarbeiter Sortierung", "Anzeige- und Sortiereinstellungen aktualisiert.")
 
         db.session.commit()
@@ -197,6 +167,81 @@ def update_user_display_settings():
         current_app.logger.error(f"Fehler bei update_user_display_settings: {str(e)}")
         return jsonify({"message": f"Datenbankfehler: {str(e)}"}), 500
 
+
+# --- ROUTEN FÜR SCHICHT-LIMITS ---
+
+@admin_bp.route('/users/<int:user_id>/limits', methods=['GET'])
+@admin_required
+def get_user_limits(user_id):
+    user = db.session.get(User, user_id)
+    if not user:
+        return jsonify({"message": "Benutzer nicht gefunden"}), 404
+
+    shift_types = ShiftType.query.filter(
+        or_(
+            ShiftType.is_work_shift == True,
+            ShiftType.abbreviation == 'X'
+        )
+    ).order_by(ShiftType.staffing_sort_order, ShiftType.abbreviation).all()
+
+    saved_limits = UserShiftLimit.query.filter_by(user_id=user_id).all()
+    limits_map = {l.shifttype_id: l.monthly_limit for l in saved_limits}
+
+    result = []
+    for st in shift_types:
+        result.append({
+            "shifttype_id": st.id,
+            "shifttype_name": st.name,
+            "shifttype_abbreviation": st.abbreviation,
+            "monthly_limit": limits_map.get(st.id, 0)
+        })
+
+    return jsonify(result), 200
+
+
+@admin_bp.route('/users/<int:user_id>/limits', methods=['PUT'])
+@admin_required
+def update_user_limits(user_id):
+    user = db.session.get(User, user_id)
+    if not user:
+        return jsonify({"message": "Benutzer nicht gefunden"}), 404
+
+    data = request.get_json()
+    if not isinstance(data, list):
+        return jsonify({"message": "Ungültiges Format. Liste erwartet."}), 400
+
+    try:
+        changes_count = 0
+        for item in data:
+            st_id = item.get('shifttype_id')
+            new_limit = int(item.get('monthly_limit', 0))
+            if new_limit < 0: new_limit = 0
+
+            limit_entry = UserShiftLimit.query.filter_by(user_id=user_id, shifttype_id=st_id).first()
+
+            if limit_entry:
+                if limit_entry.monthly_limit != new_limit:
+                    limit_entry.monthly_limit = new_limit
+                    changes_count += 1
+            else:
+                new_entry = UserShiftLimit(user_id=user_id, shifttype_id=st_id, monthly_limit=new_limit)
+                db.session.add(new_entry)
+                changes_count += 1
+
+        if changes_count > 0:
+            _log_update_event("Benutzerverwaltung", f"Schicht-Limits für '{user.vorname} {user.name}' aktualisiert.")
+            db.session.commit()
+            return jsonify({"message": f"{changes_count} Limits aktualisiert."}), 200
+        else:
+            return jsonify({"message": "Keine Änderungen."}), 200
+
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Fehler beim Speichern der Limits: {str(e)}")
+        return jsonify({"message": f"Datenbankfehler: {str(e)}"}), 500
+
+
+# --- ROUTEN FÜR ROLLEN ---
 
 @admin_bp.route('/roles', methods=['GET'])
 @admin_required
@@ -214,10 +259,7 @@ def create_role():
     if existing: return jsonify({"message": "Rolle existiert bereits"}), 409
     new_role = Role(name=data['name'], description=data.get('description', ''))
     db.session.add(new_role)
-
-    # <<< UpdateLog HINZUGEFÜGT >>>
     _log_update_event("Rollenverwaltung", f"Neue Rolle '{data['name']}' erstellt.")
-
     db.session.commit()
     return jsonify(new_role.to_dict()), 201
 
@@ -228,13 +270,9 @@ def update_role(role_id):
     role = db.session.get(Role, role_id)
     if not role: return jsonify({"message": "Rolle nicht gefunden"}), 404
     data = request.get_json()
-
     role.name = data.get('name', role.name)
     role.description = data.get('description', role.description)
-
-    # <<< UpdateLog HINZUGEFÜGT >>>
     _log_update_event("Rollenverwaltung", f"Rolle '{role.name}' aktualisiert.")
-
     db.session.commit()
     return jsonify(role.to_dict()), 200
 
@@ -246,22 +284,18 @@ def delete_role(role_id):
     if not role: return jsonify({"message": "Rolle nicht gefunden"}), 404
     if role.name == 'admin': return jsonify({"message": "Die Basis-Rolle 'admin' kann nicht gelöscht werden"}), 403
     if role.users: return jsonify({"message": "Rolle wird noch von Benutzern verwendet"}), 400
-
-    # Protokollierung VOR dem Löschen
     name = role.name
-
     db.session.delete(role)
-
     _log_update_event("Rollenverwaltung", f"Rolle '{name}' gelöscht.")
-
     db.session.commit()
     return jsonify({"message": "Rolle erfolgreich gelöscht"}), 200
 
 
+# --- ROUTEN FÜR SCHICHTARTEN ---
+
 @admin_bp.route('/shifttypes', methods=['GET'])
 @login_required
 def get_shifttypes():
-    # --- NEU: Sortierung anwenden ---
     types = ShiftType.query.order_by(ShiftType.staffing_sort_order, ShiftType.abbreviation).all()
     return jsonify([st.to_dict() for st in types]), 200
 
@@ -292,15 +326,10 @@ def create_shifttype():
         min_staff_sa=data.get('min_staff_sa', 0),
         min_staff_so=data.get('min_staff_so', 0),
         min_staff_holiday=data.get('min_staff_holiday', 0),
-        # --- NEU: Sortierung beim Erstellen (Standard 999) ---
         staffing_sort_order=data.get('staffing_sort_order', 999)
-        # --- ENDE NEU ---
     )
     db.session.add(new_type)
-
-    # <<< UpdateLog HINZUGEFÜGT >>>
     _log_update_event("Schichtarten", f"Neue Schichtart '{data['name']}' erstellt.")
-
     db.session.commit()
     return jsonify(new_type.to_dict()), 201
 
@@ -329,13 +358,9 @@ def update_shifttype(type_id):
     st.min_staff_sa = data.get('min_staff_sa', st.min_staff_sa)
     st.min_staff_so = data.get('min_staff_so', st.min_staff_so)
     st.min_staff_holiday = data.get('min_staff_holiday', st.min_staff_holiday)
-    # --- NEU: Sortierung aktualisieren ---
     st.staffing_sort_order = data.get('staffing_sort_order', st.staffing_sort_order)
-    # --- ENDE NEU ---
 
-    # <<< UpdateLog HINZUGEFÜGT >>>
     _log_update_event("Schichtarten", f"Schichtart '{st.name}' aktualisiert.")
-
     db.session.commit()
     return jsonify(st.to_dict()), 200
 
@@ -349,44 +374,32 @@ def delete_shifttype(type_id):
     if existing_shifts:
         return jsonify({"message": "Typ wird noch in Schichten verwendet"}), 400
 
-    # Protokollierung VOR dem Löschen
     name = st.name
-
     db.session.delete(st)
     db.session.commit()
-
     _log_update_event("Schichtarten", f"Schichtart '{name}' gelöscht.")
-
     return jsonify({"message": "Schicht-Typ gelöscht"}), 200
 
 
-# --- NEUE ROUTE ZUM SPEICHERN DER SOLL/IST-SORTIERUNG ---
 @admin_bp.route('/shifttypes/staffing_order', methods=['PUT'])
 @admin_required
 def update_staffing_order():
-    """
-    Nimmt eine Liste von Schichtart-IDs in der gewünschten Sortierreihenfolge entgegen.
-    """
     data = request.get_json()
     if not isinstance(data, list):
         return jsonify({"message": "Eine Liste von IDs wurde erwartet"}), 400
 
     try:
-        # Lade alle Schichtarten, die in der Liste vorkommen
         type_ids = [item['id'] for item in data]
         types = ShiftType.query.filter(ShiftType.id.in_(type_ids)).all()
         type_map = {t.id: t for t in types}
 
-        # Aktualisiere die Sortierreihenfolge basierend auf dem Index in der Liste
         for item in data:
             type_id = item.get('id')
             order = item.get('order')
             if type_id in type_map:
                 type_map[type_id].staffing_sort_order = order
 
-        # <<< UpdateLog HINZUGEFÜGT >>>
         _log_update_event("Schichtarten", "Sortierreihenfolge der Besetzung (SOLL/IST) aktualisiert.")
-
         db.session.commit()
         return jsonify({"message": "Sortierreihenfolge der Besetzung gespeichert"}), 200
     except Exception as e:
@@ -395,15 +408,11 @@ def update_staffing_order():
         return jsonify({"message": f"Datenbankfehler: {str(e)}"}), 500
 
 
-# --- ENDE NEUE ROUTE ---
-
+# --- GLOBALE EINSTELLUNGEN ---
 
 @admin_bp.route('/settings', methods=['GET'])
 @login_required
 def get_global_settings():
-    """
-    Ruft alle globalen Schlüssel-Wert-Paare (GlobalSetting) ab und gibt sie als Dictionary zurück.
-    """
     settings = GlobalSetting.query.all()
     settings_dict = {s.key: s.value for s in settings}
     return jsonify(settings_dict), 200
@@ -412,9 +421,6 @@ def get_global_settings():
 @admin_bp.route('/settings', methods=['PUT'])
 @admin_required
 def update_global_settings():
-    """
-    Nimmt ein Dictionary von Einstellungen entgegen und speichert/aktualisiert sie.
-    """
     data = request.get_json()
     if not isinstance(data, dict):
         return jsonify({"message": "Ungültiges Datenformat. Erwartet ein Schlüssel-Wert-Dictionary."}), 400
@@ -431,28 +437,21 @@ def update_global_settings():
                 db.session.add(new_setting)
             updated_count += 1
 
-        # <<< UpdateLog HINZUGEFÜGT >>>
         _log_update_event("Farbeinstellungen", f"{updated_count} globale Farben/Einstellungen gespeichert.")
-
         db.session.commit()
         return jsonify({"message": f"{updated_count} Einstellungen erfolgreich gespeichert."}), 200
-
     except Exception as e:
         db.session.rollback()
         current_app.logger.error(f"Fehler beim Speichern der Global Settings: {str(e)}")
         return jsonify({"message": f"Datenbankfehler: {str(e)}"}), 500
 
 
-# <<< NEUE ROUTE FÜR DAS DASHBOARD (LESEN) >>>
+# --- UPDATE LOG ---
+
 @admin_bp.route('/updatelog', methods=['GET'])
-@login_required  # Für alle eingeloggten Nutzer sichtbar
+@login_required
 def get_updatelog():
-    """
-    Ruft die letzten 20 UpdateLog-Einträge ab.
-    (Regel 2: Limitierung auf 20 für Performance)
-    """
     try:
-        # Optimale Abfrage: Holen Sie die 20 neuesten Einträge
         logs = UpdateLog.query.order_by(desc(UpdateLog.updated_at)).limit(20).all()
         return jsonify([log.to_dict() for log in logs]), 200
     except Exception as e:
@@ -460,21 +459,14 @@ def get_updatelog():
         return jsonify({"message": f"Datenbankfehler: {str(e)}"}), 500
 
 
-# <<< NEUE ROUTE FÜR DAS LÖSCHEN VON UPDATE LOGS >>>
 @admin_bp.route('/updatelog/<int:log_id>', methods=['DELETE'])
 @admin_required
 def delete_updatelog_entry(log_id):
-    """
-    Löscht einen einzelnen Eintrag aus dem UpdateLog. Nur für Admins.
-    """
     log_entry = db.session.get(UpdateLog, log_id)
     if not log_entry:
         return jsonify({"message": "Log-Eintrag nicht gefunden"}), 404
 
     try:
-        # Protokolliert das Löschen des Log-Eintrags im Log (falls das überhaupt notwendig ist,
-        # hier lassen wir es weg, um eine Endlosschleife zu vermeiden)
-
         db.session.delete(log_entry)
         db.session.commit()
         return jsonify({"message": "Log-Eintrag erfolgreich gelöscht"}), 200
@@ -484,19 +476,12 @@ def delete_updatelog_entry(log_id):
         return jsonify({"message": f"Datenbankfehler: {str(e)}"}), 500
 
 
-# <<< ENDE NEUE ROUTE >>>
-
-
-# <<< NEUE ROUTE FÜR MANUELLES LOGGING VON CODE-UPDATES >>>
 @admin_bp.route('/manual_update_log', methods=['POST'])
 @admin_required
 def manual_update_log():
-    """
-    Erstellt einen manuellen Eintrag im UpdateLog für Code-Updates.
-    """
     data = request.get_json()
     description = data.get('description')
-    area = data.get('area', 'System Update')  # Standardmäßig "System Update"
+    area = data.get('area', 'System Update')
 
     if not description:
         return jsonify({"message": "Beschreibung ist erforderlich"}), 400
@@ -509,4 +494,61 @@ def manual_update_log():
         db.session.rollback()
         current_app.logger.error(f"Fehler bei manuellem UpdateLog: {str(e)}")
         return jsonify({"message": f"Datenbankfehler: {str(e)}"}), 500
-# <<< ENDE NEUE ROUTE >>>
+
+
+# --- NEU: DASHBOARD MITTEILUNGEN ---
+
+@admin_bp.route('/announcement', methods=['GET'])
+@login_required
+def get_announcement():
+    announcement = GlobalAnnouncement.query.order_by(GlobalAnnouncement.updated_at.desc()).first()
+
+    if not announcement or not announcement.message:
+        return jsonify({"message": None, "is_read": True}), 200
+
+    ack = UserAnnouncementAck.query.filter_by(user_id=current_user.id).first()
+
+    is_read = False
+    if ack and ack.acknowledged_at >= announcement.updated_at:
+        is_read = True
+
+    return jsonify({
+        "message": announcement.message,
+        "updated_at": announcement.updated_at.isoformat(),
+        "updated_by": announcement.updated_by,
+        "is_read": is_read
+    }), 200
+
+
+@admin_bp.route('/announcement', methods=['PUT'])
+@admin_required
+def update_announcement():
+    data = request.get_json()
+    message = data.get('message', '')
+
+    new_announcement = GlobalAnnouncement(
+        message=message,
+        updated_at=datetime.utcnow(),
+        updated_by=f"{current_user.vorname} {current_user.name}"
+    )
+
+    db.session.add(new_announcement)
+    _log_update_event("Dashboard", "Neue Mitteilung veröffentlicht.")
+
+    db.session.commit()
+    return jsonify(new_announcement.to_dict()), 200
+
+
+@admin_bp.route('/announcement/ack', methods=['POST'])
+@login_required
+def acknowledge_announcement():
+    ack = UserAnnouncementAck.query.filter_by(user_id=current_user.id).first()
+
+    if ack:
+        ack.acknowledged_at = datetime.utcnow()
+    else:
+        ack = UserAnnouncementAck(user_id=current_user.id, acknowledged_at=datetime.utcnow())
+        db.session.add(ack)
+
+    db.session.commit()
+    return jsonify({"message": "Bestätigt"}), 200

@@ -478,6 +478,7 @@
             <div class="modal-tabs" id="user-modal-tabs">
                 <button class="tab-link active" data-tab="tab-stammdaten">Stammdaten</button>
                 <button class="tab-link" data-tab="tab-details">Details</button>
+                <button class="tab-link" data-tab="tab-limits" id="tab-link-limits" style="display: none;">Schicht-Limits</button>
                 <button class="tab-link" data-tab="tab-system">System</button>
             </div>
             <div class="modal-body">
@@ -515,6 +516,16 @@
                     <div class="form-grid">
                         <div class="form-group"><label for="user-diensthund">Diensthund (Name):</label><input type="text" id="user-diensthund"></div>
                         <div class="form-group" style="align-self: flex-end;"><input type="checkbox" id="user-tutorial"><label for="user-tutorial">Tutorial gesehen</label></div>
+                    </div>
+                </div>
+
+                <div id="tab-limits" class="modal-tab-content">
+                    <div style="background: rgba(52, 152, 219, 0.1); border: 1px solid #3498db; padding: 10px; border-radius: 5px; margin-bottom: 15px; font-size: 13px; color: #bdc3c7;">
+                        <strong style="color: white;">Info:</strong> Hier können Sie festlegen, wie viele Wunsch-Anfragen dieser Benutzer pro Monat für den jeweiligen Schichttyp stellen darf.
+                        <br><strong>0 = Keine Anfragen erlaubt.</strong>
+                    </div>
+                    <div id="limits-container" class="form-grid">
+                        <p>Lade Limits...</p>
                     </div>
                 </div>
                 <div id="tab-system" class="modal-tab-content">

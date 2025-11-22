@@ -1,9 +1,12 @@
-// cheesylicious/dhfweb/dhfweb-ec604d738e9bd121b65cc8557f8bb98d2aa18062/html/schichtplan.js
+// cheesylicious/dhfweb/dhfweb-ec604d738e9bd121b65cc8557f8bb98d2aa18062/html/js/pages/schichtplan.js
+
+// --- IMPORTE ---
+import { API_URL, COL_WIDTH_NAME, COL_WIDTH_DETAILS, COL_WIDTH_UEBERTRAG, COL_WIDTH_DAY, COL_WIDTH_TOTAL, SHORTCUT_STORAGE_KEY, COLOR_STORAGE_KEY, DHF_HIGHLIGHT_KEY, DEFAULT_COLORS, DEFAULT_SHORTCUTS } from '../utils/constants.js';
+import { apiFetch } from '../utils/api.js';
+import { initAuthCheck, logout } from '../utils/auth.js';
+import { isColorDark, isWunschAnfrage, triggerNotificationUpdate, escapeHTML } from '../utils/helpers.js';
+
 // --- Globales Setup ---
-const API_URL = 'http://46.224.63.203:5000';
-const SHORTCUT_STORAGE_KEY = 'dhf_shortcuts';
-const COLOR_STORAGE_KEY = 'dhf_color_settings';
-const DHF_HIGHLIGHT_KEY = 'dhf_highlight_goto';
 let loggedInUser;
 let currentDate = new Date();
 let currentYear = currentDate.getFullYear();
@@ -23,8 +26,11 @@ let currentStaffingActual = {};
 let currentPlanStatus = {};
 let currentShiftQueries = [];
 
+let computedColWidthName = COL_WIDTH_NAME;
+let computedColWidthDetails = COL_WIDTH_DETAILS;
+
 let shortcutMap = {};
-const defaultShortcuts = { 'T.': 't', 'N.': 'n', '6': '6', 'FREI': 'f', 'X': 'x', 'U': 'u' };
+
 let isVisitor = false;
 let isAdmin = false;
 let isPlanschreiber = false;
@@ -33,14 +39,11 @@ let isHundefuehrer = false;
 let isStaffingSortingMode = false;
 let sortableStaffingInstance = null;
 
-const DEFAULT_COLORS = {
-    'weekend_bg_color': '#fff8f8',
-    'weekend_text_color': '#333333',
-    'holiday_bg_color': '#ffddaa',
-    'training_bg_color': '#daffdb',
-    'shooting_bg_color': '#ffb0b0'
-};
+// --- GENERATOR VARIABLEN ---
+let generatorInterval = null;
+let isGenerating = false;
 
+// --- DOM ELEMENTE ---
 const gridContainer = document.getElementById('schichtplan-grid-container');
 const grid = document.getElementById('schichtplan-grid');
 const staffingGridContainer = document.getElementById('staffing-grid-container');
@@ -84,6 +87,25 @@ const replyMessageInput = document.getElementById('reply-message-input');
 const replySubmitBtn = document.getElementById('reply-submit-btn');
 const queryRepliesList = document.getElementById('query-replies-list');
 
+// --- GENERATOR DOM ELEMENTE ---
+const generatorModal = document.getElementById('generator-modal');
+const closeGeneratorModalBtn = document.getElementById('close-generator-modal');
+const startGeneratorBtn = document.getElementById('start-generator-btn');
+const generatorLogContainer = document.getElementById('generator-log-container');
+const genProgressFill = document.getElementById('gen-progress-fill');
+const genTargetMonthLabel = document.getElementById('gen-target-month');
+
+const genSettingsModal = document.getElementById('gen-settings-modal');
+const closeGenSettingsModalBtn = document.getElementById('close-gen-settings-modal');
+const saveGenSettingsBtn = document.getElementById('save-gen-settings-btn');
+const genSettingsStatus = document.getElementById('gen-settings-status');
+const genShiftsContainer = document.getElementById('gen-shifts-container');
+
+// Links im Dropdown
+const openGeneratorLink = document.getElementById('open-generator-modal');
+const openGenSettingsLink = document.getElementById('open-gen-settings-modal');
+
+
 // --- CLICK-MODAL Elemente ---
 const clickActionModal = document.getElementById('click-action-modal');
 const camTitle = document.getElementById('cam-title');
@@ -101,109 +123,32 @@ let clickModalContext = null;
 
 let modalQueryContext = { userId: null, dateStr: null, userName: null, queryId: null };
 
-const COL_WIDTH_NAME = 'minmax(160px, max-content)';
-const COL_WIDTH_DETAILS = 'minmax(110px, max-content)';
-let computedColWidthName = COL_WIDTH_NAME;
-let computedColWidthDetails = COL_WIDTH_DETAILS;
-
-const COL_WIDTH_UEBERTRAG = 'minmax(50px, 0.5fr)';
-const COL_WIDTH_DAY = 'minmax(45px, 1fr)';
-const COL_WIDTH_TOTAL = 'minmax(60px, 0.5fr)';
-
-
-// --- Basis-Funktionen ---
-async function logout() {
-    try { await apiFetch('/api/logout', 'POST'); }
-    catch (e) { console.error(e); }
-    finally {
-        localStorage.removeItem('dhf_user');
-        window.location.href = 'index.html?logout=true';
-    }
-}
+// --- 1. Authentifizierung ---
 try {
-    loggedInUser = JSON.parse(localStorage.getItem('dhf_user'));
-    if (!loggedInUser || !loggedInUser.vorname || !loggedInUser.role) { throw new Error("Kein User"); }
-    document.getElementById('welcome-user').textContent = `Willkommen, ${loggedInUser.vorname}!`;
+    const authData = initAuthCheck();
+    loggedInUser = authData.user;
+    isAdmin = authData.isAdmin;
+    isVisitor = authData.isVisitor;
+    isPlanschreiber = authData.isPlanschreiber;
+    isHundefuehrer = authData.isHundefuehrer;
 
-    isAdmin = loggedInUser.role.name === 'admin';
-    isVisitor = loggedInUser.role.name === 'Besucher';
-    isPlanschreiber = loggedInUser.role.name === 'Planschreiber';
-    isHundefuehrer = loggedInUser.role.name === 'Hundeführer';
-
-    if (isAdmin) document.body.classList.add('admin-mode');
-    if (isPlanschreiber) document.body.classList.add('planschreiber-mode');
-    if (isHundefuehrer) document.body.classList.add('hundefuehrer-mode');
-
-    const navDashboard = document.getElementById('nav-dashboard');
-    const navUsers = document.getElementById('nav-users');
-    const settingsDropdown = document.getElementById('settings-dropdown');
-    const settingsDropdownContent = document.getElementById('settings-dropdown-content');
-    const navFeedback = document.getElementById('nav-feedback');
-
-    if (!isVisitor) navDashboard.style.display = 'block';
-    else navDashboard.style.display = 'none';
-
-    if (isAdmin) {
-        navUsers.style.display = 'block';
-        navFeedback.style.display = 'inline-flex';
-        if (staffingSortToggleBtn) staffingSortToggleBtn.style.display = 'inline-block';
-    } else if (isPlanschreiber) {
-        navUsers.style.display = 'none';
-        navFeedback.style.display = 'inline-flex';
-        if (staffingSortToggleBtn) staffingSortToggleBtn.style.display = 'none';
-    } else {
-        navUsers.style.display = 'none';
-        navFeedback.style.display = 'none';
-        if (staffingSortToggleBtn) staffingSortToggleBtn.style.display = 'none';
+    if (staffingSortToggleBtn) {
+        staffingSortToggleBtn.style.display = isAdmin ? 'inline-block' : 'none';
     }
 
-    if (isVisitor) {
-        isVisitor = true;
-        document.body.classList.add('visitor-mode');
-        navDashboard.style.display = 'none';
-        navUsers.style.display = 'none';
-    }
-
-    if (settingsDropdownContent) {
-        const sortingLink = settingsDropdownContent.querySelector('a[href="schichtartensortierung.html"]');
-        if (sortingLink) sortingLink.remove();
-
-        if (!isAdmin) {
-            document.querySelectorAll('#settings-dropdown-content .admin-only').forEach(el => {
-                el.style.display = 'none';
-            });
-            const visibleLinks = settingsDropdownContent.querySelectorAll('a:not([style*="display: none"])');
-            if (visibleLinks.length === 0) {
-                 if (settingsDropdown) settingsDropdown.style.display = 'none';
-            }
-        }
+    if (!isAdmin) {
+        if (openGeneratorLink) openGeneratorLink.style.display = 'none';
+        if (openGenSettingsLink) openGenSettingsLink.style.display = 'none';
     }
 
 } catch (e) {
-    logout();
+    console.error("Initialisierung gestoppt:", e);
 }
-document.getElementById('logout-btn').onclick = logout;
 
-async function apiFetch(endpoint, method = 'GET', body = null) {
-    const options = { method, headers: { 'Content-Type': 'application/json' }, credentials: 'include' };
-    if (body) { options.body = JSON.stringify(body); }
-    const response = await fetch(API_URL + endpoint, options);
+// --- 2. Hilfsfunktionen ---
 
-    if (response.status === 401 || response.status === 403) {
-        if (response.status === 401) { logout(); }
-        const contentType = response.headers.get("content-type");
-        if (contentType && contentType.indexOf("application/json") !== -1) {
-            const errorData = await response.json();
-            throw new Error(errorData.message || 'Sitzung ungültig oder fehlende Rechte.');
-        }
-        throw new Error('Sitzung ungültig oder fehlende Rechte.');
-    }
-
-    const contentType = response.headers.get("content-type");
-    let data;
-    if (contentType && contentType.indexOf("application/json") !== -1) { data = await response.json(); } else { data = { message: await response.text() }; }
-    if (!response.ok) { throw new Error(data.message || 'API-Fehler'); }
-    return data;
+function closeModal(modalEl) {
+    if (modalEl) modalEl.style.display = 'none';
 }
 
 async function loadColorSettings() {
@@ -228,7 +173,226 @@ async function loadColorSettings() {
     }
 }
 
-function closeModal(modalEl) { modalEl.style.display = 'none'; }
+// --- NEU: Funktion zum Umschalten der Sperre ---
+async function toggleShiftLock(userId, dateStr) {
+    if (!isAdmin) return;
+    if (currentPlanStatus && currentPlanStatus.is_locked) {
+        alert("Globaler Plan ist gesperrt. Einzelne Schichten können nicht geändert werden.");
+        return;
+    }
+
+    const key = `${userId}-${dateStr}`;
+    const cell = findCellByKey(key);
+
+    // Visuelles Feedback (optional, Cursor ändert sich eh meist)
+
+    try {
+        const response = await apiFetch('/api/shifts/toggle_lock', 'POST', {
+            user_id: userId,
+            date: dateStr
+        });
+
+        if (response.deleted) {
+            // Eintrag wurde gelöscht (war leere gesperrte Zelle)
+            currentShifts[key] = null;
+            if (cell) {
+                cell.classList.remove('locked-shift');
+                // Reset Cell style if it was just a lock placeholder
+                cell.textContent = '';
+                cell.style.backgroundColor = '';
+                cell.style.color = '';
+                cell.className = 'grid-cell' + (loggedInUser.id === userId ? ' current-user-row' : '');
+
+                // Re-check for special dates/weekends background
+                const d = new Date(dateStr);
+                const isWeekend = d.getDay() === 0 || d.getDay() === 6;
+                const eventType = currentSpecialDates[dateStr];
+                if (eventType === 'holiday') cell.classList.add(`day-color-${eventType}`);
+                else if (isWeekend) cell.classList.add('weekend');
+            }
+        } else {
+            // Eintrag aktualisiert oder erstellt
+            const shiftType = response.shifttype_id ? allShiftTypes[response.shifttype_id] : null;
+            currentShifts[key] = {
+                ...response,
+                shift_type: shiftType
+            };
+
+            if (cell) {
+                if (response.is_locked) {
+                    cell.classList.add('locked-shift');
+                } else {
+                    cell.classList.remove('locked-shift');
+                }
+            }
+        }
+
+    } catch (e) {
+        console.error(e);
+        alert("Fehler beim Sperren/Entsperren: " + e.message);
+    }
+}
+// --- ENDE NEU ---
+
+// --- GENERATOR FUNKTIONEN ---
+
+async function openGeneratorModal() {
+    if (!isAdmin) return;
+    if (currentPlanStatus && currentPlanStatus.is_locked) {
+        alert("Der Plan ist gesperrt. Generator kann nicht gestartet werden.");
+        return;
+    }
+
+    generatorLogContainer.innerHTML = '<div class="log-entry info">Bereit zum Start...</div>';
+    genProgressFill.style.width = '0%';
+    genTargetMonthLabel.textContent = `${currentMonth}/${currentYear}`;
+    startGeneratorBtn.disabled = false;
+    startGeneratorBtn.textContent = "Generator Starten";
+    isGenerating = false;
+
+    generatorModal.style.display = 'block';
+}
+
+async function startGenerator() {
+    if (isGenerating) return;
+    isGenerating = true;
+    startGeneratorBtn.disabled = true;
+    startGeneratorBtn.textContent = "Läuft...";
+    generatorLogContainer.innerHTML = '<div class="log-entry info">Starte Generator-Prozess...</div>';
+
+    try {
+        const payload = { year: currentYear, month: currentMonth };
+        await apiFetch('/api/generator/start', 'POST', payload);
+
+        if (generatorInterval) clearInterval(generatorInterval);
+        generatorInterval = setInterval(pollGeneratorStatus, 1000);
+
+    } catch (error) {
+        generatorLogContainer.innerHTML += `<div class="log-entry error">Fehler beim Starten: ${error.message}</div>`;
+        isGenerating = false;
+        startGeneratorBtn.disabled = false;
+        startGeneratorBtn.textContent = "Neustart versuchen";
+    }
+}
+
+async function pollGeneratorStatus() {
+    try {
+        const statusData = await apiFetch('/api/generator/status');
+        const progress = statusData.progress || 0;
+        genProgressFill.style.width = `${progress}%`;
+
+        if (statusData.logs && statusData.logs.length > 0) {
+            generatorLogContainer.innerHTML = '';
+            statusData.logs.forEach(logMsg => {
+                let className = 'log-entry';
+                if (logMsg.includes('[FEHLER]')) className += ' error';
+                else if (logMsg.includes('[WARN]')) className += ' warning';
+                else if (logMsg.includes('erfolgreich')) className += ' success';
+                else className += ' info';
+
+                const div = document.createElement('div');
+                div.className = className;
+                div.textContent = logMsg;
+                generatorLogContainer.appendChild(div);
+            });
+            generatorLogContainer.scrollTop = generatorLogContainer.scrollHeight;
+        }
+
+        if (statusData.status === 'finished' || statusData.status === 'error') {
+            clearInterval(generatorInterval);
+            isGenerating = false;
+            startGeneratorBtn.disabled = false;
+            startGeneratorBtn.textContent = (statusData.status === 'finished') ? "Fertig" : "Fehler";
+
+            if (statusData.status === 'finished') {
+                 setTimeout(() => { renderGrid(); }, 1000);
+            }
+        }
+    } catch (e) {
+        console.error("Polling Fehler:", e);
+    }
+}
+
+async function openGenSettingsModal() {
+    if (!isAdmin) return;
+    genSettingsStatus.textContent = "Lade Einstellungen...";
+    genSettingsModal.style.display = 'block';
+
+    try {
+        const config = await apiFetch('/api/generator/config');
+
+        document.getElementById('gen-max-consecutive').value = config.max_consecutive_same_shift || 4;
+        document.getElementById('gen-rest-days').value = config.mandatory_rest_days_after_max_shifts || 2;
+        document.getElementById('gen-fill-rounds').value = config.generator_fill_rounds || 3;
+        document.getElementById('gen-fairness-threshold').value = config.fairness_threshold_hours || 10;
+        document.getElementById('gen-min-hours-bonus').value = config.min_hours_score_multiplier || 5;
+        document.getElementById('gen-max-hours').value = config.max_monthly_hours || 170;
+
+        genShiftsContainer.innerHTML = '';
+        const activeShifts = config.shifts_to_plan || ["6", "T.", "N."];
+
+        allShiftTypesList.forEach(st => {
+            if (!st.is_work_shift) return;
+            const div = document.createElement('div');
+            div.className = 'gen-shift-checkbox';
+            const input = document.createElement('input');
+            input.type = 'checkbox';
+            input.value = st.abbreviation;
+            input.id = `gen-shift-${st.id}`;
+            if (activeShifts.includes(st.abbreviation)) { input.checked = true; }
+            const label = document.createElement('label');
+            label.htmlFor = `gen-shift-${st.id}`;
+            label.textContent = `${st.abbreviation} (${st.name})`;
+            div.appendChild(input);
+            div.appendChild(label);
+            genShiftsContainer.appendChild(div);
+        });
+        genSettingsStatus.textContent = "";
+    } catch (error) {
+        genSettingsStatus.textContent = "Fehler beim Laden: " + error.message;
+    }
+}
+
+async function saveGenSettings() {
+    saveGenSettingsBtn.disabled = true;
+    genSettingsStatus.textContent = "Speichere...";
+
+    const selectedShifts = [];
+    const checkboxes = genShiftsContainer.querySelectorAll('input[type="checkbox"]');
+    checkboxes.forEach(cb => { if (cb.checked) selectedShifts.push(cb.value); });
+
+    if (selectedShifts.length === 0) {
+         genSettingsStatus.textContent = "Fehler: Mindestens eine Schicht muss aktiviert sein.";
+         genSettingsStatus.style.color = "#e74c3c";
+         saveGenSettingsBtn.disabled = false;
+         return;
+    }
+
+    const payload = {
+        max_consecutive_same_shift: parseInt(document.getElementById('gen-max-consecutive').value),
+        mandatory_rest_days_after_max_shifts: parseInt(document.getElementById('gen-rest-days').value),
+        generator_fill_rounds: parseInt(document.getElementById('gen-fill-rounds').value),
+        fairness_threshold_hours: parseFloat(document.getElementById('gen-fairness-threshold').value),
+        min_hours_score_multiplier: parseFloat(document.getElementById('gen-min-hours-bonus').value),
+        max_monthly_hours: parseFloat(document.getElementById('gen-max-hours').value),
+        shifts_to_plan: selectedShifts
+    };
+
+    try {
+        await apiFetch('/api/generator/config', 'PUT', payload);
+        genSettingsStatus.textContent = "Gespeichert!";
+        genSettingsStatus.style.color = "#2ecc71";
+        setTimeout(() => {
+            closeModal(genSettingsModal);
+            saveGenSettingsBtn.disabled = false;
+            genSettingsStatus.textContent = "";
+        }, 1000);
+    } catch (error) {
+        genSettingsStatus.textContent = "Fehler: " + error.message;
+        genSettingsStatus.style.color = "#e74c3c";
+        saveGenSettingsBtn.disabled = false;
+    }
+}
 
 // --- CLICK-MODAL FUNKTIONEN ---
 
@@ -239,10 +403,6 @@ function hideClickActionModal() {
     clickModalContext = null;
 }
 
-const isWunschAnfrage = (q) => {
-    return q.sender_role_name === 'Hundeführer' && q.message.startsWith("Anfrage für:");
-};
-
 function showClickActionModal(event, user, dateStr, cell, isCellOnOwnRow) {
     event.preventDefault();
     hideClickActionModal();
@@ -251,12 +411,10 @@ function showClickActionModal(event, user, dateStr, cell, isCellOnOwnRow) {
     const d = new Date(dateStr);
     const dateDisplay = d.toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit' });
 
-    // Suche BEIDE Arten von Queries für diese Zelle
     const allQueriesForCell = currentShiftQueries.filter(q =>
         q.target_user_id === user.id && q.shift_date === dateStr && q.status === 'offen'
     );
 
-    // Finde Wunsch und Notiz
     const wunschQuery = allQueriesForCell.find(q => isWunschAnfrage(q));
     const notizQuery = allQueriesForCell.find(q => !isWunschAnfrage(q));
 
@@ -275,7 +433,6 @@ function showClickActionModal(event, user, dateStr, cell, isCellOnOwnRow) {
     camTitle.textContent = `${userName}`;
     camSubtitle.textContent = `${dateDisplay}`;
 
-    // Reset sections
     camAdminWunschActions.style.display = 'none';
     camAdminShifts.style.display = 'none';
     camHundefuehrerRequests.style.display = 'none';
@@ -284,57 +441,39 @@ function showClickActionModal(event, user, dateStr, cell, isCellOnOwnRow) {
 
     let hasContent = false;
 
-    // --- RECHTE-LOGIK ---
-
     if (isAdmin) {
-        // ADMIN: Sieht BEIDES (Wunsch und Notiz)
-
-        // 1. Wunsch-Aktionen
         if (wunschQuery && !planGesperrt) {
             camAdminWunschActions.style.display = 'grid';
             camBtnApprove.textContent = `Genehmigen (${wunschQuery.message.replace('Anfrage für:', '').trim()})`;
             hasContent = true;
         }
-
-        // 2. Schichtzuweisung
         if (!planGesperrt) {
             camAdminShifts.style.display = 'grid';
             populateClickModalShiftButtons('admin');
             hasContent = true;
         }
-
-        // 3. Notiz-Aktion (Bezieht sich jetzt auf 'notizQuery')
         camNotizActions.style.display = 'block';
         camLinkNotiz.textContent = notizQuery ? '❓ Text-Notiz ansehen...' : '❓ Text-Notiz erstellen...';
         camLinkNotiz.dataset.targetQueryId = notizQuery ? notizQuery.id : "";
         hasContent = true;
 
     } else if (isPlanschreiber) {
-        // --- PLANSCHREIBER-LOGIK (STRIKTE TRENNUNG) ---
-        // Sieht KEINE Wunsch-Optionen.
-        // Interagiert NUR mit 'notizQuery'.
-
         camNotizActions.style.display = 'block';
         camLinkNotiz.textContent = notizQuery ? '❓ Text-Notiz ansehen...' : '❓ Text-Notiz erstellen...';
         camLinkNotiz.dataset.targetQueryId = notizQuery ? notizQuery.id : "";
         hasContent = true;
 
     } else if (isHundefuehrer && isCellOnOwnRow) {
-        // HUNDEFÜHRER: Interagiert primär mit 'wunschQuery'
-
         if (wunschQuery && wunschQuery.sender_user_id === loggedInUser.id && !planGesperrt) {
             camHundefuehrerDelete.style.display = 'block';
             camLinkDelete.textContent = 'Wunsch-Anfrage zurückziehen';
             camLinkDelete.dataset.targetQueryId = wunschQuery.id;
             hasContent = true;
-
         } else if (notizQuery && notizQuery.sender_user_id === loggedInUser.id && !planGesperrt) {
-             // Fallback: Falls er eine Notiz erstellt hat statt Wunsch
              camHundefuehrerDelete.style.display = 'block';
              camLinkDelete.textContent = 'Notiz löschen';
              camLinkDelete.dataset.targetQueryId = notizQuery.id;
              hasContent = true;
-
         } else if (!wunschQuery && !planGesperrt) {
             camHundefuehrerRequests.style.display = 'grid';
             populateClickModalShiftButtons('hundefuehrer');
@@ -347,7 +486,6 @@ function showClickActionModal(event, user, dateStr, cell, isCellOnOwnRow) {
         return;
     }
 
-    // Positionierung
     const cellRect = cell.getBoundingClientRect();
     const modalWidth = clickActionModal.offsetWidth || 300;
     const modalHeight = clickActionModal.offsetHeight;
@@ -442,23 +580,33 @@ function openShiftModal(userId, dateStr, userName) {
     shiftModalInfo.textContent = `Für: ${userName} am ${dateDisplay}`;
     shiftModal.style.display = 'block';
 }
-closeShiftModalBtn.onclick = () => closeModal(shiftModal);
 
-if (closeQueryModalBtn) {
-    closeQueryModalBtn.onclick = () => closeModal(queryModal);
+// --- Listeners für Modal-Buttons ---
+if (closeShiftModalBtn) closeShiftModalBtn.onclick = () => closeModal(shiftModal);
+if (closeQueryModalBtn) closeQueryModalBtn.onclick = () => closeModal(queryModal);
+if (querySubmitBtn) querySubmitBtn.onclick = () => saveShiftQuery();
+if (queryResolveBtn) queryResolveBtn.onclick = () => resolveShiftQuery();
+if (queryDeleteBtn) queryDeleteBtn.onclick = () => deleteShiftQueryFromModal();
+if (replySubmitBtn) replySubmitBtn.onclick = () => sendReply();
+
+// GENERATOR LISTENERS
+if (openGeneratorLink) {
+    openGeneratorLink.onclick = (e) => {
+        e.preventDefault();
+        openGeneratorModal();
+    };
 }
-if (querySubmitBtn) {
-    querySubmitBtn.onclick = () => saveShiftQuery();
+if (openGenSettingsLink) {
+    openGenSettingsLink.onclick = (e) => {
+        e.preventDefault();
+        openGenSettingsModal();
+    };
 }
-if (queryResolveBtn) {
-    queryResolveBtn.onclick = () => resolveShiftQuery();
-}
-if (queryDeleteBtn) {
-    queryDeleteBtn.onclick = () => deleteShiftQueryFromModal();
-}
-if (replySubmitBtn) {
-    replySubmitBtn.onclick = () => sendReply();
-}
+if (closeGeneratorModalBtn) closeGeneratorModalBtn.onclick = () => closeModal(generatorModal);
+if (startGeneratorBtn) startGeneratorBtn.onclick = startGenerator;
+if (closeGenSettingsModalBtn) closeGenSettingsModalBtn.onclick = () => closeModal(genSettingsModal);
+if (saveGenSettingsBtn) saveGenSettingsBtn.onclick = saveGenSettings;
+
 
 // Listeners für Klick-Modal Aktionen
 if (camLinkNotiz) {
@@ -491,6 +639,8 @@ if (camBtnReject) {
 window.onclick = (event) => {
     if (event.target == shiftModal) closeModal(shiftModal);
     if (event.target == queryModal) closeModal(queryModal);
+    if (event.target == generatorModal) closeModal(generatorModal);
+    if (event.target == genSettingsModal) closeModal(genSettingsModal);
     if (!event.target.closest('.grid-cell') && !event.target.closest('#click-action-modal')) {
         hideClickActionModal();
     }
@@ -544,18 +694,16 @@ async function renderGrid() {
 
     try {
         const shiftDataPromise = apiFetch(`/api/shifts?year=${currentYear}&month=${currentMonth}`);
-        const userDataPromise = apiFetch('/api/users');
         const specialDatesPromise = loadSpecialDates(currentYear);
         const queriesPromise = loadShiftQueries();
 
-        const [shiftPayload, userData, specialDatesResult, queriesResult] = await Promise.all([
+        const [shiftPayload, specialDatesResult, queriesResult] = await Promise.all([
             shiftDataPromise,
-            userDataPromise,
             specialDatesPromise,
             queriesPromise
         ]);
 
-        allUsers = userData;
+        allUsers = shiftPayload.users;
 
         currentShifts = {};
         shiftPayload.shifts.forEach(s => {
@@ -677,7 +825,7 @@ function buildGridDOM() {
 
     const today = new Date();
 
-    grid.style.gridTemplateColumns = `${COL_WIDTH_NAME} ${COL_WIDTH_DETAILS} ${COL_WIDTH_UEBERTRAG} repeat(${daysInMonth}, ${COL_WIDTH_DAY}) ${COL_WIDTH_TOTAL}`;
+    grid.style.gridTemplateColumns = `${computedColWidthName} ${computedColWidthDetails} ${COL_WIDTH_UEBERTRAG} repeat(${daysInMonth}, ${COL_WIDTH_DAY}) ${COL_WIDTH_TOTAL}`;
 
     grid.innerHTML = '';
     const weekdays = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'];
@@ -808,15 +956,13 @@ function buildGridDOM() {
             }
             const dayHasSpecialBg = eventType || isWeekend;
 
-            // --- START: LOGIK FÜR QUERIES ---
+            // --- LOGIK FÜR QUERIES ---
 
-            // Wir suchen ALLE Queries für diese Zelle
             const queriesForCell = currentShiftQueries.filter(q =>
                 (q.target_user_id === user.id && q.shift_date === dateStr && q.status === 'offen') ||
                 (q.target_user_id === null && q.shift_date === dateStr && q.status === 'offen')
             );
 
-            // Trenne in Wunsch (Hundeführer) und Notiz (Andere)
             const wunschQuery = queriesForCell.find(q => isWunschAnfrage(q));
             const notizQuery = queriesForCell.find(q => !isWunschAnfrage(q));
 
@@ -824,22 +970,16 @@ function buildGridDOM() {
             let showQuestionMark = false;
             let isShiftRequestCell = false;
 
-            // --- ANSICHTS-LOGIK ---
-
             if (isPlanschreiber) {
-                // Planschreiber sieht Wünsche NICHT als Text/Farbe, nur Notizen
                 if (notizQuery) {
                     showQuestionMark = true;
                 }
             } else if (isHundefuehrer) {
-                // Hundeführer sieht NUR seine Wünsche (Text/Farbe), KEINE Notizen (Fragezeichen)
                 if (wunschQuery) {
                     isShiftRequestCell = true;
                     shiftRequestText = wunschQuery.message.substring("Anfrage für:".length).trim();
                 }
-                // showQuestionMark bleibt false
             } else {
-                // Admin (sieht alles)
                 if (wunschQuery) {
                     isShiftRequestCell = true;
                     shiftRequestText = wunschQuery.message.substring("Anfrage für:".length).trim();
@@ -873,11 +1013,11 @@ function buildGridDOM() {
                  cell.innerHTML += `<span class="shift-query-icon">❓</span>`;
             }
 
-            // Wir setzen KEINE queryId mehr direkt ins Dataset, da es mehrere geben kann.
-            // showClickActionModal sucht sich die IDs selbst.
-
-            // --- ENDE: LOGIK FÜR QUERIES ---
-
+            // --- NEU: Schloss-Symbol ---
+            if (shift && shift.is_locked) {
+                cellClasses += ' locked-shift';
+            }
+            // --- ENDE NEU ---
 
             cell.className = cellClasses + currentUserClass;
 
@@ -1197,21 +1337,6 @@ if (staffingSortToggleBtn) {
 }
 
 
-function isColorDark(hexColor) {
-    if (!hexColor) return false;
-    const hex = hexColor.replace('#', '');
-    if (hex.length !== 6) return false;
-    try {
-        const r = parseInt(hex.substring(0, 2), 16);
-        const g = parseInt(hex.substring(2, 4), 16);
-        const b = parseInt(hex.substring(4, 6), 16);
-        const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
-        return luminance < 0.5;
-    } catch (e) {
-        return false;
-    }
-}
-
 async function populateStaticElements(forceReload = false) {
     if (Object.keys(allShiftTypes).length === 0 || forceReload) {
         const typeData = await apiFetch('/api/shifttypes');
@@ -1402,11 +1527,21 @@ window.addEventListener('keydown', async (event) => {
 
     if (shiftModal.style.display === 'block' ||
         queryModal.style.display === 'block' ||
-        (clickActionModal && clickActionModal.style.display === 'block')) {
+        (clickActionModal && clickActionModal.style.display === 'block') ||
+        (generatorModal && generatorModal.style.display === 'block') ||
+        (genSettingsModal && genSettingsModal.style.display === 'block')) {
         return;
     }
 
     if (!hoveredCellContext || !hoveredCellContext.userId) return;
+
+    // --- NEU: Leertaste zum Sperren/Entsperren ---
+    if (event.code === 'Space') {
+        event.preventDefault(); // Verhindert Scrollen
+        await toggleShiftLock(hoveredCellContext.userId, hoveredCellContext.dateStr);
+        return;
+    }
+    // --- ENDE NEU ---
 
     const key = event.key.toLowerCase();
     const abbrev = shortcutMap[key];
@@ -1450,10 +1585,6 @@ async function requestShift(shiftAbbrev, userId, dateStr) {
         alert(`Fehler beim Erstellen der Anfrage: ${e.message}`);
         buildGridDOM();
     }
-}
-
-function triggerNotificationUpdate() {
-    window.dispatchEvent(new CustomEvent('dhf:notification_update'));
 }
 
 function updateQueryModalInfo(dateDisplay) {
@@ -1520,7 +1651,7 @@ function renderReplies(replies, originalQuery) {
                 <strong>${reply.user_name}</strong> am ${formattedDate} Uhr
             </div>
             <div class="reply-text">
-                ${reply.message}
+                ${escapeHTML(reply.message)}
             </div>
         `;
         queryRepliesList.appendChild(li);
@@ -1573,27 +1704,20 @@ function openQueryModal(userId, dateStr, userName, queryId) {
     const query = queryId ? currentShiftQueries.find(q => q.id == queryId) : null;
 
     if (query) {
-        // --- START: SICHERHEITSCHECK FÜR PLANSCHREIBER (Wunsch-Anfrage) ---
         const isWunsch = isWunschAnfrage(query);
-
-        // Wenn Planschreiber eine Wunsch-Anfrage öffnet (z.B. über direkten Link oder Fehler),
-        // darf er den Inhalt NICHT sehen und keine Aktionen ausführen.
-        // Er sieht stattdessen das "Neue Anfrage"-Formular, als ob nichts da wäre.
         if (isPlanschreiber && isWunsch) {
-             // Reset zu "Neue Anfrage"
-             modalQueryContext.queryId = null; // ID löschen
+             modalQueryContext.queryId = null;
              queryExistingContainer.style.display = 'none';
              queryAdminActions.style.display = 'none';
              queryNewContainer.style.display = 'block';
              queryReplyForm.style.display = 'none';
 
-             let targetName = "Thema des Tages / Allgemein"; // Fallback
+             let targetName = "Thema des Tages / Allgemein";
              queryModalInfo.textContent = `Für: ${targetName} am ${dateDisplay}`;
 
              queryModal.style.display = 'block';
-             return; // Abbruch der normalen "Bestehende Anfrage"-Logik
+             return;
         }
-        // --- ENDE SICHERHEITSCHECK ---
 
         queryExistingContainer.style.display = 'block';
         queryNewContainer.style.display = 'none';
@@ -1602,18 +1726,13 @@ function openQueryModal(userId, dateStr, userName, queryId) {
         if(conversationContainer) conversationContainer.style.display = 'block';
         queryReplyForm.style.display = 'block';
 
-        // --- START: ANGEPASSTE SICHTBARKEITSLOGIK (Buttons) ---
-
-        // Standard: Admin-Actions ausblenden
         queryAdminActions.style.display = 'none';
 
         if (isAdmin) {
-            // Admin sieht Actions immer
             queryAdminActions.style.display = 'flex';
             if (queryResolveBtn) queryResolveBtn.style.display = 'block';
             if (queryDeleteBtn) queryDeleteBtn.textContent = 'Anfrage löschen';
         } else if (isPlanschreiber) {
-            // Planschreiber sieht Actions NUR bei NICHT-Wunsch-Anfragen
             if (!isWunsch) {
                 queryAdminActions.style.display = 'flex';
                 if (queryResolveBtn) queryResolveBtn.style.display = 'block';
@@ -1624,7 +1743,6 @@ function openQueryModal(userId, dateStr, userName, queryId) {
              if (queryResolveBtn) queryResolveBtn.style.display = 'none';
              if (queryDeleteBtn) queryDeleteBtn.textContent = 'Anfrage zurückziehen';
         }
-        // --- ENDE: ANGEPASSTE SICHTBARKEITSLOGIK ---
 
         let targetName = query.target_name || "Thema des Tages / Allgemein";
         queryModalInfo.textContent = `Für: ${targetName} am ${dateDisplay}`;
@@ -1634,7 +1752,6 @@ function openQueryModal(userId, dateStr, userName, queryId) {
         queryAdminActions.style.display = 'none';
         queryNewContainer.style.display = 'block';
         queryReplyForm.style.display = 'none';
-
         updateQueryModalInfo(dateDisplay);
     }
 
@@ -1660,7 +1777,6 @@ async function saveShiftQuery() {
         } else {
              targetUserId = selectedType === 'user' ? modalQueryContext.userId : null;
         }
-
 
         const payload = {
             target_user_id: targetUserId,
@@ -1889,11 +2005,9 @@ async function initialize() {
             highlightData = JSON.parse(data);
             localStorage.removeItem(DHF_HIGHLIGHT_KEY);
 
-            // --- KORREKTUR: Manuelles Parsen des Datums ---
             const parts = highlightData.date.split('-'); // YYYY-MM-DD
             const year = parseInt(parts[0]);
             const month = parseInt(parts[1]);
-            // Tag wird in highlightCells berechnet
 
             currentYear = year;
             currentMonth = month;
@@ -1905,7 +2019,6 @@ async function initialize() {
 
     await renderGrid();
 
-    // --- KORREKTUR: Kurze Verzögerung für DOM-Aufbau ---
     if (highlightData) {
         setTimeout(() => {
             highlightCells(highlightData.date, highlightData.targetUserId);
@@ -1914,8 +2027,6 @@ async function initialize() {
 }
 
 function highlightCells(dateStr, targetUserId) {
-    const day = new Date(dateStr).getDate();
-
     const highlightClass = 'grid-cell-highlight';
 
     let cellsToHighlight = [];
@@ -1949,4 +2060,5 @@ function highlightCells(dateStr, targetUserId) {
     }
 }
 
+// Init-Start
 initialize();

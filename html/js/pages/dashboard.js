@@ -1,9 +1,9 @@
 // js/pages/dashboard.js
 
 // --- IMPORTE (Regel 4: Wiederverwendung) ---
-import { API_URL } from '../utils/constants.js'; // (Pfad relativ zur HTML-Datei)
+import { API_URL } from '../utils/constants.js';
 import { apiFetch } from '../utils/api.js';
-import { initAuthCheck, logout } from '../utils/auth.js'; // (Pfad relativ zur HTML-Datei)
+import { initAuthCheck, logout } from '../utils/auth.js';
 
 // --- Globales Setup (Seiten-spezifisch) ---
 let user;
@@ -19,73 +19,164 @@ const logDescriptionField = document.getElementById('log-description');
 const logAreaField = document.getElementById('log-area');
 const manualLogStatus = document.getElementById('manual-log-status');
 
-// --- 1. Authentifizierung (Regel 4: Zentralisiert) ---
+// NEWS ELEMENTE
+const newsContainer = document.getElementById('news-container');
+const newsText = document.getElementById('news-text');
+const newsCheckbox = document.getElementById('news-ack-checkbox');
+const newsAdminBtn = document.getElementById('news-admin-btn');
+const newsEditModal = document.getElementById('news-edit-modal');
+const newsEditTextarea = document.getElementById('news-edit-textarea');
+const saveNewsBtn = document.getElementById('save-news-btn');
+const closeNewsModalBtn = document.getElementById('close-news-modal');
+const newsModalStatus = document.getElementById('news-modal-status');
+
+// --- 1. Authentifizierung ---
 try {
-    // Ruft die zentrale Auth-Prüfung auf.
-    // Diese Funktion kümmert sich um:
-    // 1. User-Prüfung (localStorage)
-    // 2. Rollen-Zuweisung (isAdmin, etc.)
-    // 3. Navigations-Anpassung (Links ein/ausblenden)
-    // 4. Logout-Button-Listener
-    // 5. Auto-Logout-Timer
     const authData = initAuthCheck();
     user = authData.user;
     isAdmin = authData.isAdmin;
 
-    // (Die 'logout'-Funktion ist jetzt importiert und wird
-    // automatisch an den Logout-Button gebunden, falls vorhanden)
-
-    // *** SEHR WICHTIG: Zugriffsschutz (Spezifisch für diese Seite) ***
-    // (Der Head-Script-Block in dashboard.html leitet Besucher bereits um,
-    // aber wir führen den Check hier sicherheitshalber aus.)
     if (authData.isVisitor) {
         window.location.href = 'schichtplan.html';
         throw new Error("Besucher dürfen das Dashboard nicht sehen.");
     }
 
     // --- Seiten-spezifische UI-Anpassungen ---
-    document.getElementById('welcome-message').textContent = `Willkommen, ${user.vorname}!`;
-
-    // (Die Navigationsanpassung (navUsers, navFeedback)
-    // wird bereits von initAuthCheck() übernommen)
+    const welcomeMsg = document.getElementById('welcome-message');
+    if (welcomeMsg) welcomeMsg.textContent = `Willkommen, ${user.vorname}!`;
 
     // Admin-spezifische UI-Elemente auf DIESER Seite
     if (isAdmin) {
         if(manualLogBtn) manualLogBtn.classList.remove('hidden');
-        document.querySelector('.card-section p').textContent = "Dies ist das Admin-Dashboard. Wählen Sie einen Bereich aus der Navigation oben.";
+        if(newsAdminBtn) newsAdminBtn.style.display = 'block';
+        // FEHLERBEHEBUNG: Die Zeile, die den <p> Text setzen wollte, wurde entfernt, da das Element nicht mehr existiert.
     }
-    // Planschreiber-spezifisch
     else if (authData.isPlanschreiber) {
          if(manualLogBtn) manualLogBtn.classList.add('hidden');
-         document.querySelector('.card-section p').textContent = "Dies ist das Dashboard. Sie haben Zugriff auf den Schichtplan und die Schicht-Anfragen (unter Meldungen).";
     }
-    // Hundeführer-spezifisch
-    else if (authData.isHundefuehrer) {
-         if(manualLogBtn) manualLogBtn.classList.add('hidden');
-         document.querySelector('.card-section p').textContent = "Dies ist das Dashboard. Sie können Ihre Schicht-Anfragen im Schichtplan per Rechtsklick auf Ihre Zeile stellen.";
-    }
-    // Standard-User
     else {
          if(manualLogBtn) manualLogBtn.classList.add('hidden');
-         document.querySelector('.card-section p').textContent = "Dies ist das Dashboard. Wählen Sie einen Bereich aus der Navigation oben.";
     }
 
-    // Lade die Daten für diese Seite
+    // Lade die Daten für diese Seite (startet jetzt auch für Admins)
     loadUpdateLog();
+    loadAnnouncement();
 
 } catch (e) {
-    // Wenn initAuthCheck fehlschlägt (z.B. kein User), wird die Ausführung gestoppt.
-    // Der User wird bereits umgeleitet (via auth.js).
     console.error("Fehler bei der Initialisierung von dashboard.js:", e.message);
-
-    // Wir stoppen die weitere Ausführung des Skripts
-    throw new Error("Initialisierung gestoppt.");
+    // Kein throw hier, damit Rest der Seite evtl. noch funktioniert oder Fehler geloggt wird
 }
 
-// (Die redundanten logout() und apiFetch() Funktionen wurden entfernt)
-
-
 // --- Seiten-spezifische Logik ---
+
+/**
+ * Lädt die aktuelle Mitteilung.
+ */
+async function loadAnnouncement() {
+    if (!newsText) return; // Schutz
+
+    try {
+        const data = await apiFetch('/api/announcement');
+
+        if (!data.message) {
+            newsText.textContent = "Keine aktuellen Mitteilungen.";
+            newsText.style.color = "#777";
+            if(newsCheckbox) {
+                newsCheckbox.checked = true;
+                newsCheckbox.disabled = true;
+            }
+            document.body.classList.remove('nav-locked');
+            return;
+        }
+
+        newsText.textContent = data.message;
+        newsText.style.color = "#ecf0f1";
+
+        // Status prüfen
+        if (data.is_read) {
+            if(newsCheckbox) newsCheckbox.checked = true;
+            if(newsContainer) newsContainer.classList.remove('unread');
+            document.body.classList.remove('nav-locked');
+        } else {
+            if(newsCheckbox) newsCheckbox.checked = false;
+            if(newsContainer) newsContainer.classList.add('unread');
+            document.body.classList.add('nav-locked');
+        }
+
+    } catch (error) {
+        if(newsText) newsText.textContent = "Fehler beim Laden der Mitteilungen.";
+        console.error(error);
+    }
+}
+
+// Checkbox Listener (Bestätigung)
+if (newsCheckbox) {
+    newsCheckbox.addEventListener('change', async (e) => {
+        if (e.target.checked) {
+            try {
+                await apiFetch('/api/announcement/ack', 'POST');
+                if(newsContainer) newsContainer.classList.remove('unread');
+                document.body.classList.remove('nav-locked');
+            } catch (error) {
+                alert("Fehler beim Bestätigen: " + error.message);
+                e.target.checked = false;
+            }
+        }
+    });
+}
+
+// Admin: Edit Modal öffnen
+if (newsAdminBtn) {
+    newsAdminBtn.onclick = () => {
+        if (newsEditTextarea) {
+            newsEditTextarea.value = (newsText.textContent === "Keine aktuellen Mitteilungen." || newsText.textContent === "Fehler beim Laden der Mitteilungen.") ? "" : newsText.textContent;
+        }
+        if (newsEditModal) {
+            newsEditModal.style.display = 'block';
+            if(newsModalStatus) newsModalStatus.textContent = '';
+        }
+    };
+}
+
+if (closeNewsModalBtn) {
+    closeNewsModalBtn.onclick = () => {
+        if (newsEditModal) newsEditModal.style.display = 'none';
+    };
+}
+
+// Admin: Speichern
+if (saveNewsBtn) {
+    saveNewsBtn.onclick = async () => {
+        saveNewsBtn.disabled = true;
+        if(newsModalStatus) {
+            newsModalStatus.textContent = 'Speichere...';
+            newsModalStatus.style.color = '#bdc3c7';
+        }
+
+        try {
+            await apiFetch('/api/announcement', 'PUT', {
+                message: newsEditTextarea.value
+            });
+            if(newsModalStatus) {
+                newsModalStatus.textContent = 'Gespeichert!';
+                newsModalStatus.style.color = '#2ecc71';
+            }
+
+            setTimeout(() => {
+                if (newsEditModal) newsEditModal.style.display = 'none';
+                loadAnnouncement();
+            }, 1000);
+        } catch (error) {
+            if(newsModalStatus) {
+                newsModalStatus.textContent = 'Fehler: ' + error.message;
+                newsModalStatus.style.color = '#e74c3c';
+            }
+        } finally {
+            saveNewsBtn.disabled = false;
+        }
+    };
+}
+
 
 /**
  * Lädt das Update Log und rendert es in die Liste.
@@ -94,7 +185,6 @@ async function loadUpdateLog() {
     if (!logList) return;
 
     try {
-        // Nutzt die importierte apiFetch (Regel 4)
         const logs = await apiFetch('/api/updatelog');
 
         if (logs.length === 0) {
@@ -218,5 +308,8 @@ if (saveManualLogBtn) {
 window.onclick = (event) => {
     if (event.target == manualModal && manualModal) {
         manualModal.style.display = 'none';
+    }
+    if (event.target == newsEditModal && newsEditModal) {
+        newsEditModal.style.display = 'none';
     }
 }

@@ -41,18 +41,23 @@ try {
         throw new Error("Keine berechtigte Rolle für Anfragen-Verwaltung.");
     }
 
-    // UI-Anpassung
+    // --- KORREKTUR: UI-Anpassung ---
+    const navUsers = document.getElementById('nav-users');
+    const navFeedback = document.getElementById('nav-feedback');
+
     if (isAdmin) {
-        document.getElementById('nav-users').style.display = 'inline-flex';
-        document.getElementById('nav-feedback').style.display = 'inline-flex';
+        navUsers.style.display = 'inline-flex';
+        navFeedback.style.display = 'inline-flex';
+        navFeedback.href = 'feedback.html'; // Admin -> Feedback
         document.getElementById('sub-nav-feedback').style.display = 'inline-block';
     } else {
-        document.getElementById('nav-users').style.display = 'none';
+        navUsers.style.display = 'none';
         if (isScheduler) {
-             document.getElementById('nav-feedback').style.display = 'inline-flex';
+             navFeedback.style.display = 'inline-flex';
+             navFeedback.href = 'anfragen.html'; // Planschreiber -> Anfragen (Link Korrektur)
              document.getElementById('sub-nav-feedback').style.display = 'none';
         } else {
-             document.getElementById('nav-feedback').style.display = 'none';
+             navFeedback.style.display = 'none';
              document.getElementById('sub-nav-feedback').style.display = 'none';
         }
     }

@@ -1,8 +1,7 @@
 // js/utils/auth.js
-// (Inhalt von oben...)
 import { API_URL } from './constants.js';
 
-// --- NEU: Auto-Logout Timer Logik (aus shared_feedback.js verschoben) ---
+// --- Auto-Logout Timer Logik ---
 const LOGOUT_TIMEOUT_MS = 5 * 60 * 1000; // 5 Minuten
 let inactivityTimer;
 
@@ -40,8 +39,6 @@ function initializeInactivityTimer() {
     // Starte den Timer initial
     resetInactivityTimer();
 }
-// --- ENDE NEU ---
-
 
 /**
  * Führt einen Logout durch (API-Call und LocalStorage-Clear).
@@ -61,8 +58,8 @@ export async function logout() {
 }
 
 /**
- * Führt den initialen Authentifizierungs-Check aus (ersetzt den try-catch-Block).
- * Passt die Navigation an und gibt die User-Daten zurück.
+ * Führt den initialen Authentifizierungs-Check aus.
+ * Passt die Navigation an (inkl. Link-Korrektur für Planschreiber) und gibt die User-Daten zurück.
  * @returns {{user: object, isAdmin: boolean, isVisitor: boolean, isPlanschreiber: boolean, isHundefuehrer: boolean}}
  */
 export function initAuthCheck() {
@@ -81,7 +78,7 @@ export function initAuthCheck() {
         isPlanschreiber = user.role.name === 'Planschreiber';
         isHundefuehrer = user.role.name === 'Hundeführer';
 
-        // CSS-Klassen an <body> für globales Styling (Regel 2: Effizient)
+        // CSS-Klassen an <body> für globales Styling
         if (isAdmin) document.body.classList.add('admin-mode');
         if (isPlanschreiber) document.body.classList.add('planschreiber-mode');
         if (isHundefuehrer) document.body.classList.add('hundefuehrer-mode');
@@ -90,20 +87,24 @@ export function initAuthCheck() {
         // DOM-Elemente für Navigation holen
         const navDashboard = document.getElementById('nav-dashboard');
         const navUsers = document.getElementById('nav-users');
-        // (settingsDropdown wird hier nicht benötigt, da dies der generische Check ist)
         const navFeedback = document.getElementById('nav-feedback');
 
-        // Navigations-Logik (Regel 1: Robust)
+        // Navigations-Logik
         if (navDashboard) navDashboard.style.display = isVisitor ? 'none' : 'block';
 
-        // Diese Logik wird von jeder Seite aufgerufen,
-        // sie passt die Hauptnavigation dynamisch an.
+        // --- KORREKTUR: Dynamische Link-Anpassung für Planschreiber ---
         if (isAdmin) {
             if (navUsers) navUsers.style.display = 'block';
-            if (navFeedback) navFeedback.style.display = 'inline-flex';
+            if (navFeedback) {
+                navFeedback.style.display = 'inline-flex';
+                navFeedback.href = 'feedback.html'; // Admin geht zur Feedback-Verwaltung
+            }
         } else if (isPlanschreiber) {
             if (navUsers) navUsers.style.display = 'none';
-            if (navFeedback) navFeedback.style.display = 'inline-flex';
+            if (navFeedback) {
+                navFeedback.style.display = 'inline-flex';
+                navFeedback.href = 'anfragen.html'; // Planschreiber geht direkt zu den Anfragen
+            }
         } else {
             if (navUsers) navUsers.style.display = 'none';
             if (navFeedback) navFeedback.style.display = 'none';
@@ -114,28 +115,20 @@ export function initAuthCheck() {
             if (navUsers) navUsers.style.display = 'none';
         }
 
-        // Logout-Button (wird von jeder Seite gesucht)
+        // Logout-Button
         const logoutBtn = document.getElementById('logout-btn');
         if (logoutBtn) {
             logoutBtn.onclick = logout;
         }
 
-        // --- NEU: Inaktivitäts-Timer starten ---
-        // Der Timer wird nur gestartet, wenn der User-Check erfolgreich war.
-        // (Er läuft NICHT auf der Login-Seite)
+        // Inaktivitäts-Timer starten
         initializeInactivityTimer();
-        // --- ENDE NEU ---
 
     } catch (e) {
         console.error("Authentifizierungsfehler:", e.message);
-        // Wenn der User-Check fehlschlägt (z.B. auf der Login-Seite),
-        // wird der Timer NICHT gestartet und wir leiten nicht zwangsläufig um.
-
-        // WIR LEITEN NUR UM, wenn der Fehler NICHT auf index.html passiert
         if (!window.location.pathname.endsWith('index.html')) {
             logout();
         }
-
         throw e;
     }
 

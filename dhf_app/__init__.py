@@ -50,14 +50,17 @@ def create_app(config_name='default'):
     from .routes_events import events_bp
     app.register_blueprint(events_bp)
 
-    # --- *** DIESE ZEILEN SIND ENTSCHEIDEND *** ---
+    # --- Feedback Blueprint ---
     from .routes_feedback import feedback_bp
     app.register_blueprint(feedback_bp)
-    # --- *** ENDE *** ---
 
-    # --- NEU: Blueprint für Schicht-Anfragen registrieren ---
+    # --- Anfragen Blueprint ---
     from .routes_queries import query_bp
     app.register_blueprint(query_bp)
+
+    # --- GENERATOR Blueprint (NEU) ---
+    from .routes_generator import generator_bp
+    app.register_blueprint(generator_bp)
     # --- ENDE NEU ---
 
     # 5. Startup-Logik (Defaults erstellen)
@@ -69,13 +72,12 @@ def create_app(config_name='default'):
         # create_default_shifttypes(db)
         # --- ENDE ENTFERNT ---
         create_default_holidays(db)
-        create_default_settings(db)  # <<< NEU: Globale Einstellungen erstellen
+        create_default_settings(db)  # Globale Einstellungen erstellen
 
     return app
 
 
 # --- Startup-Funktionen ---
-# (Rest der Datei bleibt unverändert) ...
 
 def create_default_roles(db_instance):
     """
@@ -109,7 +111,7 @@ def create_default_holidays(db_instance):
     Erstellt die Standard-Feiertage für MV (als Vorlagen ohne Datum).
     """
     from .models import SpecialDate
-    # ... (Rest des Codes bleibt unverändert, da die Funktion nur auszugsweise benötigt wurde)
+
     mv_holidays = [
         "Neujahr",
         "Internationaler Frauentag",

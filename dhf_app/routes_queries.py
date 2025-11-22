@@ -1,9 +1,8 @@
-# cheesylicious/dhfweb/dhfweb-ec604d738e9bd121b65cc8557f8bb98d2aa18062/dhf_app/routes_queries.py
-# Neue Datei: dhf_app/routes_queries.py
+# dhf_app/routes_queries.py
 
 from flask import Blueprint, request, jsonify, current_app
-# --- IMPORTE ---
-from .models import ShiftQuery, User, FeedbackReport, UpdateLog, ShiftQueryReply, Role
+# --- IMPORTE ERWEITERT ---
+from .models import ShiftQuery, User, FeedbackReport, UpdateLog, ShiftQueryReply, Role, UserShiftLimit, ShiftType, Shift
 from .extensions import db
 from sqlalchemy.orm import joinedload
 from .utils import admin_required, scheduler_or_admin_required, query_roles_required
@@ -30,15 +29,40 @@ def _log_update_event(area, description):
     db.session.add(new_log)
 
 
-# --- ROUTE FÜR BENACHRICHTIGUNGS-ZÄHLER ---
+# --- HILFSFUNKTION: VERBRAUCH BERECHNEN ---
+def _calculate_usage(user_id, year, month, shifttype_id, abbreviation):
+    """
+    Berechnet den Verbrauch eines Limits (Genehmigte Schichten + Offene Anfragen).
+    """
+    # 1. Zähle echte Schichten im Plan (genehmigt)
+    shift_count = Shift.query.filter(
+        Shift.user_id == user_id,
+        extract('year', Shift.date) == year,
+        extract('month', Shift.date) == month,
+        Shift.shifttype_id == shifttype_id
+    ).count()
+
+    # 2. Zähle offene Anfragen (textbasiert: "Anfrage für: T.")
+    # Wir suchen nach Nachrichten, die mit der Abkürzung beginnen
+    search_pattern = f"Anfrage für: {abbreviation}%"
+    query_count = ShiftQuery.query.filter(
+        ShiftQuery.sender_user_id == user_id,
+        extract('year', ShiftQuery.shift_date) == year,
+        extract('month', ShiftQuery.shift_date) == month,
+        ShiftQuery.status == 'offen',
+        ShiftQuery.message.like(search_pattern)
+    ).count()
+
+    return shift_count + query_count
+
+
+# --- ROUTE FÜR BENACHRICHTIGUNGS-ZÄHLER (Unverändert) ---
 @query_bp.route('/notifications_summary', methods=['GET'])
 @login_required
 def get_notifications_summary():
     """
-    Ruft eine Zusammenfassung aller relevanten Benachrichtigungs-Zähler
-    für den aktuell eingeloggten Benutzer ab.
+    Ruft eine Zusammenfassung aller relevanten Benachrichtigungs-Zähler ab.
     """
-
     response = {
         "new_feedback_count": 0,
         "new_wishes_count": 0,
@@ -49,19 +73,15 @@ def get_notifications_summary():
     try:
         user_role = current_user.role.name if current_user.role else ""
 
-        # 1. Zähler für Admins (Neue Meldungen)
         if user_role == 'admin':
             count = db.session.query(func.count(FeedbackReport.id)).filter(
                 FeedbackReport.status == 'neu'
             ).scalar()
             response["new_feedback_count"] = count
 
-        # 2. Zähler für Admins UND Planschreiber UND Hundeführer
         if user_role in ['admin', 'Planschreiber', 'Hundeführer']:
-
             current_user_id = current_user.id
 
-            # A) Subqueries für letzte Antwort
             last_reply_sq = db.session.query(
                 ShiftQueryReply.query_id,
                 func.max(ShiftQueryReply.created_at).label('last_reply_time')
@@ -78,7 +98,6 @@ def get_notifications_summary():
                 )
             ).distinct(ShiftQueryReply.query_id).subquery()
 
-            # B) Basis-Query
             base_query = db.session.query(
                 ShiftQuery,
                 last_reply_user_sq.c.user_id.label('last_replier_id')
@@ -101,14 +120,11 @@ def get_notifications_summary():
 
             query_results = base_query.all()
 
-            # C) Zählen
             new_wishes = 0
             new_notes = 0
             waiting = 0
 
             for query, last_replier_id in query_results:
-
-                # Filter für Planschreiber: Wünsche ignorieren
                 sender_role_name = query.sender.role.name if query.sender and query.sender.role else ""
                 is_wunsch = (sender_role_name == 'Hundeführer' and query.message.startswith("Anfrage für:"))
 
@@ -144,11 +160,61 @@ def get_notifications_summary():
         return jsonify(response), 200
 
 
+# --- NEUE ROUTE: VERFÜGBARE ANFRAGEN ABFRAGEN ---
+@query_bp.route('/usage', methods=['GET'])
+@login_required
+def get_query_usage():
+    """
+    Gibt zurück, wie viele Anfragen der aktuelle User pro Schichtart in einem Monat noch stellen darf.
+    """
+    year = request.args.get('year')
+    month = request.args.get('month')
+
+    if not year or not month:
+        return jsonify({"message": "Jahr und Monat erforderlich"}), 400
+
+    try:
+        year = int(year)
+        month = int(month)
+
+        # 1. Limits für den User laden
+        limits = UserShiftLimit.query.filter_by(user_id=current_user.id).options(
+            joinedload(UserShiftLimit.shift_type)).all()
+
+        result = {}
+
+        for l in limits:
+            st = l.shift_type
+            if not st: continue
+
+            limit = l.monthly_limit
+            # Wenn Limit 0 ist, ist die Schicht gesperrt/nicht verfügbar
+
+            # 2. Verbrauch berechnen (Schichten + Offene Anfragen)
+            used = _calculate_usage(current_user.id, year, month, st.id, st.abbreviation)
+
+            remaining = max(0, limit - used)
+
+            result[st.abbreviation] = {
+                "shifttype_id": st.id,
+                "limit": limit,
+                "used": used,
+                "remaining": remaining
+            }
+
+        return jsonify(result), 200
+
+    except Exception as e:
+        current_app.logger.error(f"Fehler beim Berechnen der Usage: {str(e)}")
+        return jsonify({"message": f"Serverfehler: {str(e)}"}), 500
+
+
 @query_bp.route('', methods=['POST'])
 @query_roles_required
 def create_shift_query():
     """
     Erstellt eine neue Schicht-Anfrage oder aktualisiert eine EIGENE bestehende.
+    Enthält jetzt einen Check auf Limits.
     """
     data = request.get_json()
     try:
@@ -168,27 +234,81 @@ def create_shift_query():
                 return jsonify({"message": "Ungültige target_user_id"}), 400
 
         shift_date = datetime.fromisoformat(shift_date_str).date()
-
         user_role = current_user.role.name if current_user.role else ""
+
+        # --- START: LIMIT-PRÜFUNG FÜR HUNDEFÜHRER ---
         if user_role == 'Hundeführer':
             if target_user_id != current_user.id:
                 return jsonify({"message": "Hundeführer dürfen Anfragen nur für sich selbst erstellen."}), 403
 
-        # --- WICHTIG: Prüfen, ob eine offene Anfrage VOM AKTUELLEN BENUTZER existiert ---
+            # Prüfe, ob es eine Schicht-Wunsch-Anfrage ist (Format "Anfrage für: X")
+            if message.startswith("Anfrage für:"):
+                # Extrahiere Abkürzung
+                parts = message.split(":")
+                if len(parts) > 1:
+                    abbr = parts[1].strip().replace('?', '')  # Entferne evtl. Fragezeichen
+
+                    # Finde Schichtart
+                    st = ShiftType.query.filter_by(abbreviation=abbr).first()
+                    if st:
+                        # Finde Limit
+                        limit_entry = UserShiftLimit.query.filter_by(user_id=current_user.id,
+                                                                     shifttype_id=st.id).first()
+
+                        # Wenn ein Limit existiert UND > 0 ist, prüfen wir
+                        # (Wenn Limit 0 ist oder kein Eintrag existiert, ist es effektiv verboten/gesperrt,
+                        # aber wir blockieren hier nur explizite Überschreitungen von gesetzten Limits > 0.
+                        # Falls 0 = verboten sein soll, müsste man das hier anpassen.
+                        # Laut Frontend-Text: "0 = Keine Anfragen erlaubt")
+
+                        if limit_entry:
+                            max_limit = limit_entry.monthly_limit
+                            if max_limit == 0:
+                                return jsonify({
+                                                   "message": f"Anfragen für '{abbr}' sind für Sie nicht freigeschaltet (Limit 0)."}), 403
+
+                            # Prüfe Verbrauch (aber ohne die aktuelle Anfrage, falls es ein Update wäre?
+                            # Hier gehen wir von 'Create' aus. Bei Update wäre es komplexer,
+                            # aber HF updaten selten den Typ, meistens löschen sie und fragen neu an.)
+
+                            # Prüfe, ob schon eine Anfrage für DIESEN Tag existiert (Update-Fall)
+                            existing_same_day = ShiftQuery.query.filter_by(
+                                target_user_id=target_user_id,
+                                shift_date=shift_date,
+                                status='offen',
+                                sender_user_id=current_user.id
+                            ).first()
+
+                            # Wenn wir updaten, zählt diese Anfrage nicht "neu" dazu
+                            usage_offset = 0 if existing_same_day else 0
+                            # Eigentlich: Usage zählt ALLE Schichten + ALLE offenen Anfragen.
+                            # Wenn wir eine neue hinzufügen wollen, muss usage < limit sein.
+
+                            current_usage = _calculate_usage(current_user.id, shift_date.year, shift_date.month, st.id,
+                                                             st.abbreviation)
+
+                            # Wenn wir eine existierende Anfrage am SELBEN Tag haben, und den Typ ändern,
+                            # ist current_usage inkl. der alten Anfrage. Das ist okay als Näherung.
+                            # Strenger Check:
+                            if not existing_same_day and current_usage >= max_limit:
+                                return jsonify(
+                                    {"message": f"Monatliches Limit für '{abbr}' erreicht ({max_limit}x)."}), 403
+
+        # --- ENDE LIMIT-PRÜFUNG ---
+
+        # Bestehende Anfrage prüfen
         existing_query = ShiftQuery.query.filter_by(
             target_user_id=target_user_id,
             shift_date=shift_date,
             status='offen',
-            sender_user_id=current_user.id  # <<< KORREKTUR: Nur eigene Anfragen aktualisieren
+            sender_user_id=current_user.id
         ).first()
 
         if existing_query:
-            # Eigene Anfrage aktualisieren
             existing_query.message = message
             existing_query.created_at = datetime.utcnow()
             db.session.add(existing_query)
         else:
-            # Neue Anfrage erstellen (auch wenn schon eine von einem anderen User da ist)
             new_query = ShiftQuery(
                 sender_user_id=current_user.id,
                 target_user_id=target_user_id,
@@ -241,7 +361,6 @@ def get_shift_queries():
             last_reply_user_sq,
             ShiftQuery.id == last_reply_user_sq.c.query_id
         ).options(
-            # Performance: Lade Sender und Rolle für Frontend-Filterung
             joinedload(ShiftQuery.sender).joinedload(User.role)
         )
 
@@ -291,14 +410,12 @@ def update_query_status(query_id):
     if not query:
         return jsonify({"message": "Anfrage nicht gefunden"}), 404
 
-    # --- START: SCHUTZ FÜR PLANSCHREIBER ---
     user_role = current_user.role.name if current_user.role else ""
     if user_role == 'Planschreiber':
         sender_role = query.sender.role.name if query.sender and query.sender.role else ""
         is_wunsch = (sender_role == 'Hundeführer' and query.message.startswith("Anfrage für:"))
         if is_wunsch:
             return jsonify({"message": "Planschreiber dürfen Wunsch-Anfragen nicht bearbeiten."}), 403
-    # --- ENDE: SCHUTZ ---
 
     data = request.get_json()
     new_status = data.get('status')
@@ -317,7 +434,6 @@ def update_query_status(query_id):
 
     except IntegrityError as e:
         db.session.rollback()
-        # Fallback für Duplicate Entry bei 'erledigt'
         if "Duplicate entry" in str(e) and new_status == 'erledigt':
             try:
                 db.session.delete(query)
@@ -343,17 +459,14 @@ def delete_shift_query(query_id):
 
     user_role = current_user.role.name if current_user.role else ""
 
-    # Schutz für Hundeführer
     if user_role == 'Hundeführer' and query.sender_user_id != current_user.id:
         return jsonify({"message": "Sie dürfen nur Ihre eigenen Anfragen löschen."}), 403
 
-    # --- START: SCHUTZ FÜR PLANSCHREIBER ---
     if user_role == 'Planschreiber':
         sender_role = query.sender.role.name if query.sender and query.sender.role else ""
         is_wunsch = (sender_role == 'Hundeführer' and query.message.startswith("Anfrage für:"))
         if is_wunsch:
             return jsonify({"message": "Planschreiber dürfen Wunsch-Anfragen nicht löschen."}), 403
-    # --- ENDE: SCHUTZ ---
 
     try:
         date_str = query.shift_date.strftime('%d.%m.%Y')

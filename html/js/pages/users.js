@@ -46,8 +46,6 @@ try {
     throw e;
 }
 
-// (Die redundanten logout() und apiFetch() Funktionen wurden entfernt)
-
 // --- 2. DOM-Elemente (Seiten-spezifisch) ---
 const userTableBody = document.getElementById('user-table-body');
 const modal = document.getElementById('user-modal');
@@ -94,8 +92,6 @@ function closeModal(modalEl) {
 
 /**
  * Öffnet den angeklickten Tab im Modal.
- * @param {Event} evt - Das Klick-Ereignis (optional)
- * @param {string} tabName - Die ID des zu öffnenden Tabs (z.B. 'tab-stammdaten')
  */
 function openTab(evt, tabName) {
     let i, tabcontent, tablinks;
@@ -190,6 +186,64 @@ async function loadRolesIntoDropdown(selectedRoleId = null) {
         modalStatus.textContent = "Fehler beim Laden der Rollen: " + error.message;
     }
 }
+
+// --- NEUE FUNKTION: LIMITS LADEN ---
+async function loadUserLimits(userId) {
+    const container = document.getElementById('limits-container');
+    container.innerHTML = 'Lade Limits...';
+
+    try {
+        const limits = await apiFetch(`/api/users/${userId}/limits`);
+        container.innerHTML = '';
+
+        if (limits.length === 0) {
+             container.innerHTML = 'Keine Arbeitsschichten definiert.';
+             return;
+        }
+
+        limits.forEach(limit => {
+             const formGroup = document.createElement('div');
+             formGroup.className = 'form-group';
+
+             // Erstelle Label und Input
+             formGroup.innerHTML = `
+                 <label for="limit-${limit.shifttype_id}">
+                    ${limit.shifttype_abbreviation} (${limit.shifttype_name}):
+                 </label>
+                 <input type="number"
+                        id="limit-${limit.shifttype_id}"
+                        class="limit-input"
+                        data-shifttype-id="${limit.shifttype_id}"
+                        value="${limit.monthly_limit}"
+                        min="0"
+                        title="Anzahl der erlaubten Wunsch-Anfragen pro Monat (0 = keine)">
+             `;
+             container.appendChild(formGroup);
+        });
+
+    } catch (error) {
+        container.innerHTML = `<span style="color:red">Fehler beim Laden der Limits: ${error.message}</span>`;
+    }
+}
+
+// --- NEUE FUNKTION: LIMITS SPEICHERN ---
+async function saveUserLimits(userId) {
+    const inputs = document.querySelectorAll('.limit-input');
+    const payload = [];
+
+    inputs.forEach(input => {
+        payload.push({
+            shifttype_id: parseInt(input.dataset.shifttypeId),
+            monthly_limit: parseInt(input.value) || 0
+        });
+    });
+
+    if (payload.length > 0) {
+        await apiFetch(`/api/users/${userId}/limits`, 'PUT', payload);
+    }
+}
+
+
 async function loadUsers() {
     try {
         const users = await apiFetch('/api/users');
@@ -228,7 +282,6 @@ async function loadUsers() {
     }
 }
 
-// Event Delegation für Bearbeiten und Löschen (Regel 2: Effizienter)
 userTableBody.addEventListener('click', (e) => {
     if (e.target.classList.contains('btn-edit')) {
         const userData = JSON.parse(e.target.dataset.userjson);
@@ -252,9 +305,7 @@ addUserBtn.onclick = async () => {
     telefonField.value = '';
     eintrittsdatumField.value = '';
     aktivAbField.value = '';
-    // --- START NEU: Inaktiv-Datum ---
     inaktivAbField.value = '';
-    // --- ENDE NEU ---
     urlaubGesamtField.value = 0;
     urlaubRestField.value = 0;
     diensthundField.value = '';
@@ -264,6 +315,11 @@ addUserBtn.onclick = async () => {
 
     const systemTabButton = document.querySelector('.modal-tabs button[data-tab="tab-system"]');
     if (systemTabButton) systemTabButton.style.display = 'none';
+
+    // --- NEU: Limits-Tab verstecken bei neuem User (da noch keine ID existiert) ---
+    const limitsTabButton = document.getElementById('tab-link-limits');
+    if (limitsTabButton) limitsTabButton.style.display = 'none';
+    // --- ENDE NEU ---
 
     await loadRolesIntoDropdown();
     openModal(modal);
@@ -282,9 +338,7 @@ async function openEditModal(user) {
     telefonField.value = user.telefon || '';
     eintrittsdatumField.value = formatDateTime(user.eintrittsdatum, 'date');
     aktivAbField.value = formatDateTime(user.aktiv_ab_datum, 'date');
-    // --- START NEU: Inaktiv-Datum ---
     inaktivAbField.value = formatDateTime(user.inaktiv_ab_datum, 'date');
-    // --- ENDE NEU ---
     urlaubGesamtField.value = user.urlaub_gesamt || 0;
     urlaubRestField.value = user.urlaub_rest || 0;
     diensthundField.value = user.diensthund || '';
@@ -294,6 +348,14 @@ async function openEditModal(user) {
 
     const systemTabButton = document.querySelector('.modal-tabs button[data-tab="tab-system"]');
     if (systemTabButton) systemTabButton.style.display = 'block';
+
+    // --- NEU: Limits-Tab anzeigen und laden ---
+    const limitsTabButton = document.getElementById('tab-link-limits');
+    if (limitsTabButton) {
+        limitsTabButton.style.display = 'block';
+        await loadUserLimits(user.id); // Limits laden
+    }
+    // --- ENDE NEU ---
 
     await loadRolesIntoDropdown(user.role_id);
     openModal(modal);
@@ -311,30 +373,45 @@ saveUserBtn.onclick = async () => {
         telefon: telefonField.value || null,
         eintrittsdatum: eintrittsdatumField.value || null,
         aktiv_ab_datum: aktivAbField.value || null,
-        // --- START NEU: Inaktiv-Datum ---
         inaktiv_ab_datum: inaktivAbField.value || null,
-        // --- ENDE NEU ---
         urlaub_gesamt: parseInt(urlaubGesamtField.value) || 0,
         urlaub_rest: parseInt(urlaubRestField.value) || 0,
         diensthund: diensthundField.value || null,
         tutorial_gesehen: tutorialField.checked
     };
     if (!payload.passwort) { delete payload.passwort; }
+
+    // Button sperren, um Doppelklicks zu vermeiden
+    saveUserBtn.disabled = true;
+    modalStatus.textContent = 'Speichere...';
+
     try {
         if (id) {
+            // 1. User speichern
             await apiFetch(`/api/users/${id}`, 'PUT', payload);
+
+            // 2. Limits speichern (nur wenn wir im Edit-Modus sind)
+            const limitsTabButton = document.getElementById('tab-link-limits');
+            if (limitsTabButton && limitsTabButton.style.display !== 'none') {
+                 await saveUserLimits(id);
+            }
+
         } else {
             if (!payload.passwort) {
                 modalStatus.textContent = "Passwort ist für neue User erforderlich.";
                 openTab(null, 'tab-stammdaten');
+                saveUserBtn.disabled = false;
                 return;
             }
             await apiFetch('/api/users', 'POST', payload);
+            // Limits können erst nach Erstellung (im Edit-Modus) gesetzt werden
         }
         closeModal(modal);
         loadUsers();
     } catch (error) {
         modalStatus.textContent = 'Fehler: ' + error.message;
+    } finally {
+        saveUserBtn.disabled = false;
     }
 };
 
@@ -382,7 +459,6 @@ if (forcePwResetBtn) {
 
 // --- 5. Initialisierung ---
 
-// Event-Listener für die Modal-Tabs hinzufügen
 if (modalTabsContainer) {
     modalTabsContainer.addEventListener('click', (e) => {
         if (e.target.tagName === 'BUTTON' && e.target.dataset.tab) {
@@ -391,13 +467,11 @@ if (modalTabsContainer) {
     });
 }
 
-// Event-Handler für Modale
 closeModalBtn.onclick = () => closeModal(modal);
 window.addEventListener('click', (event) => {
     if (event.target == modal) closeModal(modal);
     if (event.target == columnModal) closeModal(columnModal);
 });
 
-// (Der Auth-Check oben hat bereits sichergestellt, dass wir Admin sind)
 loadUsers();
 applyColumnPreferences();

@@ -174,7 +174,6 @@
 
         /* --- Grid Styles --- */
 
-        /* --- START NEU/ANGEPASST: Zentrierung & Hervorhebung (Regel 1) --- */
         .plan-nav {
             display: flex;
             justify-content: space-between; /* Hält Elemente auseinander */
@@ -247,8 +246,6 @@
             color: #155724;
             border-color: #c3e6cb;
         }
-        /* --- ENDE NEU/ANGEPASST --- */
-
 
         .plan-nav button {
             padding: 8px 16px; font-size: 15px;
@@ -462,6 +459,25 @@
             text-align: center;
             box-shadow: 0 0 3px rgba(0,0,0,0.5);
             font-weight: 600;
+        }
+
+        /* --- NEU: Style für einzeln gesperrte Schichten --- */
+        .grid-cell.locked-shift {
+            /* Unterscheidung zur globalen Sperre: Dunklerer/anderer Rand */
+            box-shadow: inset 0 0 0 2px rgba(100, 100, 100, 0.4) !important;
+        }
+
+        /* Schloss-Icon unten rechts */
+        .grid-cell.locked-shift::after {
+            content: "🔒";
+            position: absolute;
+            bottom: 1px;
+            right: 2px;
+            font-size: 11px;
+            line-height: 1;
+            color: #333;
+            opacity: 0.8;
+            pointer-events: none; /* Klicks gehen durch */
         }
 
         .plan-legende {
@@ -921,6 +937,100 @@
              color: #c0392b;
         }
 
+        /* --- STYLES FÜR GENERATOR MODAL & LOG --- */
+        #generator-log-container {
+            background: #222;
+            border: 1px solid #444;
+            border-radius: 5px;
+            padding: 10px;
+            height: 250px;
+            overflow-y: auto;
+            font-family: 'Courier New', monospace;
+            font-size: 13px;
+            color: #e0e0e0;
+            margin-top: 15px;
+            margin-bottom: 15px;
+        }
+        .log-entry {
+            margin-bottom: 2px;
+            border-bottom: 1px solid #333;
+            padding-bottom: 2px;
+        }
+        .log-entry.info { color: #3498db; }
+        .log-entry.success { color: #2ecc71; }
+        .log-entry.warning { color: #f39c12; }
+        .log-entry.error { color: #e74c3c; font-weight: bold; }
+
+        .gen-progress-bar {
+            width: 100%;
+            background-color: #444;
+            border-radius: 5px;
+            height: 20px;
+            margin-top: 10px;
+            overflow: hidden;
+        }
+        .gen-progress-fill {
+            height: 100%;
+            background-color: #3498db;
+            width: 0%;
+            transition: width 0.3s ease;
+        }
+        .gen-settings-group {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 15px;
+            margin-bottom: 10px;
+        }
+        .gen-settings-group label {
+            font-size: 14px;
+            color: #333;
+            font-weight: 500;
+        }
+        .gen-settings-group input[type="number"],
+        .gen-settings-group select {
+             width: 100%;
+             padding: 8px;
+             border: 1px solid #ccc;
+             border-radius: 4px;
+        }
+        .gen-settings-section-title {
+            font-size: 15px;
+            font-weight: 600;
+            color: #3498db;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 5px;
+            margin-top: 15px;
+            margin-bottom: 10px;
+        }
+
+        /* --- NEU: Container für Schichtauswahl --- */
+        #gen-shifts-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            padding: 10px;
+            background: #f9f9f9;
+            border-radius: 5px;
+            border: 1px solid #eee;
+        }
+        .gen-shift-checkbox {
+            display: flex;
+            align-items: center;
+            gap: 5px;
+            padding: 5px 10px;
+            background: #fff;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            cursor: pointer;
+        }
+        .gen-shift-checkbox:hover {
+            background: #f0f5fa;
+            border-color: #3498db;
+        }
+        .gen-shift-checkbox input {
+            margin: 0;
+        }
+
     </style>
 </head>
 <body>
@@ -944,7 +1054,15 @@
     </header>
 
     <div class="sub-nav">
-        <a href="schichtplan.html" class="active">Schichtplan</a>
+        <div class="dropdown" id="plan-dropdown">
+            <button class="dropbtn active">Schichtplan &raquo;</button>
+            <div class="dropdown-content">
+                 <a href="schichtplan.html" class="active">Anzeigen</a>
+                 <a href="#" id="open-generator-modal" class="admin-only">Generieren</a>
+                 <a href="#" id="open-gen-settings-modal" class="admin-only">Generator-Einstellungen</a>
+            </div>
+        </div>
+
         <div class="dropdown" id="settings-dropdown">
             <button class="dropbtn">Einstellungen &raquo;</button>
             <div class="dropdown-content" id="settings-dropdown-content">
@@ -1082,6 +1200,81 @@
         </div>
     </div>
 
+    <div id="generator-modal" class="modal">
+        <div class="modal-content" style="max-width: 650px;">
+            <div class="modal-header">
+                <h2 id="generator-modal-title">Schichtplan Generator</h2>
+                <span class="close" id="close-generator-modal">&times;</span>
+            </div>
+            <div class="modal-body">
+                <p style="margin-bottom: 15px; color: #555;">
+                    Starten Sie den automatischen Generator für den aktuellen Monat (<span id="gen-target-month"></span>).
+                    <br><small>Hinweis: Der Generator überschreibt bestehende leere Zellen, respektiert aber bereits gesetzte Schichten und Wünsche.</small>
+                </p>
+
+                <div class="gen-progress-bar">
+                    <div class="gen-progress-fill" id="gen-progress-fill"></div>
+                </div>
+
+                <div id="generator-log-container">
+                    </div>
+
+                <div style="text-align: right; margin-top: 15px;">
+                     <button class="btn-primary" id="start-generator-btn">Generator Starten</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="gen-settings-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Generator Einstellungen</h2>
+                <span class="close" id="close-gen-settings-modal">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div class="gen-settings-section-title">Allgemeine Regeln</div>
+                <div class="gen-settings-group">
+                    <label for="gen-max-consecutive">Max. Tage in Folge:</label>
+                    <input type="number" id="gen-max-consecutive" value="4">
+                </div>
+                <div class="gen-settings-group">
+                    <label for="gen-rest-days">Ruhetage nach Block:</label>
+                    <input type="number" id="gen-rest-days" value="2">
+                </div>
+                 <div class="gen-settings-group">
+                    <label for="gen-fill-rounds">Auffüll-Runden:</label>
+                    <input type="number" id="gen-fill-rounds" value="3">
+                </div>
+
+                <div class="gen-settings-group">
+                    <label for="gen-max-hours">Max. Monatsstunden (Standard):</label>
+                    <input type="number" id="gen-max-hours" value="170" step="0.5">
+                </div>
+
+                <div class="gen-settings-section-title">Aktive Schichten im Generator</div>
+                <div id="gen-shifts-container">
+                    </div>
+
+
+                <div class="gen-settings-section-title">Scoring Gewichtung</div>
+                <div class="gen-settings-group">
+                    <label for="gen-fairness-threshold">Fairness Toleranz (Std):</label>
+                    <input type="number" id="gen-fairness-threshold" value="10">
+                </div>
+                <div class="gen-settings-group">
+                    <label for="gen-min-hours-bonus">Min-Stunden Bonus:</label>
+                    <input type="number" id="gen-min-hours-bonus" value="5">
+                </div>
+
+                <div id="gen-settings-status" style="margin-top: 10px; color: #e74c3c; font-weight: 500;"></div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn-primary" id="save-gen-settings-btn">Speichern</button>
+            </div>
+        </div>
+    </div>
+
     <div id="click-action-modal">
         <div class="cam-header">
             <div id="cam-title" class="cam-header-title">Aktion wählen</div>
@@ -1112,6 +1305,7 @@
             <div id="cam-link-delete" class="cam-action-link delete">Anfrage zurückziehen</div>
         </div>
     </div>
+
     <script>
         // --- PARTIKEL-ANIMATION (Unverändert) ---
         const canvas = document.getElementById('particle-canvas');
@@ -1154,4 +1348,4 @@
     <script type="module" src="shared_feedback.js" defer></script>
     <script type="module" src="shared_notifications.js" defer></script>
     </body>
-</html>
+</html> 
