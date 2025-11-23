@@ -423,6 +423,9 @@
                 Meldungen
                 <span id="feedback-badge" class="nav-badge">0</span>
             </a>
+            <!-- NEU: Statistik Link -->
+            <a href="statistik.html" id="nav-statistik" style="display: none;">Statistik</a>
+
             <a href="schichtplan.html">Schichtplan</a>
         </nav>
         <div id="user-info">
@@ -480,7 +483,7 @@
             </div>
         </div>
     </div>
-    
+
     <div id="news-edit-modal" class="modal">
         <div class="modal-content">
             <div class="modal-header">
@@ -525,8 +528,8 @@
             update() {
                 if (this.x > canvas.width || this.x < 0) { this.directionX = -this.directionX; }
                 if (this.y > canvas.height || this.y < 0) { this.directionY = -this.directionY; }
-                this.x += this.directionX; this.y += self.directionY;
-                self.draw();
+                this.x += this.directionX; this.y += this.directionY;
+                this.draw();
             }
         }
 

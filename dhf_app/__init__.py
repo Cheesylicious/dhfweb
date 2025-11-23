@@ -58,9 +58,13 @@ def create_app(config_name='default'):
     from .routes_queries import query_bp
     app.register_blueprint(query_bp)
 
-    # --- GENERATOR Blueprint (NEU) ---
+    # --- GENERATOR Blueprint ---
     from .routes_generator import generator_bp
     app.register_blueprint(generator_bp)
+
+    # --- STATISTICS Blueprint (NEU) ---
+    from .routes_statistics import statistics_bp
+    app.register_blueprint(statistics_bp)
     # --- ENDE NEU ---
 
     # 5. Startup-Logik (Defaults erstellen)

@@ -89,6 +89,9 @@ export function initAuthCheck() {
         const navUsers = document.getElementById('nav-users');
         const navFeedback = document.getElementById('nav-feedback');
 
+        // --- NEU: Statistik-Link ---
+        const navStatistik = document.getElementById('nav-statistik');
+
         // Navigations-Logik
         if (navDashboard) navDashboard.style.display = isVisitor ? 'none' : 'block';
 
@@ -99,15 +102,21 @@ export function initAuthCheck() {
                 navFeedback.style.display = 'inline-flex';
                 navFeedback.href = 'feedback.html'; // Admin geht zur Feedback-Verwaltung
             }
+            // Statistik nur für Admins sichtbar machen
+            if (navStatistik) navStatistik.style.display = 'inline-flex';
+
         } else if (isPlanschreiber) {
             if (navUsers) navUsers.style.display = 'none';
             if (navFeedback) {
                 navFeedback.style.display = 'inline-flex';
                 navFeedback.href = 'anfragen.html'; // Planschreiber geht direkt zu den Anfragen
             }
+            if (navStatistik) navStatistik.style.display = 'none';
+
         } else {
             if (navUsers) navUsers.style.display = 'none';
             if (navFeedback) navFeedback.style.display = 'none';
+            if (navStatistik) navStatistik.style.display = 'none';
         }
 
         if (isVisitor) {
