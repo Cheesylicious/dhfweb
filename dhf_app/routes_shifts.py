@@ -366,6 +366,47 @@ def toggle_shift_lock():
         return jsonify({"message": f"DB Fehler: {str(e)}"}), 500
 
 
+# --- NEU: Route zum Leeren des Schichtplans (Behält gesperrte Schichten) ---
+@shifts_bp.route('/shifts/clear', methods=['DELETE'])
+@admin_required
+def clear_shift_plan():
+    """
+    Löscht alle Schichten eines Monats, sofern der Plan nicht global gesperrt ist.
+    Einzeln gesperrte Schichten (is_locked=True) werden NICHT gelöscht.
+    """
+    data = request.get_json() or {}
+    try:
+        year = int(data.get('year'))
+        month = int(data.get('month'))
+    except (TypeError, ValueError):
+        return jsonify({"message": "Jahr und Monat sind erforderlich."}), 400
+
+    # 1. Globale Sperre prüfen
+    status_obj = ShiftPlanStatus.query.filter_by(year=year, month=month).first()
+    if status_obj and status_obj.is_locked:
+        return jsonify({"message": "Der Schichtplan ist global gesperrt. Löschen nicht möglich."}), 403
+
+    try:
+        # 2. Performantes Löschen aller NICHT gesperrten Schichten für den Zeitraum
+        # Wir nutzen synchronize_session=False für maximale Performance (Regel 2)
+        # Dies generiert ein effizientes "DELETE FROM shift WHERE ..." Statement
+        num_deleted = Shift.query.filter(
+            extract('year', Shift.date) == year,
+            extract('month', Shift.date) == month,
+            Shift.is_locked == False  # WICHTIG: Gesperrte Schichten behalten!
+        ).delete(synchronize_session=False)
+
+        if num_deleted > 0:
+            _log_update_event("Schichtplan", f"Plan für {month:02d}/{year} geleert. ({num_deleted} Einträge gelöscht, gesperrte behalten).")
+            db.session.commit()
+            return jsonify({"message": f"Plan erfolgreich geleert. {num_deleted} Schichten gelöscht."}), 200
+        else:
+            return jsonify({"message": "Keine löschbaren Schichten gefunden."}), 200
+
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Fehler beim Leeren des Plans: {str(e)}")
+        return jsonify({"message": f"Datenbankfehler: {str(e)}"}), 500
 # --- ENDE NEU ---
 
 

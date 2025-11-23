@@ -212,13 +212,101 @@
             justify-content: center;
             flex-grow: 2; /* Nimmt zentralen Platz ein */
             gap: 10px;
+            position: relative; /* WICHTIG für Dropdown Positionierung */
         }
 
-        .plan-nav-center h2 {
+        /* --- NEU: Style für den klickbaren Monatsnamen --- */
+        #current-month-label {
             margin: 0;
-            font-size: 24px; /* Größer für Zentralität */
+            font-size: 24px;
+            color: #333;
+            cursor: pointer;
+            padding: 5px 10px;
+            border-radius: 5px;
+            transition: background-color 0.2s;
+            user-select: none;
+        }
+        #current-month-label:hover {
+            background-color: #eef2f7;
+            color: #3498db;
+        }
+        /* Pfeil nach unten Icon andeuten */
+        #current-month-label::after {
+            content: ' ▼';
+            font-size: 14px;
+            color: #999;
+            vertical-align: middle;
+        }
+
+        /* --- NEU: Month Picker Dropdown --- */
+        #month-picker-dropdown {
+            display: none;
+            position: absolute;
+            top: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #fff;
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.15);
+            padding: 15px;
+            z-index: 1000;
+            width: 280px;
             color: #333;
         }
+        .mp-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+            border-bottom: 1px solid #eee;
+            padding-bottom: 10px;
+        }
+        .mp-year-display {
+            font-size: 18px;
+            font-weight: 700;
+            color: #2c3e50;
+        }
+        .mp-nav-btn {
+            background: #f0f0f0;
+            border: none;
+            border-radius: 4px;
+            padding: 5px 10px;
+            cursor: pointer;
+            font-weight: bold;
+            color: #555;
+        }
+        .mp-nav-btn:hover {
+            background: #e0e0e0;
+            color: #000;
+        }
+        .mp-months-grid {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 8px;
+        }
+        .mp-month-btn {
+            padding: 10px 5px;
+            text-align: center;
+            background: #fcfcfc;
+            border: 1px solid #eee;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.2s;
+        }
+        .mp-month-btn:hover {
+            background: #eaf2ff;
+            border-color: #3498db;
+            color: #3498db;
+        }
+        .mp-month-btn.active {
+            background: #3498db;
+            color: white;
+            border-color: #3498db;
+            font-weight: 600;
+        }
+        /* --- ENDE NEU --- */
 
         #plan-status-container {
             display: flex;
@@ -1060,6 +1148,7 @@
                  <a href="schichtplan.html" class="active">Anzeigen</a>
                  <a href="#" id="open-generator-modal" class="admin-only">Generieren</a>
                  <a href="#" id="open-gen-settings-modal" class="admin-only">Generator-Einstellungen</a>
+                 <a href="#" id="delete-plan-link" class="admin-only" style="color: #e74c3c; border-top: 1px solid rgba(255,255,255,0.1);">Schichtplan löschen</a>
             </div>
         </div>
 
@@ -1083,7 +1172,16 @@
                 </div>
 
                 <div class="plan-nav-center">
-                    <h2 id="current-month-label">Lade...</h2>
+                    <h2 id="current-month-label" title="Klicken zum Wechseln">Lade...</h2>
+                    <div id="month-picker-dropdown">
+                        <div class="mp-header">
+                            <button class="mp-nav-btn" id="mp-prev-year">&lt;</button>
+                            <span id="mp-year-display" class="mp-year-display"></span>
+                            <button class="mp-nav-btn" id="mp-next-year">&gt;</button>
+                        </div>
+                        <div class="mp-months-grid" id="mp-months-grid">
+                            </div>
+                    </div>
                     <div id="plan-status-container" style="display: none;">
                         <span id="plan-status-badge"></span>
                         <button id="plan-lock-btn" class="btn-admin-action" title="Plan sperren/entsperren"></button>
@@ -1348,4 +1446,4 @@
     <script type="module" src="shared_feedback.js" defer></script>
     <script type="module" src="shared_notifications.js" defer></script>
     </body>
-</html> 
+</html>

@@ -101,9 +101,19 @@ const saveGenSettingsBtn = document.getElementById('save-gen-settings-btn');
 const genSettingsStatus = document.getElementById('gen-settings-status');
 const genShiftsContainer = document.getElementById('gen-shifts-container');
 
-// Links im Dropdown
+// --- MONTH PICKER DOM ELEMENTE ---
+const monthPickerDropdown = document.getElementById('month-picker-dropdown');
+const mpYearDisplay = document.getElementById('mp-year-display');
+const mpPrevYearBtn = document.getElementById('mp-prev-year');
+const mpNextYearBtn = document.getElementById('mp-next-year');
+const mpMonthsGrid = document.getElementById('mp-months-grid');
+let pickerYear = currentYear;
+
+// Links im Dropdown & Hauptmenüs
 const openGeneratorLink = document.getElementById('open-generator-modal');
 const openGenSettingsLink = document.getElementById('open-gen-settings-modal');
+const deletePlanLink = document.getElementById('delete-plan-link');
+const settingsDropdown = document.getElementById('settings-dropdown');
 
 
 // --- CLICK-MODAL Elemente ---
@@ -139,6 +149,8 @@ try {
     if (!isAdmin) {
         if (openGeneratorLink) openGeneratorLink.style.display = 'none';
         if (openGenSettingsLink) openGenSettingsLink.style.display = 'none';
+        if (deletePlanLink) deletePlanLink.style.display = 'none';
+        if (settingsDropdown) settingsDropdown.style.display = 'none';
     }
 
 } catch (e) {
@@ -173,7 +185,177 @@ async function loadColorSettings() {
     }
 }
 
-// --- NEU: Funktion zum Umschalten der Sperre ---
+// --- Helper für schnelle lokale Updates ---
+
+function refreshSingleCell(userId, dateStr) {
+    const key = `${userId}-${dateStr}`;
+    const cell = grid.querySelector(`.grid-cell[data-key="${key}"]`);
+    if (!cell) return;
+
+    const d = new Date(dateStr);
+    const day = d.getDate();
+    const isWeekend = d.getDay() === 0 || d.getDay() === 6;
+    const eventType = currentSpecialDates[dateStr];
+    const shift = currentShifts[key];
+    const shiftType = shift ? shift.shift_type : null;
+    const violationKey = `${userId}-${day}`;
+
+    let cellClasses = 'grid-cell';
+    if (loggedInUser.id === userId) cellClasses += ' current-user-row';
+    if (currentViolations.has(violationKey)) cellClasses += ' violation';
+    if (shift && shift.is_locked) cellClasses += ' locked-shift';
+
+    cell.textContent = '';
+    cell.style.backgroundColor = '';
+    cell.style.color = '';
+
+    const queriesForCell = currentShiftQueries.filter(q =>
+        (q.target_user_id === userId && q.shift_date === dateStr && q.status === 'offen')
+    );
+    const wunschQuery = queriesForCell.find(q => isWunschAnfrage(q));
+    const notizQuery = queriesForCell.find(q => !isWunschAnfrage(q));
+
+    let shiftRequestText = "";
+    let showQuestionMark = false;
+    let isShiftRequestCell = false;
+
+    if (isPlanschreiber) {
+        if (notizQuery) showQuestionMark = true;
+    } else if (isHundefuehrer) {
+        if (wunschQuery) {
+            isShiftRequestCell = true;
+            shiftRequestText = wunschQuery.message.substring("Anfrage für:".length).trim();
+        }
+    } else {
+        if (wunschQuery) {
+            isShiftRequestCell = true;
+            shiftRequestText = wunschQuery.message.substring("Anfrage für:".length).trim();
+        }
+        if (notizQuery) showQuestionMark = true;
+    }
+
+    const dayHasSpecialBg = eventType || isWeekend;
+
+    if (shiftType) {
+        cell.textContent = shiftType.abbreviation;
+        if (shiftType.prioritize_background && dayHasSpecialBg) {
+            if (eventType === 'holiday') cellClasses += ` day-color-${eventType}`;
+            else if (isWeekend) cellClasses += ' weekend';
+        } else {
+            cell.style.backgroundColor = shiftType.color;
+            cell.style.color = isColorDark(shiftType.color) ? 'white' : 'black';
+        }
+    } else if (isShiftRequestCell) {
+        cell.textContent = shiftRequestText;
+        cellClasses += ' shift-request-cell';
+    } else {
+         if (eventType === 'holiday') cellClasses += ` day-color-${eventType}`;
+         else if (isWeekend) cellClasses += ' weekend';
+    }
+
+    if (showQuestionMark) {
+         cell.innerHTML += `<span class="shift-query-icon">❓</span>`;
+    }
+
+    cell.className = cellClasses;
+}
+
+function updateUserTotalHours(userId, delta) {
+    const totalCell = document.getElementById(`total-hours-${userId}`);
+    if (!totalCell) return;
+
+    let currentVal = parseFloat(totalCell.textContent);
+    if (isNaN(currentVal)) currentVal = 0;
+
+    const newVal = currentVal + delta;
+    currentTotals[userId] = newVal;
+
+    totalCell.textContent = newVal.toFixed(1);
+
+    totalCell.style.backgroundColor = '#eaf2ff';
+    setTimeout(() => { totalCell.style.backgroundColor = ''; }, 500);
+}
+
+function updateLocalStaffing(shiftAbbrev, dateStr, delta) {
+    const cleanAbbrev = shiftAbbrev.replace('?', '').trim();
+    const st = allShiftTypesList.find(s => s.abbreviation === cleanAbbrev);
+    if (!st) return;
+
+    const d = new Date(dateStr);
+    const day = d.getDate();
+
+    if (!currentStaffingActual[st.id]) currentStaffingActual[st.id] = {};
+    if (!currentStaffingActual[st.id][day]) currentStaffingActual[st.id][day] = 0;
+
+    currentStaffingActual[st.id][day] += delta;
+
+    if (currentStaffingActual[st.id][day] < 0) currentStaffingActual[st.id][day] = 0;
+}
+
+function refreshStaffingGrid() {
+    if (!staffingGrid) return;
+    const rows = staffingGrid.querySelectorAll('.staffing-row');
+
+    rows.forEach(row => {
+        const stId = parseInt(row.dataset.id);
+        const shiftType = allShiftTypes[stId];
+        if (!shiftType) return;
+
+        const cells = row.children;
+        const daysInMonth = new Date(currentYear, currentMonth, 0).getDate();
+
+        let totalIst = 0;
+        let totalSoll = 0;
+
+        const dayKeyMap = ['min_staff_so', 'min_staff_mo', 'min_staff_di', 'min_staff_mi', 'min_staff_do', 'min_staff_fr', 'min_staff_sa'];
+
+        for (let d = 1; d <= daysInMonth; d++) {
+            const cellIndex = d + 2;
+            if (cellIndex >= cells.length) break;
+
+            const cell = cells[cellIndex];
+
+            const dateObj = new Date(currentYear, currentMonth - 1, d);
+            const dateStr = `${currentYear}-${String(currentMonth).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+            const dayOfWeek = dateObj.getDay();
+            const isHoliday = currentSpecialDates[dateStr] === 'holiday';
+
+            let soll = 0;
+            if (isHoliday) soll = shiftType.min_staff_holiday || 0;
+            else soll = shiftType[dayKeyMap[dayOfWeek]] || 0;
+
+            totalSoll += soll;
+
+            const ist = (currentStaffingActual[stId] && currentStaffingActual[stId][d]) || 0;
+            totalIst += ist;
+
+            if (soll === 0) {
+                 cell.textContent = '';
+                 cell.className = 'staffing-cell staffing-untracked';
+                 if (dayOfWeek === 0 || dayOfWeek === 6) cell.classList.add('weekend');
+            } else {
+                cell.textContent = ist;
+                let cls = 'staffing-cell';
+                if (dayOfWeek === 0 || dayOfWeek === 6) cls += ' weekend';
+
+                if (ist === soll) cls += ' staffing-ok';
+                else if (ist > soll) cls += ' staffing-warning';
+                else if (ist > 0) cls += ' staffing-warning';
+                else cls += ' staffing-violation';
+
+                cell.className = cls;
+            }
+        }
+
+        const totalCell = cells[cells.length - 1];
+        totalCell.textContent = totalIst;
+
+        if (totalIst < totalSoll) totalCell.style.color = '#c00000';
+        else if (totalIst > totalSoll && totalSoll > 0) totalCell.style.color = '#856404';
+        else totalCell.style.color = '#333';
+    });
+}
+
 async function toggleShiftLock(userId, dateStr) {
     if (!isAdmin) return;
     if (currentPlanStatus && currentPlanStatus.is_locked) {
@@ -184,8 +366,6 @@ async function toggleShiftLock(userId, dateStr) {
     const key = `${userId}-${dateStr}`;
     const cell = findCellByKey(key);
 
-    // Visuelles Feedback (optional, Cursor ändert sich eh meist)
-
     try {
         const response = await apiFetch('/api/shifts/toggle_lock', 'POST', {
             user_id: userId,
@@ -193,38 +373,15 @@ async function toggleShiftLock(userId, dateStr) {
         });
 
         if (response.deleted) {
-            // Eintrag wurde gelöscht (war leere gesperrte Zelle)
             currentShifts[key] = null;
-            if (cell) {
-                cell.classList.remove('locked-shift');
-                // Reset Cell style if it was just a lock placeholder
-                cell.textContent = '';
-                cell.style.backgroundColor = '';
-                cell.style.color = '';
-                cell.className = 'grid-cell' + (loggedInUser.id === userId ? ' current-user-row' : '');
-
-                // Re-check for special dates/weekends background
-                const d = new Date(dateStr);
-                const isWeekend = d.getDay() === 0 || d.getDay() === 6;
-                const eventType = currentSpecialDates[dateStr];
-                if (eventType === 'holiday') cell.classList.add(`day-color-${eventType}`);
-                else if (isWeekend) cell.classList.add('weekend');
-            }
+            refreshSingleCell(userId, dateStr);
         } else {
-            // Eintrag aktualisiert oder erstellt
             const shiftType = response.shifttype_id ? allShiftTypes[response.shifttype_id] : null;
             currentShifts[key] = {
                 ...response,
                 shift_type: shiftType
             };
-
-            if (cell) {
-                if (response.is_locked) {
-                    cell.classList.add('locked-shift');
-                } else {
-                    cell.classList.remove('locked-shift');
-                }
-            }
+            refreshSingleCell(userId, dateStr);
         }
 
     } catch (e) {
@@ -232,7 +389,31 @@ async function toggleShiftLock(userId, dateStr) {
         alert("Fehler beim Sperren/Entsperren: " + e.message);
     }
 }
-// --- ENDE NEU ---
+
+async function clearShiftPlan() {
+    if (!isAdmin) return;
+
+    if (currentPlanStatus && currentPlanStatus.is_locked) {
+        alert("Aktion blockiert: Der Schichtplan ist gesperrt.");
+        return;
+    }
+
+    if (!confirm(`Sind Sie sicher, dass Sie den Schichtplan für ${currentMonth}/${currentYear} leeren möchten?\n\nHinweis: Alle NICHT gesperrten Schichten werden gelöscht. Manuell gesperrte Schichten (Schloss-Symbol) bleiben erhalten.`)) {
+        return;
+    }
+
+    try {
+        const response = await apiFetch('/api/shifts/clear', 'DELETE', {
+            year: currentYear,
+            month: currentMonth
+        });
+        alert(response.message);
+        renderGrid();
+    } catch (e) {
+        alert(`Fehler beim Löschen des Plans: ${e.message}`);
+    }
+}
+
 
 // --- GENERATOR FUNKTIONEN ---
 
@@ -394,6 +575,79 @@ async function saveGenSettings() {
     }
 }
 
+// --- MONTH PICKER LOGIK ---
+
+function renderMonthPicker(year) {
+    mpYearDisplay.textContent = year;
+    mpMonthsGrid.innerHTML = '';
+
+    const months = [
+        "Januar", "Februar", "März", "April", "Mai", "Juni",
+        "Juli", "August", "September", "Oktober", "November", "Dezember"
+    ];
+
+    months.forEach((name, index) => {
+        const monthNum = index + 1;
+        const btn = document.createElement('div');
+        btn.className = 'mp-month-btn';
+        btn.textContent = name;
+
+        if (year === currentYear && monthNum === currentMonth) {
+            btn.classList.add('active');
+        }
+
+        btn.onclick = () => {
+            currentYear = year;
+            currentMonth = monthNum;
+            monthPickerDropdown.style.display = 'none';
+            loadColorSettings();
+            renderGrid();
+        };
+
+        mpMonthsGrid.appendChild(btn);
+    });
+}
+
+function toggleMonthPicker() {
+    if (monthPickerDropdown.style.display === 'block') {
+        monthPickerDropdown.style.display = 'none';
+    } else {
+        pickerYear = currentYear;
+        renderMonthPicker(pickerYear);
+        monthPickerDropdown.style.display = 'block';
+    }
+}
+
+if (monthLabel) {
+    monthLabel.onclick = (e) => {
+        e.stopPropagation();
+        toggleMonthPicker();
+    };
+}
+if (mpPrevYearBtn) {
+    mpPrevYearBtn.onclick = (e) => {
+        e.stopPropagation();
+        pickerYear--;
+        renderMonthPicker(pickerYear);
+    };
+}
+if (mpNextYearBtn) {
+    mpNextYearBtn.onclick = (e) => {
+        e.stopPropagation();
+        pickerYear++;
+        renderMonthPicker(pickerYear);
+    };
+}
+
+window.addEventListener('click', (e) => {
+    if (monthPickerDropdown && monthPickerDropdown.style.display === 'block') {
+        if (!e.target.closest('#month-picker-dropdown') && !e.target.closest('#current-month-label')) {
+            monthPickerDropdown.style.display = 'none';
+        }
+    }
+});
+
+
 // --- CLICK-MODAL FUNKTIONEN ---
 
 function hideClickActionModal() {
@@ -475,7 +729,10 @@ function showClickActionModal(event, user, dateStr, cell, isCellOnOwnRow) {
              camLinkDelete.dataset.targetQueryId = notizQuery.id;
              hasContent = true;
         } else if (!wunschQuery && !planGesperrt) {
-            camHundefuehrerRequests.style.display = 'grid';
+            camHundefuehrerRequests.style.display = 'flex';
+            camHundefuehrerRequests.style.flexDirection = 'column';
+            camHundefuehrerRequests.style.gap = '8px';
+
             populateClickModalShiftButtons('hundefuehrer');
             hasContent = true;
         }
@@ -507,12 +764,14 @@ function showClickActionModal(event, user, dateStr, cell, isCellOnOwnRow) {
     clickActionModal.style.display = 'block';
 }
 
-function populateClickModalShiftButtons(mode) {
+async function populateClickModalShiftButtons(mode) {
     let targetContainer;
     let buttonDefs;
 
     if (mode === 'admin') {
         targetContainer = camAdminShifts;
+        targetContainer.innerHTML = `<div class="cam-section-title">Schicht zuweisen</div>`;
+
         buttonDefs = [
             { abbrev: 'T.', title: 'Tag (T.)' },
             { abbrev: 'N.', title: 'Nacht (N.)' },
@@ -522,27 +781,14 @@ function populateClickModalShiftButtons(mode) {
             { abbrev: 'X', title: 'Wunschfrei (X)' },
             { abbrev: 'Alle...', title: 'Alle Schichten anzeigen', isAll: true }
         ];
-    } else {
-        targetContainer = camHundefuehrerRequests;
-        buttonDefs = [
-            { abbrev: 'T.?', title: 'Tag-Wunsch' },
-            { abbrev: 'N.?', title: 'Nacht-Wunsch' },
-            { abbrev: '6?', title: 'Kurz-Wunsch' },
-            { abbrev: 'X?', title: 'Wunschfrei' },
-            { abbrev: '24?', title: '24h-Wunsch' }
-        ];
-    }
 
-    targetContainer.innerHTML = `<div class="cam-section-title">${mode === 'admin' ? 'Schicht zuweisen' : 'Wunsch-Anfrage'}</div>`;
+        buttonDefs.forEach(def => {
+            const btn = document.createElement('button');
+            btn.className = def.isAll ? 'cam-shift-button all' : 'cam-shift-button';
+            btn.textContent = def.abbrev;
+            btn.title = def.title;
 
-    buttonDefs.forEach(def => {
-        const btn = document.createElement('button');
-        btn.className = def.isAll ? 'cam-shift-button all' : 'cam-shift-button';
-        btn.textContent = def.abbrev;
-        btn.title = def.title;
-
-        btn.onclick = () => {
-            if (mode === 'admin') {
+            btn.onclick = () => {
                 if (def.isAll) {
                     openShiftModal(clickModalContext.userId, clickModalContext.dateStr, clickModalContext.userName);
                 } else {
@@ -551,13 +797,105 @@ function populateClickModalShiftButtons(mode) {
                         saveShift(shiftType.id, clickModalContext.userId, clickModalContext.dateStr);
                     }
                 }
-            } else {
-                requestShift(def.abbrev, clickModalContext.userId, clickModalContext.dateStr);
-            }
-            hideClickActionModal();
-        };
-        targetContainer.appendChild(btn);
-    });
+                hideClickActionModal();
+            };
+            targetContainer.appendChild(btn);
+        });
+
+    } else {
+        // --- HUNDEFÜHRER MODUS (ASYNC + VERTIKAL) ---
+        targetContainer = camHundefuehrerRequests;
+
+        targetContainer.innerHTML = '<div class="cam-section-title">Wunsch-Anfrage</div><div style="color:#bbb; font-size:12px; padding:5px;">Lade Limits...</div>';
+
+        const hfButtonDefs = [
+            { abbrev: 'T.?', realAbbr: 'T.', title: 'Tag-Wunsch' },
+            { abbrev: 'N.?', realAbbr: 'N.', title: 'Nacht-Wunsch' },
+            { abbrev: '6?', realAbbr: '6', title: 'Kurz-Wunsch' },
+            { abbrev: 'X?', realAbbr: 'X', title: 'Wunschfrei' },
+            { abbrev: '24?', realAbbr: '24', title: '24h-Wunsch' }
+        ];
+
+        try {
+            const limits = await apiFetch(`/api/queries/usage?year=${currentYear}&month=${currentMonth}`);
+
+            targetContainer.innerHTML = `<div class="cam-section-title">Wunsch-Anfrage</div>`;
+
+            hfButtonDefs.forEach(def => {
+                const btn = document.createElement('button');
+                btn.className = 'cam-shift-button';
+                btn.style.width = '100%';
+                btn.style.textAlign = 'left';
+                btn.style.display = 'flex';
+                btn.style.justifyContent = 'space-between';
+                btn.style.alignItems = 'center';
+                btn.style.padding = '10px';
+
+                btn.title = def.title;
+
+                let labelHtml = `<span style="font-weight:bold; font-size: 14px;">${def.abbrev}</span>`;
+                let limitInfoHtml = '';
+                let isDisabled = false;
+
+                // --- NEU: "6" nur Freitags + kein Feiertag ---
+                if (def.realAbbr === '6') {
+                    const d = new Date(clickModalContext.dateStr);
+                    const dayOfWeek = d.getDay(); // 5 = Freitag
+                    const isHoliday = currentSpecialDates[clickModalContext.dateStr] === 'holiday';
+
+                    if (dayOfWeek !== 5 || isHoliday) {
+                        isDisabled = true;
+                        limitInfoHtml = `<span style="font-size:12px; color: #e74c3c;">Nur Freitags (Werktag)</span>`;
+                    }
+                }
+
+                // Falls noch nicht durch Regel oben deaktiviert, Limit prüfen
+                if (!isDisabled) {
+                    const limitData = limits[def.realAbbr];
+                    if (limitData) {
+                        const remaining = limitData.remaining;
+                        const totalLimit = limitData.limit;
+
+                        if (totalLimit > 0) {
+                            let colorStyle = "color: #bdc3c7;";
+                            if (remaining <= 0) {
+                                colorStyle = "color: #e74c3c;";
+                                isDisabled = true;
+                            } else if (remaining <= 1) {
+                                colorStyle = "color: #f39c12;";
+                            }
+
+                            limitInfoHtml = `<span style="font-size:12px; font-weight:normal; ${colorStyle}">(${remaining}x) verfügbar</span>`;
+                        } else {
+                            limitInfoHtml = `<span style="font-size:12px; color: #e74c3c;">Nicht verfügbar</span>`;
+                            isDisabled = true;
+                        }
+                    } else {
+                        limitInfoHtml = `<span style="font-size:12px; color: #bdc3c7;">(∞)</span>`;
+                    }
+                }
+
+                btn.innerHTML = labelHtml + limitInfoHtml;
+
+                if (isDisabled) {
+                    btn.disabled = true;
+                    btn.style.opacity = '0.5';
+                    btn.style.cursor = 'not-allowed';
+                } else {
+                    btn.onclick = () => {
+                        requestShift(def.abbrev, clickModalContext.userId, clickModalContext.dateStr);
+                        hideClickActionModal();
+                    };
+                }
+
+                targetContainer.appendChild(btn);
+            });
+
+        } catch (error) {
+            console.error("Fehler beim Laden der Limits:", error);
+            targetContainer.innerHTML = `<div class="cam-section-title">Wunsch-Anfrage</div><div style="color:#e74c3c; font-size:12px;">Fehler beim Laden der Limits.</div>`;
+        }
+    }
 }
 
 window.addEventListener('click', (e) => {
@@ -602,6 +940,15 @@ if (openGenSettingsLink) {
         openGenSettingsModal();
     };
 }
+// --- NEU: Listener für Lösch-Link ---
+if (deletePlanLink) {
+    deletePlanLink.onclick = (e) => {
+        e.preventDefault();
+        clearShiftPlan();
+    };
+}
+// --- ENDE NEU ---
+
 if (closeGeneratorModalBtn) closeGeneratorModalBtn.onclick = () => closeModal(generatorModal);
 if (startGeneratorBtn) startGeneratorBtn.onclick = startGenerator;
 if (closeGenSettingsModalBtn) closeGenSettingsModalBtn.onclick = () => closeModal(genSettingsModal);
@@ -619,7 +966,8 @@ if (camLinkNotiz) {
 if (camLinkDelete) {
     camLinkDelete.onclick = () => {
         const specificId = camLinkDelete.dataset.targetQueryId;
-        deleteShiftQueryFromModal(specificId, false);
+        // --- ÄNDERUNG 2: Force=true, Context übergeben, um Popup zu vermeiden und Update zu triggern ---
+        deleteShiftQueryFromModal(specificId, true, clickModalContext);
         hideClickActionModal();
     };
 }
@@ -1429,6 +1777,12 @@ async function saveShift(shifttypeId, userId, dateStr) {
              currentShifts[key] = savedData;
         }
 
+        // --- NEU: OPTIMIERTES UPDATE STATT RE-RENDER ---
+
+        // 1. Einzelne Zelle aktualisieren
+        refreshSingleCell(userId, dateStr);
+
+        // 2. Violations aktualisieren (nur im Speicher, wird beim Hover relevant oder beim nächsten Reload)
         currentViolations.clear();
         if (savedData.violations) {
             savedData.violations.forEach(v => {
@@ -1436,16 +1790,24 @@ async function saveShift(shifttypeId, userId, dateStr) {
             });
         }
 
+        // 3. Staffing (Besetzung) aktualisieren (nur im Speicher, evtl. gezieltes DOM Update nötig?)
+        // Da Staffing komplex ist, aktualisieren wir hier nur die Daten. Das visuelle Update der Besetzungszeile
+        // ist aufwendig ohne re-render. Aber die User-Zelle ist das Wichtigste.
         currentStaffingActual = savedData.staffing_actual || {};
 
+        // 3b. Staffing Grid aktualisieren (NEU)
+        refreshStaffingGrid();
+
+        // 4. Gesamtstunden aktualisieren (falls vom Backend geliefert)
         if (savedData.new_total_hours !== undefined) {
-            currentTotals[userId] = savedData.new_total_hours;
+            const oldTotal = currentTotals[userId] || 0;
+            const diff = savedData.new_total_hours - oldTotal;
+            updateUserTotalHours(userId, diff);
         }
 
         await loadShiftQueries();
-
-        buildGridDOM();
-        buildStaffingTable();
+        // buildGridDOM(); // <<< NICHT MEHR AUFRUFEN!
+        // buildStaffingTable(); // <<< NICHT MEHR AUFRUFEN (Performance)!
 
     } catch (error) {
         if (cell) cell.textContent = 'Fehler!';
@@ -1557,6 +1919,7 @@ window.addEventListener('keydown', async (event) => {
     }
 });
 
+// --- OPTIMIERTE FUNKTION: requestShift ---
 async function requestShift(shiftAbbrev, userId, dateStr) {
     if (isVisitor || (currentPlanStatus && currentPlanStatus.is_locked)) {
         return;
@@ -1564,7 +1927,7 @@ async function requestShift(shiftAbbrev, userId, dateStr) {
 
     const cell = findCellByKey(`${userId}-${dateStr}`);
     if(cell) {
-        cell.textContent = '...';
+        // cell.textContent = '...'; // Visuelles Feedback kurzzeitig deaktivieren um Flackern zu vermeiden
     }
 
     try {
@@ -1576,14 +1939,27 @@ async function requestShift(shiftAbbrev, userId, dateStr) {
 
         await apiFetch('/api/queries', 'POST', payload);
 
+        // 1. Daten aktualisieren
         await loadShiftQueries();
-        buildGridDOM();
+
+        // 2. Zelle aktualisieren (lokal)
+        refreshSingleCell(userId, dateStr);
+
+        // 3. Stunden aktualisieren (lokal)
+        const cleanAbbrev = shiftAbbrev.replace('?', '');
+        const shiftType = allShiftTypesList.find(st => st.abbreviation === cleanAbbrev);
+        if (shiftType) {
+            updateUserTotalHours(userId, shiftType.hours);
+            // 4. Staffing aktualisieren (lokal)
+            updateLocalStaffing(shiftAbbrev, dateStr, 1); // +1 Anfrage
+            refreshStaffingGrid();
+        }
 
         triggerNotificationUpdate();
 
     } catch (e) {
         alert(`Fehler beim Erstellen der Anfrage: ${e.message}`);
-        buildGridDOM();
+        refreshSingleCell(userId, dateStr); // Reset bei Fehler
     }
 }
 
@@ -1794,7 +2170,8 @@ async function saveShiftQuery() {
         queryModalStatus.style.color = '#2ecc71';
 
         await loadShiftQueries();
-        buildGridDOM();
+        // Nur neu zeichnen, kein renderGrid
+        if(targetUserId) refreshSingleCell(targetUserId, modalQueryContext.dateStr);
 
         triggerNotificationUpdate();
 
@@ -1863,7 +2240,8 @@ async function resolveShiftQuery() {
         });
 
         await loadShiftQueries();
-        buildGridDOM();
+        // Zelle updaten
+        refreshSingleCell(modalQueryContext.userId, modalQueryContext.dateStr);
 
         triggerNotificationUpdate();
 
@@ -1877,11 +2255,14 @@ async function resolveShiftQuery() {
     }
 }
 
-async function deleteShiftQueryFromModal(queryId, force = false) {
+// --- OPTIMIERTE FUNKTION: deleteShiftQueryFromModal ---
+async function deleteShiftQueryFromModal(queryId, force = false, context = null) {
     const qId = queryId || modalQueryContext.queryId;
     if (!qId) return;
 
-    if (!isAdmin && !isPlanschreiber && !isHundefuehrer) return;
+    // Context ermitteln (entweder direkt übergeben oder aus globalem Modal-Kontext)
+    const userId = context ? context.userId : (modalQueryContext ? modalQueryContext.userId : null);
+    const dateStr = context ? context.dateStr : (modalQueryContext ? modalQueryContext.dateStr : null);
 
     if (isHundefuehrer && !isAdmin && !isPlanschreiber) {
         const query = currentShiftQueries.find(q => q.id == qId);
@@ -1899,14 +2280,42 @@ async function deleteShiftQueryFromModal(queryId, force = false) {
     if(queryModalStatus) queryModalStatus.textContent = "Lösche Anfrage...";
     if(queryModalStatus) queryModalStatus.style.color = '#e74c3c';
 
+    // Vorab-Daten für Stunden-Korrektur holen (bevor gelöscht wird)
+    const queryToDelete = currentShiftQueries.find(q => q.id == qId);
+    let deletedShiftAbbrev = null;
+    if (queryToDelete && queryToDelete.message.startsWith("Anfrage für:")) {
+        deletedShiftAbbrev = queryToDelete.message.substring("Anfrage für:".length).trim().replace('?', '');
+    }
+
     try {
         await apiFetch(`/api/queries/${qId}`, 'DELETE');
 
+        // 1. Daten aktualisieren
         await loadShiftQueries();
-        buildGridDOM();
+
+        // 2. Zelle aktualisieren (lokal)
+        if (userId && dateStr) {
+            refreshSingleCell(userId, dateStr);
+        } else {
+            // Fallback: Nur wenn wir den Context nicht haben (sollte nicht passieren)
+            renderGrid();
+        }
+
+        // 3. Stunden & Staffing korrigieren (lokal)
+        if (deletedShiftAbbrev && userId) {
+            const shiftType = allShiftTypesList.find(st => st.abbreviation === deletedShiftAbbrev);
+            if (shiftType) {
+                // Negative Stunden, da wir eine Anfrage entfernen
+                updateUserTotalHours(userId, -shiftType.hours);
+                // Staffing reduzieren
+                if (dateStr) {
+                    updateLocalStaffing(deletedShiftAbbrev, dateStr, -1);
+                    refreshStaffingGrid();
+                }
+            }
+        }
 
         triggerNotificationUpdate();
-
         closeModal(queryModal);
 
     } catch (e) {
@@ -1948,6 +2357,7 @@ async function handleAdminApprove(query) {
 
         await apiFetch(`/api/queries/${query.id}/status`, 'PUT', { status: 'erledigt' });
 
+        // Hier nutzen wir weiter renderGrid, da Genehmigen komplexer ist (Shift setzen + Query status)
         await loadShiftQueries();
         await renderGrid();
         triggerNotificationUpdate();
