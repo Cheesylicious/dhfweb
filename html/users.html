@@ -231,10 +231,10 @@
             -webkit-backdrop-filter: blur(10px);
             border: 1px solid rgba(255, 255, 255, 0.1);
 
-            margin: 10% auto;
+            margin: 5% auto; /* Etwas höher positioniert */
             padding: 0;
             width: 80%;
-            max-width: 600px;
+            max-width: 650px; /* Breiter für mehr Felder */
             border-radius: 8px;
             box-shadow: 0 4px 30px rgba(0,0,0,0.4);
         }
@@ -443,7 +443,10 @@
             <div class="card">
                 <div class="card-header">
                     <h2>Benutzer</h2>
-                    <div> <button class="btn-secondary" id="toggle-columns-btn">Spalten anpassen</button>
+                    <div>
+                        <button class="btn-warning" id="send-test-mail-btn" style="margin-right: 10px;">📧 Test-Mail an Alle</button>
+
+                        <button class="btn-secondary" id="toggle-columns-btn">Spalten anpassen</button>
                         <button class="btn-primary" id="add-user-btn">Neuen Benutzer erstellen</button>
                     </div>
                 </div>
@@ -455,6 +458,7 @@
                                 <th>Vorname</th>
                                 <th>Nachname</th>
                                 <th>Rolle</th>
+                                <th class="col-email hidden">E-Mail</th>
                                 <th class="col-telefon hidden">Telefon</th>
                                 <th class="col-eintrittsdatum hidden">Eintrittsdatum</th>
                                 <th class="col-aktiv_ab_datum hidden">Aktiv ab</th>
@@ -491,6 +495,10 @@
                     <div class="form-grid">
                         <div class="form-group"><label for="user-vorname">Vorname:</label><input type="text" id="user-vorname"></div>
                         <div class="form-group"><label for="user-name">Nachname:</label><input type="text" id="user-name"></div>
+                    </div>
+                    <div class="form-group">
+                        <label for="user-email">E-Mail Adresse:</label>
+                        <input type="email" id="user-email" placeholder="benutzer@example.com">
                     </div>
                     <div class="form-group"><label for="user-passwort">Neues Passwort (leer lassen für "keine Änderung"):</label><input type="password" id="user-passwort" placeholder="Neues Passwort"></div>
                     <div class="form-group"><label for="user-role">Rolle:</label><select id="user-role"></select></div>
@@ -565,7 +573,7 @@
                 <span class="close" id="close-column-modal">&times;</span>
             </div>
             <div class="modal-body">
-                <label><input type="checkbox" class="col-toggle-cb" data-col="col-telefon"> Telefon</label>
+                <label><input type="checkbox" class="col-toggle-cb" data-col="col-email"> E-Mail</label> <label><input type="checkbox" class="col-toggle-cb" data-col="col-telefon"> Telefon</label>
                 <label><input type="checkbox" class="col-toggle-cb" data-col="col-eintrittsdatum"> Eintrittsdatum</label>
                 <label><input type="checkbox" class="col-toggle-cb" data-col="col-aktiv_ab_datum"> Aktiv ab</label>
                 <label><input type="checkbox" class="col-toggle-cb" data-col="col-urlaub_rest"> Urlaub Rest</label>

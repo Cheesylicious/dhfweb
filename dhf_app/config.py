@@ -30,6 +30,15 @@ class Config:
             f'mysql+mysqlconnector://{DB_USER}:{DB_PASS}@{DB_HOST}/{DB_NAME}'
     )
 
+    # --- E-Mail Konfiguration (GMAIL) ---
+    MAIL_SERVER = 'smtp.gmail.com'
+    MAIL_PORT = 587
+    MAIL_USE_TLS = True
+    MAIL_USERNAME = 'dhfplaner@gmail.com'
+    # Das App-Passwort ohne Leerzeichen:
+    MAIL_PASSWORD = 'geojoddtwxrbpxnv'
+    MAIL_DEFAULT_SENDER = 'dhfplaner@gmail.com'
+
     @staticmethod
     def init_app(app):
         # Hier könnten app-spezifische Initialisierungen stattfinden

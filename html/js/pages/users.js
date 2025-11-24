@@ -57,21 +57,15 @@ const closeModalBtn = document.getElementById('close-user-modal');
 const userIdField = document.getElementById('user-id');
 const vornameField = document.getElementById('user-vorname');
 const nameField = document.getElementById('user-name');
+const emailField = document.getElementById('user-email'); // E-Mail Feld
 const passwortField = document.getElementById('user-passwort');
 const roleField = document.getElementById('user-role');
 const geburtstagField = document.getElementById('user-geburtstag');
 const telefonField = document.getElementById('user-telefon');
 const eintrittsdatumField = document.getElementById('user-eintrittsdatum');
 const aktivAbField = document.getElementById('user-aktiv-ab');
-
-// --- START NEU: Inaktiv-Datum ---
 const inaktivAbField = document.getElementById('user-inaktiv-ab');
-// --- ENDE NEU ---
-
-// --- NEU: Statistik-Checkbox ---
 const canSeeStatsField = document.getElementById('user-can-see-stats');
-// --- ENDE NEU ---
-
 const urlaubGesamtField = document.getElementById('user-urlaub-gesamt');
 const urlaubRestField = document.getElementById('user-urlaub-rest');
 const diensthundField = document.getElementById('user-diensthund');
@@ -84,6 +78,9 @@ const toggleColumnsBtn = document.getElementById('toggle-columns-btn');
 const saveColumnToggleBtn = document.getElementById('save-column-toggle');
 const columnCheckboxes = document.querySelectorAll('.col-toggle-cb');
 const modalTabsContainer = document.getElementById('user-modal-tabs');
+
+// --- NEU: Test-Mail Button ---
+const sendTestMailBtn = document.getElementById('send-test-mail-btn');
 
 // --- 3. Hilfsfunktionen (Seiten-spezifisch) ---
 
@@ -137,6 +134,7 @@ function formatDateTime(isoString, type = 'date') {
 }
 
 const columnNames = [
+    'col-email', // E-Mail Spalte
     'col-telefon', 'col-eintrittsdatum', 'col-aktiv_ab_datum',
     'col-urlaub_rest', 'col-diensthund', 'col-zuletzt_online'
 ];
@@ -191,7 +189,7 @@ async function loadRolesIntoDropdown(selectedRoleId = null) {
     }
 }
 
-// --- NEUE FUNKTION: LIMITS LADEN ---
+// --- LIMITS LADEN ---
 async function loadUserLimits(userId) {
     const container = document.getElementById('limits-container');
     container.innerHTML = 'Lade Limits...';
@@ -230,7 +228,7 @@ async function loadUserLimits(userId) {
     }
 }
 
-// --- NEUE FUNKTION: LIMITS SPEICHERN ---
+// --- LIMITS SPEICHERN ---
 async function saveUserLimits(userId) {
     const inputs = document.querySelectorAll('.limit-input');
     const payload = [];
@@ -256,6 +254,7 @@ async function loadUsers() {
             const row = document.createElement('tr');
             const roleName = u.role ? u.role.name : 'Keine Rolle';
             const userJsonString = JSON.stringify(u).replace(/'/g, "\\'");
+            const email = u.email || '---'; // E-Mail
             const telefon = u.telefon || '---';
             const eintritt = formatDateTime(u.eintrittsdatum, 'date') || '---';
             const aktiv = formatDateTime(u.aktiv_ab_datum, 'date') || '---';
@@ -267,7 +266,7 @@ async function loadUsers() {
                 <td>${u.vorname}</td>
                 <td>${u.name}</td>
                 <td>${roleName}</td>
-                <td class="col-telefon hidden">${telefon}</td>
+                <td class="col-email hidden">${email}</td> <td class="col-telefon hidden">${telefon}</td>
                 <td class="col-eintrittsdatum hidden">${eintritt}</td>
                 <td class="col-aktiv_ab_datum hidden">${aktiv}</td>
                 <td class="col-urlaub_rest hidden">${urlaub}</td>
@@ -303,6 +302,7 @@ addUserBtn.onclick = async () => {
     userIdField.value = '';
     vornameField.value = '';
     nameField.value = '';
+    emailField.value = ''; // E-Mail leeren
     passwortField.value = '';
     passwortField.placeholder = 'Passwort (erforderlich)';
     geburtstagField.value = '';
@@ -316,17 +316,13 @@ addUserBtn.onclick = async () => {
     tutorialField.checked = false;
     passGeaendertField.value = 'Wird autom. gesetzt';
     zuletztOnlineField.value = 'Nie';
-    // --- NEU ---
     canSeeStatsField.checked = false;
-    // --- ENDE NEU ---
 
     const systemTabButton = document.querySelector('.modal-tabs button[data-tab="tab-system"]');
     if (systemTabButton) systemTabButton.style.display = 'none';
 
-    // --- NEU: Limits-Tab verstecken bei neuem User (da noch keine ID existiert) ---
     const limitsTabButton = document.getElementById('tab-link-limits');
     if (limitsTabButton) limitsTabButton.style.display = 'none';
-    // --- ENDE NEU ---
 
     await loadRolesIntoDropdown();
     openModal(modal);
@@ -339,6 +335,7 @@ async function openEditModal(user) {
     userIdField.value = user.id;
     vornameField.value = user.vorname;
     nameField.value = user.name;
+    emailField.value = user.email || ''; // E-Mail füllen
     passwortField.value = '';
     passwortField.placeholder = 'Leer lassen für "keine Änderung"';
     geburtstagField.value = formatDateTime(user.geburtstag, 'date');
@@ -352,20 +349,16 @@ async function openEditModal(user) {
     tutorialField.checked = user.tutorial_gesehen;
     passGeaendertField.value = formatDateTime(user.password_geaendert, 'datetime') || 'Unbekannt';
     zuletztOnlineField.value = formatDateTime(user.zuletzt_online, 'datetime') || 'Nie';
-    // --- NEU ---
     canSeeStatsField.checked = user.can_see_statistics === true;
-    // --- ENDE NEU ---
 
     const systemTabButton = document.querySelector('.modal-tabs button[data-tab="tab-system"]');
     if (systemTabButton) systemTabButton.style.display = 'block';
 
-    // --- NEU: Limits-Tab anzeigen und laden ---
     const limitsTabButton = document.getElementById('tab-link-limits');
     if (limitsTabButton) {
         limitsTabButton.style.display = 'block';
         await loadUserLimits(user.id); // Limits laden
     }
-    // --- ENDE NEU ---
 
     await loadRolesIntoDropdown(user.role_id);
     openModal(modal);
@@ -377,6 +370,7 @@ saveUserBtn.onclick = async () => {
     const payload = {
         vorname: vornameField.value,
         name: nameField.value,
+        email: emailField.value || null, // E-Mail senden
         role_id: parseInt(roleField.value),
         passwort: passwortField.value || null,
         geburtstag: geburtstagField.value || null,
@@ -388,7 +382,7 @@ saveUserBtn.onclick = async () => {
         urlaub_rest: parseInt(urlaubRestField.value) || 0,
         diensthund: diensthundField.value || null,
         tutorial_gesehen: tutorialField.checked,
-        can_see_statistics: canSeeStatsField.checked // <<< NEU
+        can_see_statistics: canSeeStatsField.checked
     };
     if (!payload.passwort) { delete payload.passwort; }
 
@@ -464,6 +458,28 @@ if (forcePwResetBtn) {
                     modalStatus.style.color = originalColor;
                 }
             }, 3000);
+        }
+    };
+}
+
+// --- NEU: Event Listener für den Test-Mail Button ---
+if (sendTestMailBtn) {
+    sendTestMailBtn.onclick = async () => {
+        if (!confirm("Möchten Sie wirklich eine Test-E-Mail an ALLE Benutzer mit hinterlegter E-Mail-Adresse senden?")) {
+            return;
+        }
+
+        sendTestMailBtn.disabled = true;
+        sendTestMailBtn.textContent = "Sende...";
+
+        try {
+            const response = await apiFetch('/api/send_test_broadcast', 'POST');
+            alert(response.message);
+        } catch (error) {
+            alert("Fehler beim Senden: " + error.message);
+        } finally {
+            sendTestMailBtn.disabled = false;
+            sendTestMailBtn.textContent = "📧 Test-Mail an Alle";
         }
     };
 }

@@ -1,7 +1,6 @@
 # dhf_app/routes_admin.py
 
 from flask import Blueprint, request, jsonify, current_app
-# Alle Modelle importieren (UserShiftLimit, GlobalAnnouncement, UserAnnouncementAck sind neu)
 from .models import User, Role, ShiftType, Shift, GlobalSetting, UpdateLog, UserShiftLimit, GlobalAnnouncement, \
     UserAnnouncementAck
 from .extensions import db, bcrypt
@@ -9,6 +8,8 @@ from flask_login import login_required, current_user
 from .utils import admin_required
 from datetime import datetime
 from sqlalchemy import desc, or_
+# --- NEU: Import für E-Mail Service ---
+from .email_service import send_email
 
 # Erstellt einen Blueprint. Alle Routen hier beginnen mit /api
 admin_bp = Blueprint('admin', __name__, url_prefix='/api')
@@ -33,6 +34,49 @@ def none_if_empty(value):
     return None if value == '' else value
 
 
+# --- NEU: ROUTE FÜR TEST-EMAIL BROADCAST ---
+@admin_bp.route('/send_test_broadcast', methods=['POST'])
+@admin_required
+def send_test_broadcast():
+    """
+    Sendet eine Test-E-Mail an alle Benutzer, die eine E-Mail hinterlegt haben.
+    """
+    try:
+        # Filter: Email ist nicht NULL und nicht leer
+        users_with_email = User.query.filter(User.email != None, User.email != "").all()
+
+        if not users_with_email:
+            return jsonify({"message": "Keine Benutzer mit E-Mail-Adresse gefunden."}), 404
+
+        count = 0
+        for user in users_with_email:
+            send_email(
+                subject="DHF-Planer: Test-Nachricht",
+                recipients=[user.email],
+                text_body=f"Hallo {user.vorname},\n\ndies ist eine Test-E-Mail vom DHF-Planer System.\nWenn du diese Nachricht liest, funktioniert der E-Mail-Versand!\n\nViele Grüße,\nDein Admin",
+                html_body=f"""
+                <h3>Hallo {user.vorname},</h3>
+                <p>dies ist eine <strong>Test-E-Mail</strong> vom DHF-Planer System.</p>
+                <p style="color: green;">Wenn du diese Nachricht liest, funktioniert der E-Mail-Versand!</p>
+                <hr>
+                <p>Viele Grüße,<br>Dein Admin</p>
+                """
+            )
+            count += 1
+
+        _log_update_event("System", f"Test-Email an {count} Benutzer gesendet.")
+        db.session.commit()  # Commit für das Log
+
+        return jsonify({"message": f"Test-E-Mail an {count} Empfänger wurde in den Versand gegeben."}), 200
+
+    except Exception as e:
+        current_app.logger.error(f"Fehler beim Broadcast: {e}")
+        return jsonify({"message": f"Fehler: {str(e)}"}), 500
+
+
+# --- ENDE NEU ---
+
+
 # --- ROUTEN FÜR BENUTZER ---
 
 @admin_bp.route('/users', methods=['GET'])
@@ -49,27 +93,37 @@ def create_user():
     if not data or not data.get('vorname') or not data.get('passwort') or not data.get('role_id'):
         return jsonify({"message": "Fehlende Daten (Vorname, Passwort, role_id)"}), 400
     passwort_hash = bcrypt.generate_password_hash(data['passwort']).decode('utf-8')
-    new_user = User(
-        vorname=data['vorname'], name=data['name'], passwort_hash=passwort_hash,
-        password_geaendert=datetime.utcnow(), role_id=data['role_id'],
-        geburtstag=none_if_empty(data.get('geburtstag')), telefon=data.get('telefon'),
-        eintrittsdatum=none_if_empty(data.get('eintrittsdatum')),
-        aktiv_ab_datum=none_if_empty(data.get('aktiv_ab_datum')),
-        inaktiv_ab_datum=none_if_empty(data.get('inaktiv_ab_datum')),
-        urlaub_gesamt=data.get('urlaub_gesamt', 0), urlaub_rest=data.get('urlaub_rest', 0),
-        diensthund=data.get('diensthund'), tutorial_gesehen=data.get('tutorial_gesehen', False),
-        shift_plan_visible=data.get('shift_plan_visible', False),
-        shift_plan_sort_order=data.get('shift_plan_sort_order', 999),
-        force_password_change=True,
-        can_see_statistics=data.get('can_see_statistics', False)  # <<< NEU
-    )
-    db.session.add(new_user)
 
-    _log_update_event("Benutzerverwaltung",
-                      f"Neuer Benutzer '{data['vorname']} {data['name']}' erstellt. (PW-Änderung erzwungen)")
+    try:
+        new_user = User(
+            vorname=data['vorname'], name=data['name'], passwort_hash=passwort_hash,
+            email=none_if_empty(data.get('email')),
+            password_geaendert=datetime.utcnow(), role_id=data['role_id'],
+            geburtstag=none_if_empty(data.get('geburtstag')), telefon=data.get('telefon'),
+            eintrittsdatum=none_if_empty(data.get('eintrittsdatum')),
+            aktiv_ab_datum=none_if_empty(data.get('aktiv_ab_datum')),
+            inaktiv_ab_datum=none_if_empty(data.get('inaktiv_ab_datum')),
+            urlaub_gesamt=data.get('urlaub_gesamt', 0), urlaub_rest=data.get('urlaub_rest', 0),
+            diensthund=data.get('diensthund'), tutorial_gesehen=data.get('tutorial_gesehen', False),
+            shift_plan_visible=data.get('shift_plan_visible', False),
+            shift_plan_sort_order=data.get('shift_plan_sort_order', 999),
+            force_password_change=True,
+            can_see_statistics=data.get('can_see_statistics', False)
+        )
+        db.session.add(new_user)
 
-    db.session.commit()
-    return jsonify(new_user.to_dict()), 201
+        _log_update_event("Benutzerverwaltung",
+                          f"Neuer Benutzer '{data['vorname']} {data['name']}' erstellt. (PW-Änderung erzwungen)")
+
+        db.session.commit()
+        return jsonify(new_user.to_dict()), 201
+
+    except Exception as e:
+        db.session.rollback()
+        if "UNIQUE constraint failed" in str(e) or "Duplicate entry" in str(e):
+            return jsonify({"message": "Benutzername oder E-Mail existiert bereits."}), 409
+        current_app.logger.error(f"Fehler bei create_user: {e}")
+        return jsonify({"message": f"Datenbankfehler: {str(e)}"}), 500
 
 
 @admin_bp.route('/users/<int:user_id>', methods=['PUT'])
@@ -81,38 +135,47 @@ def update_user(user_id):
 
     is_password_changed = data.get('passwort') is not None
 
-    user.vorname = data.get('vorname', user.vorname)
-    user.name = data.get('name', user.name)
-    user.role_id = data.get('role_id', user.role_id)
-    if is_password_changed:
-        user.passwort_hash = bcrypt.generate_password_hash(data['passwort']).decode('utf-8')
-        user.password_geaendert = datetime.utcnow()
-    user.geburtstag = none_if_empty(data.get('geburtstag', user.geburtstag))
-    user.telefon = data.get('telefon', user.telefon)
-    user.eintrittsdatum = data.get('eintrittsdatum', user.eintrittsdatum)
-    user.aktiv_ab_datum = none_if_empty(data.get('aktiv_ab_datum', user.aktiv_ab_datum))
-    if 'inaktiv_ab_datum' in data:
-        user.inaktiv_ab_datum = none_if_empty(data.get('inaktiv_ab_datum'))
+    try:
+        user.vorname = data.get('vorname', user.vorname)
+        user.name = data.get('name', user.name)
 
-    user.urlaub_gesamt = data.get('urlaub_gesamt', user.urlaub_gesamt)
-    user.urlaub_rest = data.get('urlaub_rest', user.urlaub_rest)
-    user.diensthund = data.get('diensthund', user.diensthund)
-    user.tutorial_gesehen = data.get('tutorial_gesehen', user.tutorial_gesehen)
-    user.shift_plan_visible = data.get('shift_plan_visible', user.shift_plan_visible)
-    user.shift_plan_sort_order = data.get('shift_plan_sort_order', user.shift_plan_sort_order)
+        if 'email' in data:
+            user.email = none_if_empty(data['email'])
 
-    # --- NEU ---
-    if 'can_see_statistics' in data:
-        user.can_see_statistics = data['can_see_statistics']
-    # --- ENDE NEU ---
+        user.role_id = data.get('role_id', user.role_id)
+        if is_password_changed:
+            user.passwort_hash = bcrypt.generate_password_hash(data['passwort']).decode('utf-8')
+            user.password_geaendert = datetime.utcnow()
+        user.geburtstag = none_if_empty(data.get('geburtstag', user.geburtstag))
+        user.telefon = data.get('telefon', user.telefon)
+        user.eintrittsdatum = data.get('eintrittsdatum', user.eintrittsdatum)
+        user.aktiv_ab_datum = none_if_empty(data.get('aktiv_ab_datum', user.aktiv_ab_datum))
+        if 'inaktiv_ab_datum' in data:
+            user.inaktiv_ab_datum = none_if_empty(data.get('inaktiv_ab_datum'))
 
-    desc_msg = f"Benutzer '{user.vorname} {user.name}' aktualisiert."
-    if is_password_changed:
-        desc_msg += " (Passwort geändert)"
-    _log_update_event("Benutzerverwaltung", desc_msg)
+        user.urlaub_gesamt = data.get('urlaub_gesamt', user.urlaub_gesamt)
+        user.urlaub_rest = data.get('urlaub_rest', user.urlaub_rest)
+        user.diensthund = data.get('diensthund', user.diensthund)
+        user.tutorial_gesehen = data.get('tutorial_gesehen', user.tutorial_gesehen)
+        user.shift_plan_visible = data.get('shift_plan_visible', user.shift_plan_visible)
+        user.shift_plan_sort_order = data.get('shift_plan_sort_order', user.shift_plan_sort_order)
 
-    db.session.commit()
-    return jsonify(user.to_dict()), 200
+        if 'can_see_statistics' in data:
+            user.can_see_statistics = data['can_see_statistics']
+
+        desc_msg = f"Benutzer '{user.vorname} {user.name}' aktualisiert."
+        if is_password_changed:
+            desc_msg += " (Passwort geändert)"
+        _log_update_event("Benutzerverwaltung", desc_msg)
+
+        db.session.commit()
+        return jsonify(user.to_dict()), 200
+
+    except Exception as e:
+        db.session.rollback()
+        if "UNIQUE constraint failed" in str(e) or "Duplicate entry" in str(e):
+            return jsonify({"message": "E-Mail Adresse wird bereits verwendet."}), 409
+        return jsonify({"message": f"Datenbankfehler: {str(e)}"}), 500
 
 
 @admin_bp.route('/users/<int:user_id>/force_password_reset', methods=['POST'])

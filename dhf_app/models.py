@@ -18,6 +18,7 @@ class User(db.Model, UserMixin):
     id = db.Column(db.Integer, primary_key=True)
     vorname = db.Column(db.String(100), nullable=False)
     name = db.Column(db.String(100), nullable=False)
+    email = db.Column(db.String(120), unique=True, nullable=True)  # <<< NEU: E-Mail Adresse
     passwort_hash = db.Column(db.String(128), nullable=False)
     role_id = db.Column(db.Integer, db.ForeignKey('role.id'), nullable=True)
     role = db.relationship('Role', backref=db.backref('users', lazy=True))
@@ -41,7 +42,7 @@ class User(db.Model, UserMixin):
     # --- Passwortzwang ---
     force_password_change = db.Column(db.Boolean, default=False, nullable=False)
 
-    # --- NEU: Statistik-Berechtigung ---
+    # --- Statistik-Berechtigung ---
     can_see_statistics = db.Column(db.Boolean, default=False, nullable=False)
 
     __table_args__ = (db.UniqueConstraint('vorname', 'name', name='_vorname_name_uc'),)
@@ -52,7 +53,7 @@ class User(db.Model, UserMixin):
 
     def to_dict(self):
         return {
-            "id": self.id, "vorname": self.vorname, "name": self.name,
+            "id": self.id, "vorname": self.vorname, "name": self.name, "email": self.email, # <<< NEU
             "role": self.role.to_dict() if self.role else None, "role_id": self.role_id,
             "geburtstag": self.safe_date_iso(self.geburtstag), "telefon": self.telefon,
             "eintrittsdatum": self.safe_date_iso(self.eintrittsdatum),
@@ -65,7 +66,7 @@ class User(db.Model, UserMixin):
             "shift_plan_visible": self.shift_plan_visible,
             "shift_plan_sort_order": self.shift_plan_sort_order,
             "force_password_change": self.force_password_change,
-            "can_see_statistics": self.can_see_statistics  # <<< NEU
+            "can_see_statistics": self.can_see_statistics
         }
 
 
@@ -122,9 +123,8 @@ class Shift(db.Model):
 
     date = db.Column(db.Date, nullable=False)
 
-    # --- NEU: Sperr-Flag ---
+    # --- Sperr-Flag ---
     is_locked = db.Column(db.Boolean, default=False, nullable=False)
-    # --- ENDE NEU ---
 
     user = db.relationship('User', backref=db.backref('shifts', lazy=True))
     shift_type = db.relationship('ShiftType')
@@ -135,7 +135,7 @@ class Shift(db.Model):
         if self.shift_type:
             abbr = self.shift_type.abbreviation
         elif self.shifttype_id is not None:
-            abbr = "ERR"  # Sollte nicht passieren, falls ID da aber Relation fehlt
+            abbr = "ERR"
 
         return {
             "id": self.id,
@@ -143,7 +143,7 @@ class Shift(db.Model):
             "date": self.date.isoformat(),
             "shifttype_id": self.shifttype_id,
             "shifttype_abbreviation": abbr,
-            "is_locked": self.is_locked  # <<< NEU
+            "is_locked": self.is_locked
         }
 
 

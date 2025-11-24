@@ -2,7 +2,7 @@ import os
 from flask import Flask, jsonify
 from flask_cors import CORS
 from .config import config
-from .extensions import db, bcrypt, login_manager
+from .extensions import db, bcrypt, login_manager, mail  # <<< NEU: mail importiert
 
 
 def create_app(config_name='default'):
@@ -15,18 +15,16 @@ def create_app(config_name='default'):
     app.config.from_object(config[config_name])
     config[config_name].init_app(app)
 
-    # 2. Extensions (db, bcrypt, etc.) an die App binden
+    # 2. Extensions (db, bcrypt, mail etc.) an die App binden
     db.init_app(app)
     bcrypt.init_app(app)
     login_manager.init_app(app)
+    mail.init_app(app)  # <<< NEU: Mail initialisieren
 
     # 3. CORS initialisieren (wie im Original)
     CORS(app, supports_credentials=True, origins=["http://46.224.63.203", "http://ihre-domain.de"])
 
     # --- KORREKTUR: Alle Modelle importieren ---
-    # Wir importieren das gesamte 'models'-Modul.
-    # Dies stellt sicher, dass ALLE Klassen (User, Role, ShiftPlanStatus, etc.)
-    # bei SQLAlchemy registriert werden, BEVOR db.create_all() aufgerufen wird.
     from . import models
 
     @login_manager.user_loader
@@ -34,10 +32,7 @@ def create_app(config_name='default'):
         # Wir verwenden die Referenz über das importierte Modul
         return db.session.get(models.User, int(user_id))
 
-    # --- ENDE KORREKTUR ---
-
     # 4. Blueprints (Routen-Sammlungen) registrieren
-    # (Diese Importe bleiben HIER, um zirkuläre Abhängigkeiten zu vermeiden)
     from .routes_auth import auth_bp
     app.register_blueprint(auth_bp)
 
@@ -62,19 +57,14 @@ def create_app(config_name='default'):
     from .routes_generator import generator_bp
     app.register_blueprint(generator_bp)
 
-    # --- STATISTICS Blueprint (NEU) ---
+    # --- STATISTICS Blueprint ---
     from .routes_statistics import statistics_bp
     app.register_blueprint(statistics_bp)
-    # --- ENDE NEU ---
 
     # 5. Startup-Logik (Defaults erstellen)
     with app.app_context():
-        # db.create_all() kennt jetzt ALLE Modelle aus models.py
         db.create_all()
         create_default_roles(db)
-        # --- ENTFERNT ---
-        # create_default_shifttypes(db)
-        # --- ENDE ENTFERNT ---
         create_default_holidays(db)
         create_default_settings(db)  # Globale Einstellungen erstellen
 
@@ -85,10 +75,8 @@ def create_app(config_name='default'):
 
 def create_default_roles(db_instance):
     """
-    Erstellt die Standard-Rollen 'admin', 'user' und NEU 'Besucher', falls sie nicht existieren.
-    (Die Rolle 'Planschreiber' wird hier bewusst NICHT hinzugefügt, damit sie manuell erstellt werden kann)
+    Erstellt die Standard-Rollen 'admin', 'user' und 'Besucher', falls sie nicht existieren.
     """
-    # Dieser Import ist jetzt technisch redundant, schadet aber nicht
     from .models import Role
 
     roles_to_create = {
@@ -132,7 +120,6 @@ def create_default_holidays(db_instance):
 
     try:
         for holiday_name in mv_holidays:
-            # Prüft, ob ein Feiertag mit diesem NAMEN bereits existiert
             existing = SpecialDate.query.filter_by(
                 type='holiday',
                 name=holiday_name

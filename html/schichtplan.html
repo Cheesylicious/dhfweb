@@ -376,6 +376,20 @@
             color: #004085;
         }
 
+        /* --- NEU: Massen-Bearbeitung Button --- */
+        #plan-bulk-mode-btn {
+            background-color: #e2e6ea;
+            color: #333;
+            border: 1px solid #ccc;
+        }
+        #plan-bulk-mode-btn.active {
+            background-color: #3498db;
+            color: white;
+            border-color: #3498db;
+            box-shadow: inset 0 0 5px rgba(0,0,0,0.2);
+        }
+        /* --- ENDE NEU --- */
+
 
         #save-staffing-order-btn { display: none; }
 
@@ -548,6 +562,43 @@
             box-shadow: 0 0 3px rgba(0,0,0,0.5);
             font-weight: 600;
         }
+
+        /* --- NEU: Bulk Selection Styles --- */
+        .grid-cell.selected {
+             box-shadow: inset 0 0 0 4px #3498db !important;
+             background-color: rgba(52, 152, 219, 0.2) !important;
+             z-index: 15;
+        }
+        /* Indikator für "klickbar" im Bulk Mode */
+        body.bulk-mode-active .shift-request-cell {
+             cursor: pointer !important;
+             animation: pulse-border 2s infinite;
+        }
+        @keyframes pulse-border {
+            0% { box-shadow: inset 0 0 0 1px rgba(0,0,0,0.2); }
+            50% { box-shadow: inset 0 0 0 2px #3498db; }
+            100% { box-shadow: inset 0 0 0 1px rgba(0,0,0,0.2); }
+        }
+
+        .bulk-action-bar-plan {
+            display: none;
+            background: #333;
+            color: #fff;
+            padding: 10px 20px;
+            border-radius: 5px;
+            margin-bottom: 15px;
+            align-items: center;
+            justify-content: space-between;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+        }
+        .bulk-action-bar-plan.visible {
+            display: flex;
+        }
+        .bulk-status-text {
+            font-weight: 600;
+            font-size: 15px;
+        }
+        /* --- ENDE NEU --- */
 
         /* --- NEU: Style für einzeln gesperrte Schichten --- */
         .grid-cell.locked-shift {
@@ -1133,7 +1184,6 @@
                 Meldungen
                 <span id="feedback-badge" class="nav-badge">0</span>
             </a>
-            <!-- NEU: Statistik Link (Standardmäßig ausgeblendet) -->
             <a href="statistik.html" id="nav-statistik" style="display: none;">Statistik</a>
 
             <a href="schichtplan.html" class="active" id="nav-shiftplan">Schichtplan</a> </nav>
@@ -1189,11 +1239,23 @@
                         <span id="plan-status-badge"></span>
                         <button id="plan-lock-btn" class="btn-admin-action" title="Plan sperren/entsperren"></button>
                         <button id="plan-status-toggle-btn" class="btn-admin-action" title="Status wechseln"></button>
+                        <button id="plan-bulk-mode-btn" class="btn-admin-action" title="Massen-Bearbeitung von Wünschen">✅ Anfragen verwalten</button>
                     </div>
                 </div>
 
                 <div class="plan-nav-right">
                     <button id="next-month-btn">Nächster &raquo;</button>
+                </div>
+            </div>
+
+            <div class="bulk-action-bar-plan" id="bulk-action-bar-plan">
+                <div style="display: flex; gap: 10px; align-items: center;">
+                    <span class="bulk-status-text" id="bulk-status-text">0 ausgewählt</span>
+                </div>
+                <div style="display: flex; gap: 10px;">
+                    <button class="btn-primary" id="bulk-approve-btn" style="background-color: #2ecc71; border: none;">Genehmigen</button>
+                    <button class="btn-primary" id="bulk-reject-btn" style="background-color: #e74c3c; border: none;">Ablehnen</button>
+                    <button class="btn-secondary" id="bulk-cancel-btn">Abbrechen</button>
                 </div>
             </div>
             <div id="unified-grid-wrapper">

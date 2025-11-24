@@ -1,4 +1,4 @@
-// cheesylicious/dhfweb/dhfweb-ec604d738e9bd121b65cc8557f8bb98d2aa18062/html/js/pages/schichtplan.js
+// html/js/pages/schichtplan.js
 
 // --- IMPORTE ---
 import { API_URL, COL_WIDTH_NAME, COL_WIDTH_DETAILS, COL_WIDTH_UEBERTRAG, COL_WIDTH_DAY, COL_WIDTH_TOTAL, SHORTCUT_STORAGE_KEY, COLOR_STORAGE_KEY, DHF_HIGHLIGHT_KEY, DEFAULT_COLORS, DEFAULT_SHORTCUTS } from '../utils/constants.js';
@@ -43,6 +43,10 @@ let sortableStaffingInstance = null;
 let generatorInterval = null;
 let isGenerating = false;
 
+// --- BULK MODE VARIABLEN (NEU) ---
+let isBulkMode = false;
+let selectedQueryIds = new Set();
+
 // --- DOM ELEMENTE ---
 const gridContainer = document.getElementById('schichtplan-grid-container');
 const grid = document.getElementById('schichtplan-grid');
@@ -57,6 +61,14 @@ const planStatusContainer = document.getElementById('plan-status-container');
 const planStatusBadge = document.getElementById('plan-status-badge');
 const planLockBtn = document.getElementById('plan-lock-btn');
 const planStatusToggleBtn = document.getElementById('plan-status-toggle-btn');
+
+// NEU: Bulk Mode Elemente
+const planBulkModeBtn = document.getElementById('plan-bulk-mode-btn');
+const bulkActionBarPlan = document.getElementById('bulk-action-bar-plan');
+const bulkStatusText = document.getElementById('bulk-status-text');
+const bulkApproveBtn = document.getElementById('bulk-approve-btn');
+const bulkRejectBtn = document.getElementById('bulk-reject-btn');
+const bulkCancelBtn = document.getElementById('bulk-cancel-btn');
 
 const shiftModal = document.getElementById('shift-modal');
 const shiftModalTitle = document.getElementById('shift-modal-title');
@@ -151,6 +163,9 @@ try {
         if (openGenSettingsLink) openGenSettingsLink.style.display = 'none';
         if (deletePlanLink) deletePlanLink.style.display = 'none';
         if (settingsDropdown) settingsDropdown.style.display = 'none';
+        if (planBulkModeBtn) planBulkModeBtn.style.display = 'none'; // Bulk nur für Admin
+    } else {
+        if (planBulkModeBtn) planBulkModeBtn.style.display = 'inline-block';
     }
 
 } catch (e) {
@@ -208,6 +223,7 @@ function refreshSingleCell(userId, dateStr) {
     cell.textContent = '';
     cell.style.backgroundColor = '';
     cell.style.color = '';
+    delete cell.dataset.queryId; // Reset
 
     const queriesForCell = currentShiftQueries.filter(q =>
         (q.target_user_id === userId && q.shift_date === dateStr && q.status === 'offen')
@@ -248,6 +264,8 @@ function refreshSingleCell(userId, dateStr) {
     } else if (isShiftRequestCell) {
         cell.textContent = shiftRequestText;
         cellClasses += ' shift-request-cell';
+        // --- NEU: Query ID speichern ---
+        if (wunschQuery) cell.dataset.queryId = wunschQuery.id;
     } else {
          if (eventType === 'holiday') cellClasses += ` day-color-${eventType}`;
          else if (isWeekend) cellClasses += ' weekend';
@@ -258,6 +276,11 @@ function refreshSingleCell(userId, dateStr) {
     }
 
     cell.className = cellClasses;
+
+    // --- NEU: Selection Status wiederherstellen ---
+    if (isBulkMode && wunschQuery && selectedQueryIds.has(wunschQuery.id)) {
+        cell.classList.add('selected');
+    }
 }
 
 function updateUserTotalHours(userId, delta) {
@@ -658,6 +681,9 @@ function hideClickActionModal() {
 }
 
 function showClickActionModal(event, user, dateStr, cell, isCellOnOwnRow) {
+    // --- NEU: Abbruch wenn Bulk Mode aktiv ---
+    if (isBulkMode) return;
+
     event.preventDefault();
     hideClickActionModal();
 
@@ -899,7 +925,8 @@ async function populateClickModalShiftButtons(mode) {
 }
 
 window.addEventListener('click', (e) => {
-    if (!e.target.closest('.grid-cell') && !e.target.closest('#click-action-modal')) {
+    // --- NEU: Ignorieren wenn Bulk Mode Elements geklickt werden ---
+    if (!e.target.closest('.grid-cell') && !e.target.closest('#click-action-modal') && !e.target.closest('#plan-bulk-mode-btn') && !e.target.closest('#bulk-action-bar-plan')) {
         hideClickActionModal();
     }
 }, true);
@@ -1123,6 +1150,8 @@ function updatePlanStatusUI(statusData) {
         planLockBtn.title = "Plan entsperren, um Bearbeitung zu erlauben";
         planLockBtn.classList.add('locked');
         document.body.classList.add('plan-locked');
+        // NEU: Wenn gesperrt, Bulk Mode deaktivieren
+        if(isBulkMode) toggleBulkMode();
     } else {
         planLockBtn.textContent = "Offen";
         planLockBtn.title = "Plan sperren, um Bearbeitung zu verhindern";
@@ -1351,6 +1380,12 @@ function buildGridDOM() {
             } else if (isShiftRequestCell) {
                 cell.textContent = shiftRequestText;
                 cellClasses += ' shift-request-cell';
+
+                // --- NEU: Data ID für Bulk Select ---
+                if (wunschQuery) {
+                     cell.dataset.queryId = wunschQuery.id;
+                }
+
             } else {
                  cell.textContent = '';
                  if (eventType === 'holiday') cellClasses += ` day-color-${eventType}`;
@@ -1381,6 +1416,13 @@ function buildGridDOM() {
             const isCellOnOwnRow = isCurrentUser;
 
             const handleClick = (e) => {
+                // --- NEU: Bulk Mode Check ---
+                if (isBulkMode) {
+                     e.preventDefault();
+                     handleBulkCellClick(cell, user.id, dateStr);
+                     return;
+                }
+
                 e.preventDefault();
                 if (isVisitor) return;
 
@@ -1791,8 +1833,6 @@ async function saveShift(shifttypeId, userId, dateStr) {
         }
 
         // 3. Staffing (Besetzung) aktualisieren (nur im Speicher, evtl. gezieltes DOM Update nötig?)
-        // Da Staffing komplex ist, aktualisieren wir hier nur die Daten. Das visuelle Update der Besetzungszeile
-        // ist aufwendig ohne re-render. Aber die User-Zelle ist das Wichtigste.
         currentStaffingActual = savedData.staffing_actual || {};
 
         // 3b. Staffing Grid aktualisieren (NEU)
@@ -2402,6 +2442,103 @@ async function handleAdminReject(query) {
         buildGridDOM();
     }
 }
+
+// --- BULK MODE LOGIK (NEU) ---
+
+function toggleBulkMode() {
+    isBulkMode = !isBulkMode;
+    
+    if (isBulkMode) {
+        // Aktivieren
+        if (planBulkModeBtn) {
+            planBulkModeBtn.classList.add('active');
+            planBulkModeBtn.textContent = "Modus Beenden";
+        }
+        document.body.classList.add('bulk-mode-active');
+        if(bulkActionBarPlan) bulkActionBarPlan.classList.add('visible');
+        selectedQueryIds.clear();
+        updateBulkStatus();
+    } else {
+        // Deaktivieren
+        if (planBulkModeBtn) {
+            planBulkModeBtn.classList.remove('active');
+            planBulkModeBtn.textContent = "✅ Anfragen verwalten";
+        }
+        document.body.classList.remove('bulk-mode-active');
+        if(bulkActionBarPlan) bulkActionBarPlan.classList.remove('visible');
+        
+        // Selektionen entfernen
+        document.querySelectorAll('.grid-cell.selected').forEach(el => el.classList.remove('selected'));
+        selectedQueryIds.clear();
+    }
+}
+
+function handleBulkCellClick(cell, userId, dateStr) {
+    const queryId = cell.dataset.queryId;
+    if (!queryId) return; // Nur Zellen mit Anfrage sind klickbar
+
+    const id = parseInt(queryId);
+    if (selectedQueryIds.has(id)) {
+        selectedQueryIds.delete(id);
+        cell.classList.remove('selected');
+    } else {
+        selectedQueryIds.add(id);
+        cell.classList.add('selected');
+    }
+    updateBulkStatus();
+}
+
+function updateBulkStatus() {
+    const count = selectedQueryIds.size;
+    if(bulkStatusText) bulkStatusText.textContent = `${count} ausgewählt`;
+    
+    // Buttons aktivieren/deaktivieren
+    if(bulkApproveBtn) bulkApproveBtn.disabled = count === 0;
+    if(bulkRejectBtn) bulkRejectBtn.disabled = count === 0;
+}
+
+async function performPlanBulkAction(actionType) {
+    if (selectedQueryIds.size === 0) return;
+    
+    const actionName = actionType === 'approve' ? 'Genehmigen' : 'Ablehnen';
+    if (!confirm(`${selectedQueryIds.size} Anfragen ${actionName}?`)) return;
+
+    const endpoint = actionType === 'approve' ? '/api/queries/bulk_approve' : '/api/queries/bulk_delete';
+    
+    // UI sperren
+    if(bulkApproveBtn) bulkApproveBtn.disabled = true;
+    if(bulkRejectBtn) bulkRejectBtn.disabled = true;
+    if(bulkStatusText) bulkStatusText.textContent = "Verarbeite...";
+
+    try {
+        const response = await apiFetch(endpoint, 'POST', {
+            query_ids: Array.from(selectedQueryIds)
+        });
+        
+        alert(response.message);
+        
+        // Bulk Mode beenden und neu laden
+        toggleBulkMode();
+        await loadShiftQueries(); // Daten neu holen
+        await renderGrid();       // Grid komplett neu zeichnen (um Schichten anzuzeigen)
+        triggerNotificationUpdate();
+        
+    } catch (error) {
+        alert("Fehler: " + error.message);
+        updateBulkStatus(); // Reset buttons
+    }
+}
+
+// --- EVENT LISTENER FÜR BULK MODE (NEU) ---
+if (planBulkModeBtn) {
+    planBulkModeBtn.onclick = (e) => {
+        e.preventDefault();
+        toggleBulkMode();
+    };
+}
+if (bulkCancelBtn) bulkCancelBtn.onclick = toggleBulkMode;
+if (bulkApproveBtn) bulkApproveBtn.onclick = () => performPlanBulkAction('approve');
+if (bulkRejectBtn) bulkRejectBtn.onclick = () => performPlanBulkAction('reject');
 
 async function initialize() {
     await loadColorSettings();

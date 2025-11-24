@@ -1,7 +1,6 @@
 # dhf_app/routes_queries.py
 
 from flask import Blueprint, request, jsonify, current_app
-# --- IMPORTE ERWEITERT ---
 from .models import ShiftQuery, User, FeedbackReport, UpdateLog, ShiftQueryReply, Role, UserShiftLimit, ShiftType, Shift
 from .extensions import db
 from sqlalchemy.orm import joinedload
@@ -11,6 +10,8 @@ from sqlalchemy import extract, func, or_
 from datetime import datetime
 from sqlalchemy.sql import select
 from sqlalchemy.exc import IntegrityError
+from .email_service import send_email
+from collections import defaultdict
 
 # Erstellt einen Blueprint. Alle Routen hier beginnen mit /api/queries
 query_bp = Blueprint('query', __name__, url_prefix='/api/queries')
@@ -56,7 +57,7 @@ def _calculate_usage(user_id, year, month, shifttype_id, abbreviation):
     return shift_count + query_count
 
 
-# --- ROUTE FÜR BENACHRICHTIGUNGS-ZÄHLER (Unverändert) ---
+# --- ROUTE FÜR BENACHRICHTIGUNGS-ZÄHLER ---
 @query_bp.route('/notifications_summary', methods=['GET'])
 @login_required
 def get_notifications_summary():
@@ -255,21 +256,11 @@ def create_shift_query():
                         limit_entry = UserShiftLimit.query.filter_by(user_id=current_user.id,
                                                                      shifttype_id=st.id).first()
 
-                        # Wenn ein Limit existiert UND > 0 ist, prüfen wir
-                        # (Wenn Limit 0 ist oder kein Eintrag existiert, ist es effektiv verboten/gesperrt,
-                        # aber wir blockieren hier nur explizite Überschreitungen von gesetzten Limits > 0.
-                        # Falls 0 = verboten sein soll, müsste man das hier anpassen.
-                        # Laut Frontend-Text: "0 = Keine Anfragen erlaubt")
-
                         if limit_entry:
                             max_limit = limit_entry.monthly_limit
                             if max_limit == 0:
                                 return jsonify({
-                                                   "message": f"Anfragen für '{abbr}' sind für Sie nicht freigeschaltet (Limit 0)."}), 403
-
-                            # Prüfe Verbrauch (aber ohne die aktuelle Anfrage, falls es ein Update wäre?
-                            # Hier gehen wir von 'Create' aus. Bei Update wäre es komplexer,
-                            # aber HF updaten selten den Typ, meistens löschen sie und fragen neu an.)
+                                    "message": f"Anfragen für '{abbr}' sind für Sie nicht freigeschaltet (Limit 0)."}), 403
 
                             # Prüfe, ob schon eine Anfrage für DIESEN Tag existiert (Update-Fall)
                             existing_same_day = ShiftQuery.query.filter_by(
@@ -279,16 +270,9 @@ def create_shift_query():
                                 sender_user_id=current_user.id
                             ).first()
 
-                            # Wenn wir updaten, zählt diese Anfrage nicht "neu" dazu
-                            usage_offset = 0 if existing_same_day else 0
-                            # Eigentlich: Usage zählt ALLE Schichten + ALLE offenen Anfragen.
-                            # Wenn wir eine neue hinzufügen wollen, muss usage < limit sein.
-
                             current_usage = _calculate_usage(current_user.id, shift_date.year, shift_date.month, st.id,
                                                              st.abbreviation)
 
-                            # Wenn wir eine existierende Anfrage am SELBEN Tag haben, und den Typ ändern,
-                            # ist current_usage inkl. der alten Anfrage. Das ist okay als Näherung.
                             # Strenger Check:
                             if not existing_same_day and current_usage >= max_limit:
                                 return jsonify(
@@ -400,11 +384,188 @@ def get_shift_queries():
         return jsonify({"message": f"Datenbankfehler: {str(e)}"}), 500
 
 
+# --- MASSEN-FUNKTIONEN (KORRIGIERT UND VOLLSTÄNDIG) ---
+
+@query_bp.route('/bulk_approve', methods=['POST'])
+@scheduler_or_admin_required
+def bulk_approve_queries():
+    """
+    Markiert mehrere Anfragen als 'erledigt', TRÄGT DIE SCHICHT EIN
+    und sendet EINE Zusammenfassungs-Mail pro User.
+    """
+    data = request.get_json()
+    query_ids = data.get('query_ids', [])
+
+    if not query_ids:
+        return jsonify({"message": "Keine IDs übergeben"}), 400
+
+    try:
+        # Alle Schichtarten vorladen (Abkürzung -> ID) für den Eintrag in den Plan
+        all_types = ShiftType.query.all()
+        types_map = {st.abbreviation: st.id for st in all_types}
+
+        queries = db.session.query(ShiftQuery).options(joinedload(ShiftQuery.sender)).filter(
+            ShiftQuery.id.in_(query_ids),
+            ShiftQuery.status == 'offen'
+        ).all()
+
+        if not queries:
+            return jsonify({"message": "Keine offenen Anfragen gefunden."}), 404
+
+        queries_by_user_email = defaultdict(list)
+        count_updated = 0
+        count_shifts_created = 0
+
+        for q in queries:
+            # 1. Versuche, die Schicht aus der Nachricht zu lesen und einzutragen
+            if q.target_user_id and q.message.startswith("Anfrage für:"):
+                parts = q.message.split("Anfrage für:")
+                if len(parts) > 1:
+                    abbr = parts[1].strip().replace('?', '')
+                    st_id = types_map.get(abbr)
+
+                    if st_id:
+                        # Schicht erstellen oder updaten
+                        existing_shift = Shift.query.filter_by(user_id=q.target_user_id, date=q.shift_date).first()
+                        if existing_shift:
+                            existing_shift.shifttype_id = st_id
+                        else:
+                            new_shift = Shift(user_id=q.target_user_id, date=q.shift_date, shifttype_id=st_id)
+                            db.session.add(new_shift)
+                        count_shifts_created += 1
+
+            # 2. Status ändern
+            q.status = 'erledigt'
+            count_updated += 1
+
+            # 3. Mail vormerken
+            if q.sender and q.sender.email:
+                queries_by_user_email[q.sender.email].append(q)
+
+        db.session.commit()
+
+        # E-Mails senden (1 pro User)
+        for email, q_list in queries_by_user_email.items():
+            if not q_list: continue
+
+            user_name = q_list[0].sender.vorname
+
+            msg_lines = []
+            for item in q_list:
+                date_s = item.shift_date.strftime('%d.%m.%Y')
+                short_msg = item.message.replace('Anfrage für:', '').strip()
+                msg_lines.append(f"- {date_s}: {short_msg}")
+
+            body_text = "\n".join(msg_lines)
+
+            email_subject = f"DHF-Planer: {len(q_list)} Anfragen genehmigt/erledigt"
+            email_body = f"""
+            Hallo {user_name},
+
+            folgende {len(q_list)} Anfragen wurden genehmigt und im Plan eingetragen:
+
+            {body_text}
+
+            Bitte prüfe den Schichtplan für Details.
+
+            Viele Grüße,
+            Dein Admin
+            """
+            send_email(email_subject, [email], email_body)
+
+        _log_update_event("Massen-Bearbeitung",
+                          f"{count_updated} Anfragen genehmigt, {count_shifts_created} Schichten eingetragen.")
+        return jsonify(
+            {"message": f"{count_updated} Anfragen genehmigt, {count_shifts_created} Schichten erstellt."}), 200
+
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Fehler bei Bulk Approve: {str(e)}")
+        return jsonify({"message": f"Fehler: {str(e)}"}), 500
+
+
+@query_bp.route('/bulk_delete', methods=['POST'])
+@scheduler_or_admin_required
+def bulk_delete_queries():
+    """
+    Löscht mehrere Anfragen (Ablehnung) und sendet EINE Zusammenfassungs-Mail pro User.
+    Fix für "Instance deleted": Daten VOR dem Löschen extrahieren.
+    """
+    data = request.get_json()
+    query_ids = data.get('query_ids', [])
+
+    if not query_ids:
+        return jsonify({"message": "Keine IDs übergeben"}), 400
+
+    try:
+        # Queries laden VOR dem Löschen für E-Mail Infos
+        queries = db.session.query(ShiftQuery).options(joinedload(ShiftQuery.sender)).filter(
+            ShiftQuery.id.in_(query_ids)
+        ).all()
+
+        if not queries:
+            return jsonify({"message": "Keine Anfragen gefunden."}), 404
+
+        # Daten sichern für E-Mail (als einfache Dictionaries, um DB-Abhängigkeit zu lösen)
+        mails_to_send = defaultdict(list)
+
+        for q in queries:
+            # Nur wenn Admin löscht (=Ablehnung) und nicht eigener User
+            if q.sender_user_id != current_user.id and q.sender and q.sender.email:
+                # WICHTIG: Werte in Variablen speichern, keine Referenz auf das Objekt!
+                info = {
+                    'email': q.sender.email,
+                    'name': q.sender.vorname,
+                    'date': q.shift_date.strftime('%d.%m.%Y'),
+                    'msg': q.message.replace('Anfrage für:', '').strip()
+                }
+                mails_to_send[info['email']].append(info)
+
+        # Löschen durchführen (performant via SQL DELETE)
+        ShiftQuery.query.filter(ShiftQuery.id.in_(query_ids)).delete(synchronize_session=False)
+
+        db.session.commit()
+
+        # E-Mails mit gesicherten Daten senden
+        for email, info_list in mails_to_send.items():
+            if not info_list: continue
+
+            user_name = info_list[0]['name']
+
+            msg_lines = []
+            for item in info_list:
+                msg_lines.append(f"- {item['date']}: {item['msg']}")
+
+            body_text = "\n".join(msg_lines)
+
+            email_subject = f"DHF-Planer: {len(info_list)} Anfragen abgelehnt"
+            email_body = f"""
+            Hallo {user_name},
+
+            folgende {len(info_list)} Anfragen wurden gelöscht (abgelehnt):
+
+            {body_text}
+
+            Viele Grüße,
+            Dein Admin
+            """
+            send_email(email_subject, [email], email_body)
+
+        _log_update_event("Massen-Bearbeitung", f"{len(queries)} Anfragen gelöscht.")
+        return jsonify({"message": f"{len(queries)} Anfragen gelöscht."}), 200
+
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Fehler bei Bulk Delete: {str(e)}")
+        return jsonify({"message": f"Fehler: {str(e)}"}), 500
+
+
 @query_bp.route('/<int:query_id>/status', methods=['PUT'])
 @scheduler_or_admin_required
 def update_query_status(query_id):
     """
     Aktualisiert den Status einer Anfrage.
+    SENDET EINE EMAIL BEI ERLEDIGUNG (Einzelaktion).
     """
     query = db.session.get(ShiftQuery, query_id)
     if not query:
@@ -427,6 +588,25 @@ def update_query_status(query_id):
         query.status = new_status
         date_str = query.shift_date.strftime('%d.%m.%Y')
         target_name = f"{query.target_user.vorname} {query.target_user.name}" if query.target_user else "Thema des Tages"
+
+        # --- E-Mail Benachrichtigung bei Genehmigung/Erledigung ---
+        if new_status == 'erledigt' and query.sender and query.sender.email:
+            email_subject = f"DHF-Planer: Anfrage erledigt ({date_str})"
+            email_body = f"""
+            Hallo {query.sender.vorname},
+
+            deine Anfrage für {date_str} wurde bearbeitet und als 'Erledigt' markiert.
+
+            Deine Nachricht: "{query.message}"
+
+            Bitte prüfe den Schichtplan für Details.
+
+            Viele Grüße,
+            Dein Admin
+            """
+            send_email(email_subject, [query.sender.email], email_body)
+        # ---------------------------------------------------------
+
         _log_update_event("Schicht-Anfragen", f"Anfrage ({target_name} am {date_str}) als '{new_status}' markiert.")
 
         db.session.commit()
@@ -452,6 +632,7 @@ def update_query_status(query_id):
 def delete_shift_query(query_id):
     """
     Löscht eine Schicht-Anfrage endgültig.
+    SENDET EINE EMAIL BEI ABLEHNUNG (wenn Admin löscht).
     """
     query = db.session.get(ShiftQuery, query_id)
     if not query:
@@ -459,6 +640,7 @@ def delete_shift_query(query_id):
 
     user_role = current_user.role.name if current_user.role else ""
 
+    # Sicherheits-Checks (wie bisher)
     if user_role == 'Hundeführer' and query.sender_user_id != current_user.id:
         return jsonify({"message": "Sie dürfen nur Ihre eigenen Anfragen löschen."}), 403
 
@@ -471,6 +653,23 @@ def delete_shift_query(query_id):
     try:
         date_str = query.shift_date.strftime('%d.%m.%Y')
         target_name = f"{query.target_user.vorname} {query.target_user.name}" if query.target_user else "Thema des Tages"
+
+        # --- E-Mail Benachrichtigung bei Ablehnung (Löschung durch Fremden) ---
+        if query.sender_user_id != current_user.id and query.sender and query.sender.email:
+            email_subject = f"DHF-Planer: Anfrage abgelehnt/gelöscht ({date_str})"
+            email_body = f"""
+            Hallo {query.sender.vorname},
+
+            deine Anfrage für den {date_str} wurde gelöscht (abgelehnt).
+
+            Deine Nachricht war: "{query.message}"
+
+            Viele Grüße,
+            Dein Admin
+            """
+            send_email(email_subject, [query.sender.email], email_body)
+        # -----------------------------------------------------------------------
+
         _log_update_event("Schicht-Anfragen", f"Anfrage ({target_name} am {date_str}) gelöscht.")
 
         db.session.delete(query)
@@ -501,6 +700,10 @@ def get_query_replies(query_id):
 @query_bp.route('/<int:query_id>/replies', methods=['POST'])
 @query_roles_required
 def create_query_reply(query_id):
+    """
+    Erstellt eine Antwort auf eine Anfrage.
+    SENDET EMAIL AN DEN EMPFÄNGER DER NACHRICHT.
+    """
     query = db.session.get(ShiftQuery, query_id)
     if not query:
         return jsonify({"message": "Anfrage nicht gefunden"}), 404
@@ -529,6 +732,23 @@ def create_query_reply(query_id):
         target_name = f"{query.target_user.vorname} {query.target_user.name}" if query.target_user else "Thema des Tages"
         _log_update_event("Schicht-Anfragen", f"Neue Antwort für '{target_name}' am {date_str}.")
         db.session.commit()
+
+        # --- E-Mail Benachrichtigung bei neuer Antwort ---
+        if query.sender_user_id != current_user.id and query.sender and query.sender.email:
+            email_subject = f"DHF-Planer: Neue Antwort zur Anfrage ({date_str})"
+            email_body = f"""
+             Hallo {query.sender.vorname},
+
+             es gibt eine neue Antwort zu deiner Anfrage für den {date_str}.
+
+             Antwort von {current_user.vorname}:
+             "{message}"
+
+             Bitte logge dich ein, um zu antworten.
+             """
+            send_email(email_subject, [query.sender.email], email_body)
+        # -----------------------------------------------
+
         return jsonify(new_reply.to_dict()), 201
     except Exception as e:
         db.session.rollback()
