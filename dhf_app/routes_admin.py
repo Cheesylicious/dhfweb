@@ -60,7 +60,8 @@ def create_user():
         diensthund=data.get('diensthund'), tutorial_gesehen=data.get('tutorial_gesehen', False),
         shift_plan_visible=data.get('shift_plan_visible', False),
         shift_plan_sort_order=data.get('shift_plan_sort_order', 999),
-        force_password_change=True
+        force_password_change=True,
+        can_see_statistics=data.get('can_see_statistics', False)  # <<< NEU
     )
     db.session.add(new_user)
 
@@ -99,6 +100,11 @@ def update_user(user_id):
     user.tutorial_gesehen = data.get('tutorial_gesehen', user.tutorial_gesehen)
     user.shift_plan_visible = data.get('shift_plan_visible', user.shift_plan_visible)
     user.shift_plan_sort_order = data.get('shift_plan_sort_order', user.shift_plan_sort_order)
+
+    # --- NEU ---
+    if 'can_see_statistics' in data:
+        user.can_see_statistics = data['can_see_statistics']
+    # --- ENDE NEU ---
 
     desc_msg = f"Benutzer '{user.vorname} {user.name}' aktualisiert."
     if is_password_changed:

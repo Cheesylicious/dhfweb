@@ -68,6 +68,10 @@ const aktivAbField = document.getElementById('user-aktiv-ab');
 const inaktivAbField = document.getElementById('user-inaktiv-ab');
 // --- ENDE NEU ---
 
+// --- NEU: Statistik-Checkbox ---
+const canSeeStatsField = document.getElementById('user-can-see-stats');
+// --- ENDE NEU ---
+
 const urlaubGesamtField = document.getElementById('user-urlaub-gesamt');
 const urlaubRestField = document.getElementById('user-urlaub-rest');
 const diensthundField = document.getElementById('user-diensthund');
@@ -312,6 +316,9 @@ addUserBtn.onclick = async () => {
     tutorialField.checked = false;
     passGeaendertField.value = 'Wird autom. gesetzt';
     zuletztOnlineField.value = 'Nie';
+    // --- NEU ---
+    canSeeStatsField.checked = false;
+    // --- ENDE NEU ---
 
     const systemTabButton = document.querySelector('.modal-tabs button[data-tab="tab-system"]');
     if (systemTabButton) systemTabButton.style.display = 'none';
@@ -345,6 +352,9 @@ async function openEditModal(user) {
     tutorialField.checked = user.tutorial_gesehen;
     passGeaendertField.value = formatDateTime(user.password_geaendert, 'datetime') || 'Unbekannt';
     zuletztOnlineField.value = formatDateTime(user.zuletzt_online, 'datetime') || 'Nie';
+    // --- NEU ---
+    canSeeStatsField.checked = user.can_see_statistics === true;
+    // --- ENDE NEU ---
 
     const systemTabButton = document.querySelector('.modal-tabs button[data-tab="tab-system"]');
     if (systemTabButton) systemTabButton.style.display = 'block';
@@ -377,7 +387,8 @@ saveUserBtn.onclick = async () => {
         urlaub_gesamt: parseInt(urlaubGesamtField.value) || 0,
         urlaub_rest: parseInt(urlaubRestField.value) || 0,
         diensthund: diensthundField.value || null,
-        tutorial_gesehen: tutorialField.checked
+        tutorial_gesehen: tutorialField.checked,
+        can_see_statistics: canSeeStatsField.checked // <<< NEU
     };
     if (!payload.passwort) { delete payload.passwort; }
 

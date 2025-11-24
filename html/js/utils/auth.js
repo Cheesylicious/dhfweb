@@ -95,6 +95,16 @@ export function initAuthCheck() {
         // Navigations-Logik
         if (navDashboard) navDashboard.style.display = isVisitor ? 'none' : 'block';
 
+        // --- STATISTIK SICHTBARKEIT ---
+        if (navStatistik) {
+            if (isAdmin || (user.can_see_statistics === true)) {
+                navStatistik.style.display = 'inline-flex';
+            } else {
+                navStatistik.style.display = 'none';
+            }
+        }
+        // --- ENDE STATISTIK ---
+
         // --- KORREKTUR: Dynamische Link-Anpassung für Planschreiber ---
         if (isAdmin) {
             if (navUsers) navUsers.style.display = 'block';
@@ -102,8 +112,6 @@ export function initAuthCheck() {
                 navFeedback.style.display = 'inline-flex';
                 navFeedback.href = 'feedback.html'; // Admin geht zur Feedback-Verwaltung
             }
-            // Statistik nur für Admins sichtbar machen
-            if (navStatistik) navStatistik.style.display = 'inline-flex';
 
         } else if (isPlanschreiber) {
             if (navUsers) navUsers.style.display = 'none';
@@ -111,12 +119,10 @@ export function initAuthCheck() {
                 navFeedback.style.display = 'inline-flex';
                 navFeedback.href = 'anfragen.html'; // Planschreiber geht direkt zu den Anfragen
             }
-            if (navStatistik) navStatistik.style.display = 'none';
 
         } else {
             if (navUsers) navUsers.style.display = 'none';
             if (navFeedback) navFeedback.style.display = 'none';
-            if (navStatistik) navStatistik.style.display = 'none';
         }
 
         if (isVisitor) {

@@ -4,7 +4,9 @@ from flask import Blueprint, request, jsonify, current_app
 from sqlalchemy import func, extract, desc, and_
 from .models import Shift, ShiftType, User
 from .extensions import db
-from .utils import admin_required
+# --- KORREKTUR: Neuer Decorator ---
+from .utils import stats_permission_required
+# --- ENDE KORREKTUR ---
 from datetime import datetime
 
 # Erstellt einen Blueprint für Statistik-Routen
@@ -12,7 +14,7 @@ statistics_bp = Blueprint('statistics', __name__, url_prefix='/api/statistics')
 
 
 @statistics_bp.route('/rankings', methods=['GET'])
-@admin_required
+@stats_permission_required  # <<< GEÄNDERT
 def get_shift_rankings():
     """
     Liefert eine Rangliste (Ranking) der Mitarbeiter pro Schichtart.
@@ -103,7 +105,7 @@ def get_shift_rankings():
 
 
 @statistics_bp.route('/user_details/<int:user_id>', methods=['GET'])
-@admin_required
+@stats_permission_required  # <<< GEÄNDERT
 def get_user_statistics(user_id):
     """
     Liefert detaillierte Statistiken für einen einzelnen Benutzer (Drill-Down).

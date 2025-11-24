@@ -1,102 +1,63 @@
-// cheesylicious/dhfweb/dhfweb-ec604d738e9bd121b65cc8557f8bb98d2aa18062/html/anfragen.js
+// html/js/pages/anfragen.js
+
+// --- IMPORTE ---
+import { API_URL, DHF_HIGHLIGHT_KEY } from '../utils/constants.js'; // Constants müssen ggf. angepasst werden, falls DHF_HIGHLIGHT_KEY dort fehlt, definiere ich ihn hier lokal zur Sicherheit oder nutze Import.
+// Da DHF_HIGHLIGHT_KEY in constants.js definiert wurde (siehe vorherige Turns), importiere ich ihn.
+import { apiFetch } from '../utils/api.js';
+import { initAuthCheck, logout } from '../utils/auth.js';
 
 // --- Globales Setup ---
-const API_URL = 'http://46.224.63.203:5000';
 let user;
 let isAdmin = false;
 let isScheduler = false; // "Planschreiber"
 let isHundefuehrer = false;
 
-// Key für localStorage (zum Springen in den Schichtplan)
-const DHF_HIGHLIGHT_KEY = 'dhf_highlight_goto';
+// Fallback, falls Konstante nicht importiert werden kann (Sicherheit)
+const LOCAL_HIGHLIGHT_KEY = 'dhf_highlight_goto';
 
-// --- Auth-Check und Logout-Setup ---
-async function logout() {
-    try { await apiFetch('/api/logout', 'POST'); }
-    catch (e) { console.error(e); }
-    finally {
-        localStorage.removeItem('dhf_user');
-        window.location.href = 'index.html?logout=true';
-    }
-}
-
+// --- 1. Authentifizierung & Zugriffsschutz ---
 try {
-    user = JSON.parse(localStorage.getItem('dhf_user'));
-    if (!user || !user.vorname || !user.role) { throw new Error("Kein User oder fehlende Rolle"); }
-    document.getElementById('welcome-user').textContent = `Willkommen, ${user.vorname}!`;
+    // Ruft die zentrale Auth-Prüfung auf.
+    // Diese Funktion setzt automatisch den Statistik-Link im Header (basierend auf Rolle/Flag).
+    const authData = initAuthCheck();
+    user = authData.user;
+    isAdmin = authData.isAdmin;
+    isScheduler = authData.isPlanschreiber;
+    isHundefuehrer = authData.isHundefuehrer;
 
-    isAdmin = user.role.name === 'admin';
-    isScheduler = user.role.name === 'Planschreiber';
-    isHundefuehrer = user.role.name === 'Hundeführer';
-
-    // *** Zugriffsschutz ***
+    // *** Seiten-spezifischer Zugriffsschutz ***
     if (!isAdmin && !isScheduler && !isHundefuehrer) {
         const wrapper = document.getElementById('content-wrapper');
-        wrapper.classList.add('restricted-view');
-        wrapper.innerHTML = `
-            <h2 style="color: #e74c3c;">Zugriff verweigert</h2>
-            <p>Nur Administratoren, Planschreiber oder Hundeführer dürfen auf die Anfragen-Verwaltung zugreifen.</p>
-        `;
-        document.getElementById('sub-nav-tasks').style.display = 'none';
+        if (wrapper) {
+            wrapper.classList.add('restricted-view');
+            wrapper.innerHTML = `
+                <h2 style="color: #e74c3c;">Zugriff verweigert</h2>
+                <p>Nur Administratoren, Planschreiber oder Hundeführer dürfen auf die Anfragen-Verwaltung zugreifen.</p>
+            `;
+        }
+        const subNav = document.getElementById('sub-nav-tasks');
+        if (subNav) subNav.style.display = 'none';
+
         throw new Error("Keine berechtigte Rolle für Anfragen-Verwaltung.");
     }
 
-    // --- KORREKTUR: UI-Anpassung ---
-    const navUsers = document.getElementById('nav-users');
-    const navFeedback = document.getElementById('nav-feedback');
+    // --- Sub-Navigation anpassen (Seite spezifisch) ---
+    // Das Hauptmenü (Nav) wurde bereits von initAuthCheck() erledigt.
+    // Hier kümmern wir uns nur um die Sub-Navigation (der Balken unter dem Header).
+    const subNavFeedback = document.getElementById('sub-nav-feedback');
 
     if (isAdmin) {
-        navUsers.style.display = 'inline-flex';
-        navFeedback.style.display = 'inline-flex';
-        navFeedback.href = 'feedback.html'; // Admin -> Feedback
-        document.getElementById('sub-nav-feedback').style.display = 'inline-block';
+        // Admin sieht den Link zu "Meldungen (Bugs)" in der Sub-Nav
+        if (subNavFeedback) subNavFeedback.style.display = 'inline-block';
     } else {
-        navUsers.style.display = 'none';
-        if (isScheduler) {
-             navFeedback.style.display = 'inline-flex';
-             navFeedback.href = 'anfragen.html'; // Planschreiber -> Anfragen (Link Korrektur)
-             document.getElementById('sub-nav-feedback').style.display = 'none';
-        } else {
-             navFeedback.style.display = 'none';
-             document.getElementById('sub-nav-feedback').style.display = 'none';
-        }
+        // Planschreiber/HF sehen ihn nicht (da sie keine Bugs verwalten)
+        if (subNavFeedback) subNavFeedback.style.display = 'none';
     }
-    document.getElementById('nav-dashboard').style.display = 'inline-flex';
-
-    document.getElementById('logout-btn').onclick = logout;
 
 } catch (e) {
-    if (!e.message.includes("berechtigte Rolle")) {
-         logout();
-    }
+    console.error("Initialisierung Anfragen gestoppt:", e.message);
+    // Script stoppt hier, wenn Auth fehlschlägt
 }
-
-// --- Globale API-Funktion ---
-async function apiFetch(endpoint, method = 'GET', body = null) {
-    const options = {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include'
-    };
-    if (body) { options.body = JSON.stringify(body); }
-    const response = await fetch(API_URL + endpoint, options);
-    if (response.status === 401 || response.status === 403) {
-        if (response.status === 401) { logout(); }
-        throw new Error('Sitzung ungültig oder fehlende Rechte.');
-    }
-    const contentType = response.headers.get("content-type");
-    let data;
-    if (contentType && contentType.indexOf("application/json") !== -1) {
-        data = await response.json();
-    } else {
-        data = { message: await response.text() };
-    }
-    if (!response.ok) {
-        throw new Error(data.message || 'API-Fehler');
-    }
-    return data;
-}
-
 
 // --- Seitenlogik ---
 
@@ -138,8 +99,7 @@ async function loadAllShiftTypes() {
  */
 async function loadQueries() {
     const currentList = (currentView === 'anfragen') ? queryListAnfragen : queryListWunsch;
-
-    currentList.innerHTML = '<li>Lade Anfragen...</li>';
+    if(currentList) currentList.innerHTML = '<li>Lade Anfragen...</li>';
 
     try {
         // Lade ALLE, Filterung erfolgt im Client (renderQueries)
@@ -147,7 +107,7 @@ async function loadQueries() {
         allQueriesCache = queries;
         renderQueries();
     } catch (error) {
-        currentList.innerHTML = `<li style="color: var(--status-offen); padding: 20px;">Fehler beim Laden: ${error.message}</li>`;
+        if(currentList) currentList.innerHTML = `<li style="color: var(--status-offen); padding: 20px;">Fehler beim Laden: ${error.message}</li>`;
     }
 }
 
@@ -264,7 +224,7 @@ function handleGoToDate(queryId) {
         targetUserId: query.target_user_id
     };
     try {
-        localStorage.setItem(DHF_HIGHLIGHT_KEY, JSON.stringify(highlightData));
+        localStorage.setItem(DHF_HIGHLIGHT_KEY || LOCAL_HIGHLIGHT_KEY, JSON.stringify(highlightData));
         window.location.href = 'schichtplan.html';
     } catch (e) {
         console.error("LocalStorage Fehler:", e);
@@ -346,8 +306,8 @@ function createQueryElement(query) {
 }
 
 function renderQueries() {
-    queryListAnfragen.innerHTML = '';
-    queryListWunsch.innerHTML = '';
+    if(queryListAnfragen) queryListAnfragen.innerHTML = '';
+    if(queryListWunsch) queryListWunsch.innerHTML = '';
 
     const queriesWunsch = allQueriesCache.filter(q => {
         if (currentFilterWunsch !== '' && q.status !== currentFilterWunsch) return false;
@@ -359,17 +319,17 @@ function renderQueries() {
         return !isWunschAnfrage(q);
     });
 
-    if (queriesAnfragen.length === 0) {
+    if (queriesAnfragen.length === 0 && queryListAnfragen) {
         queryListAnfragen.innerHTML = '<li style="color: #bdc3c7; padding: 20px; text-align: center;">Keine Anfragen für diesen Filter gefunden.</li>';
-    } else {
+    } else if (queryListAnfragen) {
         queriesAnfragen.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
         queriesAnfragen.forEach(query => queryListAnfragen.appendChild(createQueryElement(query)));
     }
 
     if (isAdmin || isHundefuehrer) {
-        if (queriesWunsch.length === 0) {
+        if (queriesWunsch.length === 0 && queryListWunsch) {
             queryListWunsch.innerHTML = '<li style="color: #bdc3c7; padding: 20px; text-align: center;">Keine Wunsch-Anfragen für diesen Filter gefunden.</li>';
-        } else {
+        } else if (queryListWunsch) {
             queriesWunsch.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
             queriesWunsch.forEach(query => queryListWunsch.appendChild(createQueryElement(query)));
         }
@@ -452,46 +412,48 @@ function escapeHTML(str) {
 // --- Init ---
 
 async function initializePage() {
-    // --- KORREKTUR: Tab-Steuerung für Hundeführer ---
+    // Tab-Steuerung für Hundeführer
     if (isAdmin || isHundefuehrer) {
-        tabWunsch.style.display = 'inline-block';
-        tabContentWunsch.style.display = 'none';
+        if(tabWunsch) tabWunsch.style.display = 'inline-block';
+        if(tabContentWunsch) tabContentWunsch.style.display = 'none';
     }
 
     if (isHundefuehrer) {
         // Hundeführer sieht den "Alle Anfragen"-Tab nicht
-        tabAnfragen.style.display = 'none';
+        if(tabAnfragen) tabAnfragen.style.display = 'none';
     }
 
     const urlParams = new URLSearchParams(window.location.search);
     const tabParam = urlParams.get('tab');
 
-    // --- KORREKTUR: Automatischer Tab-Wechsel ---
+    // Automatischer Tab-Wechsel
     // Wenn (Parameter gesetzt ODER Hundeführer) UND Berechtigung
     if ((tabParam === 'wunsch' || isHundefuehrer) && (isAdmin || isHundefuehrer)) {
          currentView = 'wunsch';
-         tabWunsch.classList.add('active');
-         tabAnfragen.classList.remove('active');
-         tabContentAnfragen.style.display = 'none';
-         tabContentWunsch.style.display = 'block';
+         if(tabWunsch) tabWunsch.classList.add('active');
+         if(tabAnfragen) tabAnfragen.classList.remove('active');
+         if(tabContentAnfragen) tabContentAnfragen.style.display = 'none';
+         if(tabContentWunsch) tabContentWunsch.style.display = 'block';
     } else {
          // Standard (nur Admin/Planschreiber)
-         tabAnfragen.classList.add('active');
-         tabContentAnfragen.style.display = 'block';
+         if(tabAnfragen) tabAnfragen.classList.add('active');
+         if(tabContentAnfragen) tabContentAnfragen.style.display = 'block';
     }
 
-    tabAnfragen.addEventListener('click', (e) => {
-        e.preventDefault();
-        if (currentView === 'anfragen') { loadQueries(); return; }
-        currentView = 'anfragen';
-        tabAnfragen.classList.add('active');
-        tabWunsch.classList.remove('active');
-        tabContentAnfragen.style.display = 'block';
-        tabContentWunsch.style.display = 'none';
-        loadQueries();
-    });
+    if(tabAnfragen) {
+        tabAnfragen.addEventListener('click', (e) => {
+            e.preventDefault();
+            if (currentView === 'anfragen') { loadQueries(); return; }
+            currentView = 'anfragen';
+            tabAnfragen.classList.add('active');
+            tabWunsch.classList.remove('active');
+            tabContentAnfragen.style.display = 'block';
+            tabContentWunsch.style.display = 'none';
+            loadQueries();
+        });
+    }
 
-    if (isAdmin || isHundefuehrer) {
+    if ((isAdmin || isHundefuehrer) && tabWunsch) {
         tabWunsch.addEventListener('click', (e) => {
             e.preventDefault();
             if (currentView === 'wunsch') { loadQueries(); return; }
@@ -504,16 +466,18 @@ async function initializePage() {
         });
     }
 
-    filterButtonsAnfragen.addEventListener('click', (e) => {
-        if (e.target.tagName === 'BUTTON') {
-            filterButtonsAnfragen.querySelector('button.active')?.classList.remove('active');
-            e.target.classList.add('active');
-            currentFilterAnfragen = e.target.dataset.filter;
-            loadQueries();
-        }
-    });
+    if(filterButtonsAnfragen) {
+        filterButtonsAnfragen.addEventListener('click', (e) => {
+            if (e.target.tagName === 'BUTTON') {
+                filterButtonsAnfragen.querySelector('button.active')?.classList.remove('active');
+                e.target.classList.add('active');
+                currentFilterAnfragen = e.target.dataset.filter;
+                loadQueries();
+            }
+        });
+    }
 
-    if (isAdmin || isHundefuehrer) {
+    if ((isAdmin || isHundefuehrer) && filterButtonsWunsch) {
         filterButtonsWunsch.addEventListener('click', (e) => {
             if (e.target.tagName === 'BUTTON') {
                 filterButtonsWunsch.querySelector('button.active')?.classList.remove('active');
@@ -524,54 +488,57 @@ async function initializePage() {
         });
     }
 
-    contentWrapper.addEventListener('click', (e) => {
-        const button = e.target.closest('button');
-        const header = e.target.closest('.item-header');
-        const queryItem = e.target.closest('.query-item');
+    if(contentWrapper) {
+        contentWrapper.addEventListener('click', (e) => {
+            const button = e.target.closest('button');
+            const header = e.target.closest('.item-header');
+            const queryItem = e.target.closest('.query-item');
 
-        if (!queryItem) {
-             if (button && button.classList.contains('btn-reply-submit')) {
-                 e.preventDefault();
-                 sendReply(button.dataset.id);
-             }
-             return;
-        }
+            if (!queryItem) {
+                 if (button && button.classList.contains('btn-reply-submit')) {
+                     e.preventDefault();
+                     sendReply(button.dataset.id);
+                 }
+                 return;
+            }
 
-        const id = queryItem.dataset.id;
-        if (button) {
-            const action = button.dataset.action;
-            if (action === 'offen' || action === 'erledigt') handleUpdateStatus(id, action);
-            else if (action === 'delete') handleDelete(id);
-            else if (action === 'goto-date') handleGoToDate(id);
-            else if (action === 'approve') handleApprove(id);
-            else if (action === 'reject') handleReject(id);
-            else if (button.classList.contains('btn-reply-submit')) {
+            const id = queryItem.dataset.id;
+            if (button) {
+                const action = button.dataset.action;
+                if (action === 'offen' || action === 'erledigt') handleUpdateStatus(id, action);
+                else if (action === 'delete') handleDelete(id);
+                else if (action === 'goto-date') handleGoToDate(id);
+                else if (action === 'approve') handleApprove(id);
+                else if (action === 'reject') handleReject(id);
+                else if (button.classList.contains('btn-reply-submit')) {
+                    e.preventDefault();
+                    sendReply(id);
+                }
+            } else if (header) {
+                const itemBody = header.nextElementSibling;
+                const isCollapsed = itemBody.style.display !== 'block';
+                itemBody.style.display = isCollapsed ? 'block' : 'none';
+                if (isCollapsed && itemBody.dataset.loaded === 'false') {
+                    loadConversation(itemBody.dataset.queryId);
+                }
+            }
+        });
+
+        contentWrapper.addEventListener('keydown', (e) => {
+            if (e.target.tagName === 'TEXTAREA' && e.target.id.startsWith('reply-input-') && e.key === 'Enter' && !e.shiftKey) {
                 e.preventDefault();
-                sendReply(id);
+                const queryId = e.target.closest('.item-body').dataset.queryId;
+                const submitBtn = document.getElementById(`reply-submit-${queryId}`);
+                if (submitBtn && !submitBtn.disabled) submitBtn.click();
             }
-        } else if (header) {
-            const itemBody = header.nextElementSibling;
-            const isCollapsed = itemBody.style.display !== 'block';
-            itemBody.style.display = isCollapsed ? 'block' : 'none';
-            if (isCollapsed && itemBody.dataset.loaded === 'false') {
-                loadConversation(itemBody.dataset.queryId);
-            }
-        }
-    });
-
-    contentWrapper.addEventListener('keydown', (e) => {
-        if (e.target.tagName === 'TEXTAREA' && e.target.id.startsWith('reply-input-') && e.key === 'Enter' && !e.shiftKey) {
-            e.preventDefault();
-            const queryId = e.target.closest('.item-body').dataset.queryId;
-            const submitBtn = document.getElementById(`reply-submit-${queryId}`);
-            if (submitBtn && !submitBtn.disabled) submitBtn.click();
-        }
-    });
+        });
+    }
 
     await loadAllShiftTypes();
     loadQueries();
 }
 
-if (isAdmin || isScheduler || isHundefuehrer) {
+// Initialisierung starten (nur wenn berechtigt)
+if (user && (isAdmin || isScheduler || isHundefuehrer)) {
     initializePage();
 }

@@ -28,21 +28,26 @@ try {
     user = authData.user;
     isAdmin = authData.isAdmin;
 
-    if (!isAdmin) {
+    // --- NEU: Erweiterter Zugriffsschutz ---
+    // Admin ODER explizit freigeschaltet
+    const hasAccess = isAdmin || (user.can_see_statistics === true);
+
+    if (!hasAccess) {
         // Zugriff verweigern
         document.getElementById('content-wrapper').innerHTML = `
             <div class="restricted-view">
                 <h2 style="color: #e74c3c;">Zugriff verweigert</h2>
-                <p>Nur Administratoren haben Zugriff auf die Statistiken.</p>
+                <p>Sie haben keine Berechtigung, die Statistiken einzusehen.</p>
                 <p>Bitte nutzen Sie den Link zum <a href="schichtplan.html" style="color: #3498db;">Schichtplan</a>.</p>
             </div>
         `;
-        // Verstecke Filterleiste falls vorhanden (da sie nicht im content-wrapper ist, je nach HTML-Struktur)
+        // Verstecke Filterleiste falls vorhanden
         const filterBar = document.querySelector('.filter-bar');
         if(filterBar) filterBar.style.display = 'none';
 
-        throw new Error("Keine Admin-Rechte für Statistik.");
+        throw new Error("Keine Rechte für Statistik.");
     }
+    // --- ENDE NEU ---
 
     // Initialisierung starten
     initializePage();

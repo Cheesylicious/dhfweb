@@ -55,3 +55,20 @@ def query_roles_required(fn):
 
     return decorator
 # --- ENDE: NEUER DECORATOR ---
+
+
+# --- NEU: DECORATOR FÜR STATISTIK (Admin ODER Explizite Freigabe) ---
+def stats_permission_required(fn):
+    """
+    Decorator: Zugriff, wenn Admin ODER wenn das Feld 'can_see_statistics' True ist.
+    """
+    @wraps(fn)
+    @login_required
+    def decorator(*args, **kwargs):
+        is_admin = (current_user.role and current_user.role.name == 'admin')
+        if not is_admin and not current_user.can_see_statistics:
+            return jsonify({"message": "Zugriff auf Statistiken verweigert."}), 403
+        return fn(*args, **kwargs)
+
+    return decorator
+# --- ENDE NEU ---

@@ -44,7 +44,20 @@ try {
     const navUsers = document.getElementById('nav-users');
     const navFeedback = document.getElementById('nav-feedback');
 
+    // --- NEU: Statistik Link Logik ---
+    const navStatistik = document.getElementById('nav-statistik');
+
     if (navDashboard) navDashboard.style.display = isVisitor ? 'none' : 'inline-flex';
+
+    // Statistik-Link anzeigen, wenn Admin oder explizite Berechtigung
+    if (navStatistik) {
+        if (isAdmin || (user.can_see_statistics === true)) {
+            navStatistik.style.display = 'inline-flex';
+        } else {
+            navStatistik.style.display = 'none';
+        }
+    }
+    // --- ENDE NEU ---
 
     if (isAdmin) {
         if (navUsers) navUsers.style.display = 'inline-flex';

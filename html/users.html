@@ -376,6 +376,8 @@
             padding: 0 30px;
             margin-bottom: 30px;
             margin-top: -1px; /* (Schließt Lücke zum Header) */
+            display: flex;
+            align-items: center;
         }
 
         .sub-nav a {
@@ -420,7 +422,6 @@
                 Meldungen
                 <span id="feedback-badge" class="nav-badge">0</span>
             </a>
-            <!-- NEU: Statistik Link (Standardmäßig ausgeblendet) -->
             <a href="statistik.html" id="nav-statistik" style="display: none;">Statistik</a>
 
             <a href="schichtplan.html" id="nav-shiftplan">Schichtplan</a>
@@ -535,6 +536,13 @@
                     <div class="form-group"><label for="user-pass-geaendert">Passwort zuletzt geändert:</label><input type="text" id="user-pass-geaendert" disabled></div>
                     <div class="form-group"><label for="user-zuletzt-online">Zuletzt Online:</label><input type="text" id="user-zuletzt-online" disabled></div>
 
+                    <div class="form-group" style="margin-top: 15px; padding: 10px; background: rgba(255,255,255,0.05); border-radius: 5px;">
+                        <input type="checkbox" id="user-can-see-stats">
+                        <label for="user-can-see-stats" style="display: inline-block; font-weight: 500;">Zugriff auf Statistiken erlauben</label>
+                        <p style="font-size: 12px; color: #bdc3c7; margin: 5px 0 0 0;">
+                            Aktivieren, damit dieser Benutzer (auch ohne Admin-Rolle) die Statistik-Seite sehen kann.
+                        </p>
+                    </div>
                     <div class="form-group" style="margin-top: 20px; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 20px;">
                         <label>Admin-Aktionen:</label>
                         <button class="btn-warning" id="force-pw-reset-btn">Passwortänderung erzwingen</button>

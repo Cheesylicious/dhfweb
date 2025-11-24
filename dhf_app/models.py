@@ -41,6 +41,9 @@ class User(db.Model, UserMixin):
     # --- Passwortzwang ---
     force_password_change = db.Column(db.Boolean, default=False, nullable=False)
 
+    # --- NEU: Statistik-Berechtigung ---
+    can_see_statistics = db.Column(db.Boolean, default=False, nullable=False)
+
     __table_args__ = (db.UniqueConstraint('vorname', 'name', name='_vorname_name_uc'),)
 
     def safe_date_iso(self, date_obj):
@@ -61,7 +64,8 @@ class User(db.Model, UserMixin):
             "zuletzt_online": self.safe_date_iso(self.zuletzt_online),
             "shift_plan_visible": self.shift_plan_visible,
             "shift_plan_sort_order": self.shift_plan_sort_order,
-            "force_password_change": self.force_password_change
+            "force_password_change": self.force_password_change,
+            "can_see_statistics": self.can_see_statistics  # <<< NEU
         }
 
 
