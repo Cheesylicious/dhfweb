@@ -18,7 +18,7 @@ class User(db.Model, UserMixin):
     id = db.Column(db.Integer, primary_key=True)
     vorname = db.Column(db.String(100), nullable=False)
     name = db.Column(db.String(100), nullable=False)
-    email = db.Column(db.String(120), unique=True, nullable=True)  # <<< NEU: E-Mail Adresse
+    email = db.Column(db.String(120), unique=True, nullable=True)
     passwort_hash = db.Column(db.String(128), nullable=False)
     role_id = db.Column(db.Integer, db.ForeignKey('role.id'), nullable=True)
     role = db.relationship('Role', backref=db.backref('users', lazy=True))
@@ -53,7 +53,7 @@ class User(db.Model, UserMixin):
 
     def to_dict(self):
         return {
-            "id": self.id, "vorname": self.vorname, "name": self.name, "email": self.email, # <<< NEU
+            "id": self.id, "vorname": self.vorname, "name": self.name, "email": self.email,
             "role": self.role.to_dict() if self.role else None, "role_id": self.role_id,
             "geburtstag": self.safe_date_iso(self.geburtstag), "telefon": self.telefon,
             "eintrittsdatum": self.safe_date_iso(self.eintrittsdatum),
@@ -366,4 +366,29 @@ class UserAnnouncementAck(db.Model):
         return {
             "user_id": self.user_id,
             "acknowledged_at": self.acknowledged_at.isoformat()
+        }
+
+
+# --- NEU: E-Mail Vorlagen Modell ---
+class EmailTemplate(db.Model):
+    """
+    Speichert anpassbare E-Mail-Vorlagen für das System.
+    """
+    id = db.Column(db.Integer, primary_key=True)
+    key = db.Column(db.String(50), unique=True, nullable=False, index=True)  # Eindeutiger Schlüssel (z.B. 'password_reset')
+    name = db.Column(db.String(100), nullable=False) # Angezeigter Name für den Admin
+    subject = db.Column(db.String(255), nullable=False) # Betreffzeile
+    body = db.Column(db.Text, nullable=False) # E-Mail Inhalt (HTML oder Text)
+    description = db.Column(db.String(255), nullable=True) # Erklärung, wann diese Mail gesendet wird
+    available_placeholders = db.Column(db.String(255), nullable=True) # JSON-String oder CSV der verfügbaren Variablen
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "key": self.key,
+            "name": self.name,
+            "subject": self.subject,
+            "body": self.body,
+            "description": self.description,
+            "available_placeholders": self.available_placeholders
         }

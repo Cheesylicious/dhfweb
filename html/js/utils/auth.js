@@ -92,6 +92,9 @@ export function initAuthCheck() {
         // --- NEU: Statistik-Link ---
         const navStatistik = document.getElementById('nav-statistik');
 
+        // --- NEU: E-Mails Link ---
+        const navEmails = document.getElementById('nav-emails');
+
         // Navigations-Logik
         if (navDashboard) navDashboard.style.display = isVisitor ? 'none' : 'block';
 
@@ -112,9 +115,12 @@ export function initAuthCheck() {
                 navFeedback.style.display = 'inline-flex';
                 navFeedback.href = 'feedback.html'; // Admin geht zur Feedback-Verwaltung
             }
+            // NEU: E-Mails Link nur für Admin
+            if (navEmails) navEmails.style.display = 'inline-flex';
 
         } else if (isPlanschreiber) {
             if (navUsers) navUsers.style.display = 'none';
+            if (navEmails) navEmails.style.display = 'none'; // Verstecken
             if (navFeedback) {
                 navFeedback.style.display = 'inline-flex';
                 navFeedback.href = 'anfragen.html'; // Planschreiber geht direkt zu den Anfragen
@@ -123,6 +129,7 @@ export function initAuthCheck() {
         } else {
             if (navUsers) navUsers.style.display = 'none';
             if (navFeedback) navFeedback.style.display = 'none';
+            if (navEmails) navEmails.style.display = 'none'; // Verstecken
         }
 
         if (isVisitor) {
