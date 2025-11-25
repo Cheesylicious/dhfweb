@@ -1,7 +1,7 @@
 # dhf_app/routes_auth.py
 
 from flask import Blueprint, request, jsonify, current_app
-from .models import User, Role, UpdateLog
+from .models import User, Role, UpdateLog, ActivityLog  # <<< ActivityLog importiert
 from .extensions import db, bcrypt
 from flask_login import login_user, logout_user, login_required, current_user
 from datetime import datetime
@@ -11,12 +11,35 @@ auth_bp = Blueprint('auth', __name__, url_prefix='/api')
 
 
 def _log_update_event(area, description):
-    """Hilfsfunktion für Logging"""
+    """Hilfsfunktion für das alte Dashboard-Log (nur noch manuell genutzt)"""
     try:
         new_log = UpdateLog(area=area, description=description, updated_at=datetime.utcnow())
         db.session.add(new_log)
     except Exception:
         pass
+
+
+def _log_activity(user, action, details=None):
+    """
+    Hilfsfunktion für das neue detaillierte ActivityLog.
+    """
+    try:
+        # Versuche IP-Adresse zu ermitteln (berücksichtigt Proxy-Header falls vorhanden)
+        if request.headers.getlist("X-Forwarded-For"):
+            ip = request.headers.getlist("X-Forwarded-For")[0]
+        else:
+            ip = request.remote_addr
+
+        new_log = ActivityLog(
+            user_id=user.id,
+            action=action,
+            details=details,
+            ip_address=ip,
+            timestamp=datetime.utcnow()
+        )
+        db.session.add(new_log)
+    except Exception as e:
+        current_app.logger.error(f"Fehler beim Activity-Logging: {e}")
 
 
 @auth_bp.route('/check_session', methods=['GET'])
@@ -37,10 +60,16 @@ def login():
     user = User.query.filter_by(vorname=data['vorname'], name=data['name']).first()
     if user and bcrypt.check_password_hash(user.passwort_hash, data['passwort']):
         login_user(user, remember=True)
+
+        # Aktivität loggen
+        _log_activity(user, "LOGIN")
+
         user.zuletzt_online = datetime.utcnow()
         db.session.commit()
         return jsonify({"message": "Login erfolgreich", "user": user.to_dict()}), 200
     else:
+        # Optional: Fehlgeschlagene Logins loggen (Vorsicht vor Log-Spamming)
+        # if user: _log_activity(user, "LOGIN_FAILED", "Falsches Passwort")
         return jsonify({"message": "Ungültige Anmeldedaten"}), 401
 
 
@@ -50,7 +79,22 @@ def logout():
     """
     Loggt den aktuellen Benutzer aus.
     """
+    # Dauer berechnen
+    duration_str = ""
+    if current_user.zuletzt_online:
+        diff = datetime.utcnow() - current_user.zuletzt_online
+        # Formatieren als HH:MM:SS
+        total_seconds = int(diff.total_seconds())
+        hours, remainder = divmod(total_seconds, 3600)
+        minutes, seconds = divmod(remainder, 60)
+        duration_str = f"Dauer: {hours}h {minutes}m {seconds}s"
+
+    _log_activity(current_user, "LOGOUT", duration_str)
+
     logout_user()
+    # Commit ist nötig für das Log, auch wenn logout_user() session cleart
+    db.session.commit()
+
     return jsonify({"message": "Erfolgreich abgemeldet"}), 200
 
 
@@ -75,6 +119,7 @@ def change_password():
         return jsonify({"message": "Das neue Passwort muss mindestens 4 Zeichen lang sein."}), 400
 
     if not bcrypt.check_password_hash(current_user.passwort_hash, old_password):
+        # _log_activity(current_user, "PASSWORD_CHANGE_FAILED", "Altes Passwort falsch")
         return jsonify({"message": "Das alte Passwort ist falsch."}), 403
 
     try:
@@ -83,7 +128,9 @@ def change_password():
         current_user.password_geaendert = datetime.utcnow()
         current_user.force_password_change = False
 
-        _log_update_event("Benutzer", f"User {current_user.vorname} {current_user.name} hat sein Passwort geändert.")
+        # Dashboard-Log deaktiviert, dafür Activity-Log:
+        _log_activity(current_user, "PASSWORD_CHANGE", "Benutzer hat Passwort geändert")
+
         db.session.commit()
 
         return jsonify({"message": "Passwort erfolgreich geändert."}), 200
@@ -126,7 +173,7 @@ def update_profile():
     else:
         email = None
 
-        # Validierung Datum
+    # Validierung Datum
     new_bday = None
     if geburtstag_str:
         try:
@@ -155,8 +202,10 @@ def update_profile():
             changes.append("Geburtstag")
 
         if changes:
-            _log_update_event("Profil",
-                              f"User {current_user.vorname} {current_user.name} hat Profil aktualisiert ({', '.join(changes)}).")
+            # Dashboard-Log deaktiviert, dafür Activity-Log:
+            details = f"Felder: {', '.join(changes)}"
+            _log_activity(current_user, "PROFILE_UPDATE", details)
+
             db.session.commit()
             return jsonify({"message": "Profil erfolgreich aktualisiert.", "user": current_user.to_dict()}), 200
         else:

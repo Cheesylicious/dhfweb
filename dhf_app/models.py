@@ -187,6 +187,7 @@ class GlobalSetting(db.Model):
 class UpdateLog(db.Model):
     """
     Protokolliert wichtige administrative Änderungen und System-Updates.
+    (Nur noch manuelle Einträge)
     """
     id = db.Column(db.Integer, primary_key=True)
     area = db.Column(db.String(100), nullable=False, index=True)
@@ -200,6 +201,31 @@ class UpdateLog(db.Model):
             "description": self.description,
             "updated_at": self.updated_at.isoformat()
         }
+
+
+# --- NEU: Activity Log (Für den 'Logs' Reiter) ---
+class ActivityLog(db.Model):
+    """
+    Protokolliert detaillierte Benutzeraktivitäten (Login, Logout, PW-Change, etc.).
+    """
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True) # Nullable, falls User gelöscht wird
+    user = db.relationship('User')
+    action = db.Column(db.String(50), nullable=False) # Typ: LOGIN, LOGOUT, UPDATE_PROFILE, etc.
+    details = db.Column(db.String(255), nullable=True) # Z.B. "Dauer: 5min", "E-Mail geändert"
+    ip_address = db.Column(db.String(50), nullable=True)
+    timestamp = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "user_name": f"{self.user.vorname} {self.user.name}" if self.user else "Unbekannt/Gelöscht",
+            "action": self.action,
+            "details": self.details,
+            "ip_address": self.ip_address,
+            "timestamp": self.timestamp.isoformat()
+        }
+# --- ENDE NEU ---
 
 
 class FeedbackReport(db.Model):

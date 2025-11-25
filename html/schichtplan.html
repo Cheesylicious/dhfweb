@@ -315,26 +315,6 @@
             /* (Hintergrund entfernt, Badge ist jetzt prominent) */
         }
 
-        /* Status-Badge Hervorhebung (wie gewünscht) */
-        #plan-status-badge {
-            font-weight: 700; /* Fetter */
-            padding: 8px 14px; /* Größer */
-            border-radius: 6px;
-            font-size: 16px; /* Größer */
-            border: 2px solid; /* Rand für Definition */
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1); /* Leichter Schatten */
-        }
-        #plan-status-badge.status-in-bearbeitung {
-            background-color: #fff3cd; /* Gelb */
-            color: #856404;
-            border-color: #ffeeba;
-        }
-        #plan-status-badge.status-fertiggestellt {
-            background-color: #d4edda; /* Grün */
-            color: #155724;
-            border-color: #c3e6cb;
-        }
-
         .plan-nav button {
             padding: 8px 16px; font-size: 15px;
             background: #f0f0f0;
@@ -371,10 +351,39 @@
             background-color: #e74c3c; /* Kräftiges Rot */
             color: white;
         }
+
+        /* --- NEU: Status Button Styles (Kombiniert Anzeige & Toggle) --- */
         #plan-status-toggle-btn {
-            background-color: #cce5ff; /* Hellblau */
-            color: #004085;
+            font-weight: 700;
+            padding: 8px 14px;
+            font-size: 15px;
+            border: 1px solid transparent;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: all 0.3s;
+            /* Standard (falls keine Klasse) */
+            background-color: #f0f0f0;
+            color: #333;
         }
+        /* Wenn "In Bearbeitung" */
+        #plan-status-toggle-btn.status-in-bearbeitung {
+            background-color: #fff3cd; /* Gelb */
+            color: #856404;
+            border-color: #ffeeba;
+        }
+        /* Wenn "Fertiggestellt" */
+        #plan-status-toggle-btn.status-fertiggestellt {
+            background-color: #d4edda; /* Grün */
+            color: #155724;
+            border-color: #c3e6cb;
+        }
+        /* Wenn User kein Admin ist -> Button sieht aus wie ein Badge (nicht klickbar) */
+        #plan-status-toggle-btn:disabled {
+            cursor: default;
+            opacity: 1; /* Keine Ausgrauung */
+            box-shadow: none;
+        }
+        /* --- ENDE NEU --- */
 
         /* --- NEU: Massen-Bearbeitung Button --- */
         #plan-bulk-mode-btn {
@@ -387,6 +396,13 @@
             color: white;
             border-color: #3498db;
             box-shadow: inset 0 0 5px rgba(0,0,0,0.2);
+        }
+
+        /* --- NEU: E-Mail Senden Button --- */
+        #plan-send-mail-btn {
+            background-color: #6f42c1; /* Lila */
+            color: white;
+            display: none; /* Initial versteckt, wird per JS gesteuert */
         }
         /* --- ENDE NEU --- */
 
@@ -1181,6 +1197,9 @@
         <nav id="main-nav"> <a href="dashboard.html" id="nav-dashboard" style="display: none;">Dashboard</a>
             <a href="users.html" id="nav-users" style="display: none;">Benutzerverwaltung</a>
             <a href="emails.html" id="nav-emails" style="display: none;">E-Mails</a>
+
+            <a href="logs.html" id="nav-logs" style="display: none;">Logs</a>
+
             <a href="feedback.html" id="nav-feedback" style="display: none;">
                 Meldungen
                 <span id="feedback-badge" class="nav-badge">0</span>
@@ -1237,9 +1256,12 @@
                             </div>
                     </div>
                     <div id="plan-status-container" style="display: none;">
-                        <span id="plan-status-badge"></span>
+                        <button id="plan-status-toggle-btn" title="Status des Plans"></button>
+
                         <button id="plan-lock-btn" class="btn-admin-action" title="Plan sperren/entsperren"></button>
-                        <button id="plan-status-toggle-btn" class="btn-admin-action" title="Status wechseln"></button>
+
+                        <button id="plan-send-mail-btn" class="btn-admin-action" title="Benachrichtigung über Fertigstellung an alle senden" style="background-color: #6f42c1; color: white; display: none;">📧 Rundmail</button>
+
                         <button id="plan-bulk-mode-btn" class="btn-admin-action" title="Massen-Bearbeitung von Wünschen">✅ Anfragen verwalten</button>
                     </div>
                 </div>

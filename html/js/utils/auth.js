@@ -71,7 +71,7 @@ export function initAuthCheck() {
             throw new Error("Kein User oder fehlende Rolle");
         }
 
-        // --- NEU: Begrüßungstext durch auffälligen Profil-Link ersetzen ---
+        // --- Begrüßungstext durch Profil-Link ersetzen ---
         const welcomeEl = document.getElementById('welcome-user');
         if (welcomeEl) {
             // Erstelle einen neuen Link
@@ -90,21 +90,18 @@ export function initAuthCheck() {
             // Styles für Interaktivität
             profileLink.style.color = '#bdc3c7';
             profileLink.style.textDecoration = 'none';
-            profileLink.style.fontWeight = '600'; // Name etwas fetter
+            profileLink.style.fontWeight = '600';
             profileLink.style.marginRight = '15px';
             profileLink.style.transition = 'all 0.2s ease';
             profileLink.style.cursor = 'pointer';
-
-            // Flexbox damit Icon und Text sauber in einer Linie sind
             profileLink.style.display = 'inline-flex';
             profileLink.style.alignItems = 'center';
             profileLink.style.padding = '5px 10px';
-            profileLink.style.borderRadius = '20px'; // "Pillen"-Form
+            profileLink.style.borderRadius = '20px';
 
-            // Hover-Effekt: Hintergrund aufleuchten lassen
             profileLink.onmouseover = () => {
                 profileLink.style.color = '#ffffff';
-                profileLink.style.backgroundColor = 'rgba(255, 255, 255, 0.1)'; // Glas-Highlight
+                profileLink.style.backgroundColor = 'rgba(255, 255, 255, 0.1)';
                 profileLink.style.boxShadow = '0 0 10px rgba(255,255,255,0.1)';
             };
             profileLink.onmouseout = () => {
@@ -113,10 +110,8 @@ export function initAuthCheck() {
                 profileLink.style.boxShadow = 'none';
             };
 
-            // Das ursprüngliche Element ersetzen
             welcomeEl.replaceWith(profileLink);
         }
-        // --- ENDE NEU ---
 
         // Rollen bestimmen
         isAdmin = user.role.name === 'admin';
@@ -134,12 +129,10 @@ export function initAuthCheck() {
         const navDashboard = document.getElementById('nav-dashboard');
         const navUsers = document.getElementById('nav-users');
         const navFeedback = document.getElementById('nav-feedback');
-
-        // --- NEU: Statistik-Link ---
         const navStatistik = document.getElementById('nav-statistik');
-
-        // --- NEU: E-Mails Link ---
         const navEmails = document.getElementById('nav-emails');
+        // --- NEU: Logs Link ---
+        const navLogs = document.getElementById('nav-logs');
 
         // Navigations-Logik
         if (navDashboard) navDashboard.style.display = isVisitor ? 'none' : 'block';
@@ -152,30 +145,33 @@ export function initAuthCheck() {
                 navStatistik.style.display = 'none';
             }
         }
-        // --- ENDE STATISTIK ---
 
-        // --- KORREKTUR: Dynamische Link-Anpassung für Planschreiber ---
+        // --- ROLLEN-BASIERTE NAV ---
         if (isAdmin) {
             if (navUsers) navUsers.style.display = 'block';
             if (navFeedback) {
                 navFeedback.style.display = 'inline-flex';
-                navFeedback.href = 'feedback.html'; // Admin geht zur Feedback-Verwaltung
+                navFeedback.href = 'feedback.html';
             }
-            // NEU: E-Mails Link nur für Admin
             if (navEmails) navEmails.style.display = 'inline-flex';
+            // NEU: Logs Link anzeigen
+            if (navLogs) navLogs.style.display = 'inline-flex';
 
         } else if (isPlanschreiber) {
             if (navUsers) navUsers.style.display = 'none';
-            if (navEmails) navEmails.style.display = 'none'; // Verstecken
+            if (navEmails) navEmails.style.display = 'none';
+            if (navLogs) navLogs.style.display = 'none'; // Verstecken
             if (navFeedback) {
                 navFeedback.style.display = 'inline-flex';
-                navFeedback.href = 'anfragen.html'; // Planschreiber geht direkt zu den Anfragen
+                navFeedback.href = 'anfragen.html';
             }
 
         } else {
+            // Hundeführer / User / Besucher
             if (navUsers) navUsers.style.display = 'none';
             if (navFeedback) navFeedback.style.display = 'none';
-            if (navEmails) navEmails.style.display = 'none'; // Verstecken
+            if (navEmails) navEmails.style.display = 'none';
+            if (navLogs) navLogs.style.display = 'none'; // Verstecken
         }
 
         if (isVisitor) {

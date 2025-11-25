@@ -136,7 +136,7 @@
 
         /* Card Header (Glas-Effekt) */
         .card-header {
-            padding: 20px 25px;
+            padding: 20px 25px; /* Etwas mehr padding */
             border-bottom: 1px solid rgba(255, 255, 255, 0.1);
             display: flex;
             justify-content: space-between;
@@ -220,6 +220,7 @@
             max-width: 500px;
             border-radius: 8px;
             box-shadow: 0 4px 30px rgba(0,0,0,0.4);
+            color: #ffffff;
         }
 
         .modal-header {
@@ -285,6 +286,8 @@
             padding: 0 30px;
             margin-bottom: 30px;
             margin-top: -1px; /* (Schließt Lücke zum Header) */
+            display: flex;
+            align-items: center;
         }
 
         .sub-nav a {
@@ -322,13 +325,19 @@
 
     <header>
         <h1>DHF-Planer</h1>
-        <nav>
+        <nav id="main-nav">
             <a href="dashboard.html" id="nav-dashboard">Dashboard</a>
             <a href="users.html" class="active" id="nav-users">Benutzerverwaltung</a>
+            <a href="emails.html" id="nav-emails" style="display: none;">E-Mails</a>
+
+            <a href="logs.html" id="nav-logs" style="display: none;">Logs</a>
+
             <a href="feedback.html" id="nav-feedback" style="display: none;">
                 Meldungen
                 <span id="feedback-badge" class="nav-badge">0</span>
             </a>
+            <a href="statistik.html" id="nav-statistik" style="display: none;">Statistik</a>
+
             <a href="schichtplan.html" id="nav-shiftplan">Schichtplan</a>
         </nav>
         <div id="user-info">

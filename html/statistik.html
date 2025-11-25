@@ -276,11 +276,13 @@
             <a href="dashboard.html" id="nav-dashboard">Dashboard</a>
             <a href="users.html" id="nav-users">Benutzerverwaltung</a>
             <a href="emails.html" id="nav-emails" style="display: none;">E-Mails</a>
+
+            <a href="logs.html" id="nav-logs" style="display: none;">Logs</a>
+
             <a href="feedback.html" id="nav-feedback">
                 Meldungen
                 <span id="feedback-badge" class="nav-badge">0</span>
             </a>
-            <!-- Statistik Link: Hier direkt sichtbar (inline-flex), da wir schon auf der Seite sind -->
             <a href="statistik.html" class="active" id="nav-statistik">Statistik</a>
 
             <a href="schichtplan.html">Schichtplan</a>
@@ -292,16 +294,13 @@
         </div>
     </header>
 
-    <!-- Sub-Nav wurde hier entfernt -->
-
     <main id="content-wrapper">
 
         <div class="filter-bar">
             <div class="filter-group">
                 <label for="filter-year">Jahr:</label>
                 <select id="filter-year">
-                    <!-- Wird per JS gefüllt -->
-                </select>
+                    </select>
             </div>
             <div class="filter-group">
                 <label for="filter-month">Monat:</label>
@@ -325,7 +324,6 @@
         </div>
 
         <div id="stats-grid">
-            <!-- Hier werden die Karten dynamisch eingefügt -->
             <div style="grid-column: 1 / -1; text-align: center; padding: 40px; color: #bdc3c7;">
                 Wählen Sie einen Zeitraum und klicken Sie auf "Anzeigen".
             </div>
@@ -333,7 +331,6 @@
 
     </main>
 
-    <!-- Modal für User-Details -->
     <div id="detail-modal" class="modal">
         <div class="modal-content">
             <div class="modal-header">
@@ -352,8 +349,7 @@
                         </tr>
                     </thead>
                     <tbody id="detail-table-body">
-                        <!-- Dynamischer Inhalt -->
-                    </tbody>
+                        </tbody>
                     <tfoot>
                         <tr class="total-row">
                             <td>GESAMT</td>
@@ -383,8 +379,7 @@
         init(); animate();
     </script>
 
-    <!-- Module Scripts -->
-    <script type="module" src="statistik.js"></script>
+    <script type="module" src="js/pages/statistik.js"></script>
     <script type="module" src="shared_feedback.js"></script>
     <script type="module" src="shared_notifications.js"></script>
 

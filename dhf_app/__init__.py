@@ -161,6 +161,15 @@ def create_default_email_templates(db_instance):
             "body": "Hallo {vorname},\n\nfolgende Anfragen wurden genehmigt und im Plan eingetragen:\n\n{nachricht}\n\nBitte prüfe den Schichtplan.\n\nViele Grüße,\nDein Admin",
             "description": "Zusammenfassung bei Massen-Genehmigung.",
             "placeholders": "{vorname}, {nachricht} (Liste der Termine)"
+        },
+        # --- NEU: Vorlage für Plan-Fertigstellung ---
+        {
+            "key": "plan_completed",
+            "name": "Schichtplan Fertiggestellt (Rundmail)",
+            "subject": "DHF-Planer: Schichtplan {monat}/{jahr} ist fertig",
+            "body": "Hallo {vorname},\n\nder Schichtplan für {monat}/{jahr} wurde fertiggestellt und ist nun einsehbar.\n\nBitte prüfe deine Dienste.\n\nViele Grüße,\nDein Admin",
+            "description": "Wird gesendet, wenn der Admin den Button 'E-Mail an alle' im Schichtplan klickt.",
+            "placeholders": "{vorname}, {name}, {monat}, {jahr}"
         }
     ]
 

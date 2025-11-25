@@ -2,7 +2,7 @@
 
 from flask import Blueprint, request, jsonify, current_app
 from .models import User, Role, ShiftType, Shift, GlobalSetting, UpdateLog, UserShiftLimit, GlobalAnnouncement, \
-    UserAnnouncementAck
+    UserAnnouncementAck, ActivityLog
 from .extensions import db, bcrypt
 from flask_login import login_required, current_user
 from .utils import admin_required
@@ -32,6 +32,55 @@ def _log_update_event(area, description):
 def none_if_empty(value):
     """Konvertiert leere Strings ('') in None, damit sie als NULL in die DB geschrieben werden."""
     return None if value == '' else value
+
+
+# --- NEU: ROUTE FÜR ACTIVITY LOGS (LOGS TABELLE) ---
+@admin_bp.route('/activity_logs', methods=['GET'])
+@admin_required
+def get_activity_logs():
+    """
+    Ruft paginierte und gefilterte Einträge aus dem ActivityLog ab.
+    """
+    try:
+        page = request.args.get('page', 1, type=int)
+        per_page = request.args.get('per_page', 20, type=int)
+        action_filter = request.args.get('action')
+        user_filter = request.args.get('user')  # Suchstring für Name
+
+        query = ActivityLog.query
+
+        # Filter anwenden
+        if action_filter:
+            query = query.filter(ActivityLog.action == action_filter)
+
+        if user_filter:
+            # Join nötig, um nach User-Namen zu filtern
+            query = query.join(User).filter(
+                or_(
+                    User.vorname.ilike(f"%{user_filter}%"),
+                    User.name.ilike(f"%{user_filter}%")
+                )
+            )
+
+        # Sortierung: Neueste zuerst
+        query = query.order_by(desc(ActivityLog.timestamp))
+
+        # Paginierung
+        pagination = query.paginate(page=page, per_page=per_page, error_out=False)
+
+        return jsonify({
+            "total": pagination.total,
+            "pages": pagination.pages,
+            "page": pagination.page,
+            "items": [log.to_dict() for log in pagination.items]
+        }), 200
+
+    except Exception as e:
+        current_app.logger.error(f"Fehler beim Laden der Activity Logs: {e}")
+        return jsonify({"message": f"Serverfehler: {str(e)}"}), 500
+
+
+# --- ENDE NEU ---
 
 
 # --- NEU: ROUTE FÜR TEST-EMAIL BROADCAST ---
@@ -64,8 +113,10 @@ def send_test_broadcast():
             )
             count += 1
 
-        _log_update_event("System", f"Test-Email an {count} Benutzer gesendet.")
-        db.session.commit()  # Commit für das Log
+        # Manuelle Aktion -> Loggen erlaubt/erwünscht
+        # _log_update_event("System", f"Test-Email an {count} Benutzer gesendet.")
+
+        db.session.commit()  # Commit für das Log (falls aktiv)
 
         return jsonify({"message": f"Test-E-Mail an {count} Empfänger wurde in den Versand gegeben."}), 200
 
@@ -112,8 +163,7 @@ def create_user():
         )
         db.session.add(new_user)
 
-        _log_update_event("Benutzerverwaltung",
-                          f"Neuer Benutzer '{data['vorname']} {data['name']}' erstellt. (PW-Änderung erzwungen)")
+        # _log_update_event("Benutzerverwaltung", f"Neuer Benutzer '{data['vorname']} {data['name']}' erstellt. (PW-Änderung erzwungen)") # DEAKTIVIERT
 
         db.session.commit()
         return jsonify(new_user.to_dict()), 201
@@ -166,7 +216,8 @@ def update_user(user_id):
         desc_msg = f"Benutzer '{user.vorname} {user.name}' aktualisiert."
         if is_password_changed:
             desc_msg += " (Passwort geändert)"
-        _log_update_event("Benutzerverwaltung", desc_msg)
+
+        # _log_update_event("Benutzerverwaltung", desc_msg) # DEAKTIVIERT
 
         db.session.commit()
         return jsonify(user.to_dict()), 200
@@ -187,7 +238,7 @@ def force_password_reset(user_id):
 
     try:
         user.force_password_change = True
-        _log_update_event("Benutzerverwaltung", f"Passwort-Reset für '{user.vorname} {user.name}' erzwungen.")
+        # _log_update_event("Benutzerverwaltung", f"Passwort-Reset für '{user.vorname} {user.name}' erzwungen.") # DEAKTIVIERT
         db.session.commit()
         return jsonify({"message": "Passwort-Änderung beim nächsten Login erzwungen."}), 200
     except Exception as e:
@@ -205,7 +256,7 @@ def delete_user(user_id):
 
     name = f"{user.vorname} {user.name}"
     db.session.delete(user)
-    _log_update_event("Benutzerverwaltung", f"Benutzer '{name}' gelöscht.")
+    # _log_update_event("Benutzerverwaltung", f"Benutzer '{name}' gelöscht.") # DEAKTIVIERT
 
     db.session.commit()
     return jsonify({"message": "Benutzer erfolgreich gelöscht"}), 200
@@ -227,7 +278,7 @@ def update_user_display_settings():
                 user.shift_plan_visible = item.get('visible', user.shift_plan_visible)
                 user.shift_plan_sort_order = item.get('order', user.shift_plan_sort_order)
 
-        _log_update_event("Mitarbeiter Sortierung", "Anzeige- und Sortiereinstellungen aktualisiert.")
+        # _log_update_event("Mitarbeiter Sortierung", "Anzeige- und Sortiereinstellungen aktualisiert.") # DEAKTIVIERT
 
         db.session.commit()
         return jsonify({"message": "Anzeige-Einstellungen gespeichert"}), 200
@@ -298,7 +349,7 @@ def update_user_limits(user_id):
                 changes_count += 1
 
         if changes_count > 0:
-            _log_update_event("Benutzerverwaltung", f"Schicht-Limits für '{user.vorname} {user.name}' aktualisiert.")
+            # _log_update_event("Benutzerverwaltung", f"Schicht-Limits für '{user.vorname} {user.name}' aktualisiert.") # DEAKTIVIERT
             db.session.commit()
             return jsonify({"message": f"{changes_count} Limits aktualisiert."}), 200
         else:
@@ -328,7 +379,7 @@ def create_role():
     if existing: return jsonify({"message": "Rolle existiert bereits"}), 409
     new_role = Role(name=data['name'], description=data.get('description', ''))
     db.session.add(new_role)
-    _log_update_event("Rollenverwaltung", f"Neue Rolle '{data['name']}' erstellt.")
+    # _log_update_event("Rollenverwaltung", f"Neue Rolle '{data['name']}' erstellt.") # DEAKTIVIERT
     db.session.commit()
     return jsonify(new_role.to_dict()), 201
 
@@ -341,7 +392,7 @@ def update_role(role_id):
     data = request.get_json()
     role.name = data.get('name', role.name)
     role.description = data.get('description', role.description)
-    _log_update_event("Rollenverwaltung", f"Rolle '{role.name}' aktualisiert.")
+    # _log_update_event("Rollenverwaltung", f"Rolle '{role.name}' aktualisiert.") # DEAKTIVIERT
     db.session.commit()
     return jsonify(role.to_dict()), 200
 
@@ -355,7 +406,7 @@ def delete_role(role_id):
     if role.users: return jsonify({"message": "Rolle wird noch von Benutzern verwendet"}), 400
     name = role.name
     db.session.delete(role)
-    _log_update_event("Rollenverwaltung", f"Rolle '{name}' gelöscht.")
+    # _log_update_event("Rollenverwaltung", f"Rolle '{name}' gelöscht.") # DEAKTIVIERT
     db.session.commit()
     return jsonify({"message": "Rolle erfolgreich gelöscht"}), 200
 
@@ -398,7 +449,7 @@ def create_shifttype():
         staffing_sort_order=data.get('staffing_sort_order', 999)
     )
     db.session.add(new_type)
-    _log_update_event("Schichtarten", f"Neue Schichtart '{data['name']}' erstellt.")
+    # _log_update_event("Schichtarten", f"Neue Schichtart '{data['name']}' erstellt.") # DEAKTIVIERT
     db.session.commit()
     return jsonify(new_type.to_dict()), 201
 
@@ -429,7 +480,7 @@ def update_shifttype(type_id):
     st.min_staff_holiday = data.get('min_staff_holiday', st.min_staff_holiday)
     st.staffing_sort_order = data.get('staffing_sort_order', st.staffing_sort_order)
 
-    _log_update_event("Schichtarten", f"Schichtart '{st.name}' aktualisiert.")
+    # _log_update_event("Schichtarten", f"Schichtart '{st.name}' aktualisiert.") # DEAKTIVIERT
     db.session.commit()
     return jsonify(st.to_dict()), 200
 
@@ -446,7 +497,7 @@ def delete_shifttype(type_id):
     name = st.name
     db.session.delete(st)
     db.session.commit()
-    _log_update_event("Schichtarten", f"Schichtart '{name}' gelöscht.")
+    # _log_update_event("Schichtarten", f"Schichtart '{name}' gelöscht.") # DEAKTIVIERT
     return jsonify({"message": "Schicht-Typ gelöscht"}), 200
 
 
@@ -468,7 +519,7 @@ def update_staffing_order():
             if type_id in type_map:
                 type_map[type_id].staffing_sort_order = order
 
-        _log_update_event("Schichtarten", "Sortierreihenfolge der Besetzung (SOLL/IST) aktualisiert.")
+        # _log_update_event("Schichtarten", "Sortierreihenfolge der Besetzung (SOLL/IST) aktualisiert.") # DEAKTIVIERT
         db.session.commit()
         return jsonify({"message": "Sortierreihenfolge der Besetzung gespeichert"}), 200
     except Exception as e:
@@ -506,7 +557,7 @@ def update_global_settings():
                 db.session.add(new_setting)
             updated_count += 1
 
-        _log_update_event("Farbeinstellungen", f"{updated_count} globale Farben/Einstellungen gespeichert.")
+        # _log_update_event("Farbeinstellungen", f"{updated_count} globale Farben/Einstellungen gespeichert.") # DEAKTIVIERT
         db.session.commit()
         return jsonify({"message": f"{updated_count} Einstellungen erfolgreich gespeichert."}), 200
     except Exception as e:
@@ -556,7 +607,7 @@ def manual_update_log():
         return jsonify({"message": "Beschreibung ist erforderlich"}), 400
 
     try:
-        _log_update_event(area, description)
+        _log_update_event(area, description)  # HIER BLEIBT ES AKTIV
         db.session.commit()
         return jsonify({"message": "Update erfolgreich protokolliert"}), 201
     except Exception as e:
@@ -565,7 +616,7 @@ def manual_update_log():
         return jsonify({"message": f"Datenbankfehler: {str(e)}"}), 500
 
 
-# --- NEU: DASHBOARD MITTEILUNGEN ---
+# --- DASHBOARD MITTEILUNGEN ---
 
 @admin_bp.route('/announcement', methods=['GET'])
 @login_required
@@ -602,7 +653,7 @@ def update_announcement():
     )
 
     db.session.add(new_announcement)
-    _log_update_event("Dashboard", "Neue Mitteilung veröffentlicht.")
+    # _log_update_event("Dashboard", "Neue Mitteilung veröffentlicht.") # DEAKTIVIERT
 
     db.session.commit()
     return jsonify(new_announcement.to_dict()), 200

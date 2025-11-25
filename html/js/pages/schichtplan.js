@@ -43,7 +43,7 @@ let sortableStaffingInstance = null;
 let generatorInterval = null;
 let isGenerating = false;
 
-// --- BULK MODE VARIABLEN (NEU) ---
+// --- BULK MODE VARIABLEN ---
 let isBulkMode = false;
 let selectedQueryIds = new Set();
 
@@ -58,11 +58,14 @@ const nextMonthBtn = document.getElementById('next-month-btn');
 const staffingSortToggleBtn = document.getElementById('staffing-sort-toggle');
 
 const planStatusContainer = document.getElementById('plan-status-container');
-const planStatusBadge = document.getElementById('plan-status-badge');
+// planStatusBadge entfernt!
 const planLockBtn = document.getElementById('plan-lock-btn');
 const planStatusToggleBtn = document.getElementById('plan-status-toggle-btn');
 
-// NEU: Bulk Mode Elemente
+// NEU: E-Mail Senden Button
+const planSendMailBtn = document.getElementById('plan-send-mail-btn');
+
+// Bulk Mode Elemente
 const planBulkModeBtn = document.getElementById('plan-bulk-mode-btn');
 const bulkActionBarPlan = document.getElementById('bulk-action-bar-plan');
 const bulkStatusText = document.getElementById('bulk-status-text');
@@ -163,7 +166,8 @@ try {
         if (openGenSettingsLink) openGenSettingsLink.style.display = 'none';
         if (deletePlanLink) deletePlanLink.style.display = 'none';
         if (settingsDropdown) settingsDropdown.style.display = 'none';
-        if (planBulkModeBtn) planBulkModeBtn.style.display = 'none'; // Bulk nur für Admin
+        if (planBulkModeBtn) planBulkModeBtn.style.display = 'none';
+        if (planSendMailBtn) planSendMailBtn.style.display = 'none'; // Button nur für Admin
     } else {
         if (planBulkModeBtn) planBulkModeBtn.style.display = 'inline-block';
     }
@@ -264,7 +268,6 @@ function refreshSingleCell(userId, dateStr) {
     } else if (isShiftRequestCell) {
         cell.textContent = shiftRequestText;
         cellClasses += ' shift-request-cell';
-        // --- NEU: Query ID speichern ---
         if (wunschQuery) cell.dataset.queryId = wunschQuery.id;
     } else {
          if (eventType === 'holiday') cellClasses += ` day-color-${eventType}`;
@@ -277,7 +280,6 @@ function refreshSingleCell(userId, dateStr) {
 
     cell.className = cellClasses;
 
-    // --- NEU: Selection Status wiederherstellen ---
     if (isBulkMode && wunschQuery && selectedQueryIds.has(wunschQuery.id)) {
         cell.classList.add('selected');
     }
@@ -681,7 +683,6 @@ function hideClickActionModal() {
 }
 
 function showClickActionModal(event, user, dateStr, cell, isCellOnOwnRow) {
-    // --- NEU: Abbruch wenn Bulk Mode aktiv ---
     if (isBulkMode) return;
 
     event.preventDefault();
@@ -829,7 +830,6 @@ async function populateClickModalShiftButtons(mode) {
         });
 
     } else {
-        // --- HUNDEFÜHRER MODUS (ASYNC + VERTIKAL) ---
         targetContainer = camHundefuehrerRequests;
 
         targetContainer.innerHTML = '<div class="cam-section-title">Wunsch-Anfrage</div><div style="color:#bbb; font-size:12px; padding:5px;">Lade Limits...</div>';
@@ -863,10 +863,9 @@ async function populateClickModalShiftButtons(mode) {
                 let limitInfoHtml = '';
                 let isDisabled = false;
 
-                // --- NEU: "6" nur Freitags + kein Feiertag ---
                 if (def.realAbbr === '6') {
                     const d = new Date(clickModalContext.dateStr);
-                    const dayOfWeek = d.getDay(); // 5 = Freitag
+                    const dayOfWeek = d.getDay();
                     const isHoliday = currentSpecialDates[clickModalContext.dateStr] === 'holiday';
 
                     if (dayOfWeek !== 5 || isHoliday) {
@@ -875,7 +874,6 @@ async function populateClickModalShiftButtons(mode) {
                     }
                 }
 
-                // Falls noch nicht durch Regel oben deaktiviert, Limit prüfen
                 if (!isDisabled) {
                     const limitData = limits[def.realAbbr];
                     if (limitData) {
@@ -925,7 +923,6 @@ async function populateClickModalShiftButtons(mode) {
 }
 
 window.addEventListener('click', (e) => {
-    // --- NEU: Ignorieren wenn Bulk Mode Elements geklickt werden ---
     if (!e.target.closest('.grid-cell') && !e.target.closest('#click-action-modal') && !e.target.closest('#plan-bulk-mode-btn') && !e.target.closest('#bulk-action-bar-plan')) {
         hideClickActionModal();
     }
@@ -967,14 +964,12 @@ if (openGenSettingsLink) {
         openGenSettingsModal();
     };
 }
-// --- NEU: Listener für Lösch-Link ---
 if (deletePlanLink) {
     deletePlanLink.onclick = (e) => {
         e.preventDefault();
         clearShiftPlan();
     };
 }
-// --- ENDE NEU ---
 
 if (closeGeneratorModalBtn) closeGeneratorModalBtn.onclick = () => closeModal(generatorModal);
 if (startGeneratorBtn) startGeneratorBtn.onclick = startGenerator;
@@ -993,7 +988,6 @@ if (camLinkNotiz) {
 if (camLinkDelete) {
     camLinkDelete.onclick = () => {
         const specificId = camLinkDelete.dataset.targetQueryId;
-        // --- ÄNDERUNG 2: Force=true, Context übergeben, um Popup zu vermeiden und Update zu triggern ---
         deleteShiftQueryFromModal(specificId, true, clickModalContext);
         hideClickActionModal();
     };
@@ -1137,12 +1131,23 @@ function updatePlanStatusUI(statusData) {
 
     planStatusContainer.style.display = 'flex';
 
-    if (statusData.status === "Fertiggestellt") {
-        planStatusBadge.textContent = "Fertiggestellt";
-        planStatusBadge.className = 'status-fertiggestellt';
-    } else {
-        planStatusBadge.textContent = statusData.status || "In Bearbeitung";
-        planStatusBadge.className = 'status-in-bearbeitung';
+    // --- STATUS BUTTON (Kombiniert Anzeige & Toggle) ---
+    if (planStatusToggleBtn) {
+        // Text setzen
+        planStatusToggleBtn.textContent = statusData.status || "In Bearbeitung";
+
+        // Klasse setzen (für Farbe)
+        planStatusToggleBtn.className = ''; // Reset
+        if (statusData.status === "Fertiggestellt") {
+            planStatusToggleBtn.classList.add('status-fertiggestellt');
+            planStatusToggleBtn.title = isAdmin ? "Klicken, um auf 'In Bearbeitung' zu setzen" : "Plan ist fertiggestellt";
+        } else {
+            planStatusToggleBtn.classList.add('status-in-bearbeitung');
+            planStatusToggleBtn.title = isAdmin ? "Klicken, um auf 'Fertiggestellt' zu setzen" : "Plan ist in Bearbeitung";
+        }
+
+        // Admin-Check: Nur Admins können klicken
+        planStatusToggleBtn.disabled = !isAdmin;
     }
 
     if (statusData.is_locked) {
@@ -1150,7 +1155,6 @@ function updatePlanStatusUI(statusData) {
         planLockBtn.title = "Plan entsperren, um Bearbeitung zu erlauben";
         planLockBtn.classList.add('locked');
         document.body.classList.add('plan-locked');
-        // NEU: Wenn gesperrt, Bulk Mode deaktivieren
         if(isBulkMode) toggleBulkMode();
     } else {
         planLockBtn.textContent = "Offen";
@@ -1159,13 +1163,23 @@ function updatePlanStatusUI(statusData) {
         document.body.classList.remove('plan-locked');
     }
 
-    if (statusData.status === "Fertiggestellt") {
-        planStatusToggleBtn.textContent = "Als 'In Bearbeitung' markieren";
-        planStatusToggleBtn.title = "Status auf 'In Bearbeitung' zurücksetzen";
-    } else {
-        planStatusToggleBtn.textContent = "Als 'Fertiggestellt' markieren";
-        planStatusToggleBtn.title = "Plan als 'Fertiggestellt' markieren";
+    // FIX 1: Sichtbarkeit für Alle erzwingen (Class Removal und Display Setzen)
+    if (planLockBtn) {
+        planLockBtn.classList.remove('btn-admin-action');
+        planLockBtn.style.display = 'inline-block';
+        planLockBtn.disabled = !isAdmin;
     }
+
+    // --- NEU: Button nur anzeigen, wenn fertiggestellt UND gesperrt ---
+    if (planSendMailBtn) {
+        // FIX 2: Nur für Admins sichtbar
+        if (isAdmin && statusData.status === "Fertiggestellt" && statusData.is_locked) {
+             planSendMailBtn.style.display = 'inline-block';
+        } else {
+             planSendMailBtn.style.display = 'none';
+        }
+    }
+    // --- ENDE NEU ---
 }
 
 async function handleUpdatePlanStatus(newStatus, newLockState) {
@@ -1193,6 +1207,32 @@ async function handleUpdatePlanStatus(newStatus, newLockState) {
         planStatusToggleBtn.disabled = false;
     }
 }
+
+// --- NEU: Logik für den Rundmail-Button ---
+async function sendCompletionNotification() {
+    if (!confirm("Möchten Sie wirklich eine Rundmail an alle Mitarbeiter senden, dass der Plan fertiggestellt ist?")) return;
+
+    planSendMailBtn.disabled = true;
+    planSendMailBtn.textContent = "Sende...";
+
+    try {
+        const response = await apiFetch('/api/shifts/send_completion_notification', 'POST', {
+            year: currentYear,
+            month: currentMonth
+        });
+        alert(response.message);
+    } catch (e) {
+        alert("Fehler beim Senden: " + e.message);
+    } finally {
+        planSendMailBtn.disabled = false;
+        planSendMailBtn.textContent = "📧 Rundmail";
+    }
+}
+
+if (planSendMailBtn) {
+    planSendMailBtn.onclick = sendCompletionNotification;
+}
+// --- ENDE NEU ---
 
 
 function buildGridDOM() {
@@ -2443,11 +2483,11 @@ async function handleAdminReject(query) {
     }
 }
 
-// --- BULK MODE LOGIK (NEU) ---
+// --- BULK MODE LOGIK ---
 
 function toggleBulkMode() {
     isBulkMode = !isBulkMode;
-    
+
     if (isBulkMode) {
         // Aktivieren
         if (planBulkModeBtn) {
@@ -2466,7 +2506,7 @@ function toggleBulkMode() {
         }
         document.body.classList.remove('bulk-mode-active');
         if(bulkActionBarPlan) bulkActionBarPlan.classList.remove('visible');
-        
+
         // Selektionen entfernen
         document.querySelectorAll('.grid-cell.selected').forEach(el => el.classList.remove('selected'));
         selectedQueryIds.clear();
@@ -2491,7 +2531,7 @@ function handleBulkCellClick(cell, userId, dateStr) {
 function updateBulkStatus() {
     const count = selectedQueryIds.size;
     if(bulkStatusText) bulkStatusText.textContent = `${count} ausgewählt`;
-    
+
     // Buttons aktivieren/deaktivieren
     if(bulkApproveBtn) bulkApproveBtn.disabled = count === 0;
     if(bulkRejectBtn) bulkRejectBtn.disabled = count === 0;
@@ -2499,12 +2539,12 @@ function updateBulkStatus() {
 
 async function performPlanBulkAction(actionType) {
     if (selectedQueryIds.size === 0) return;
-    
+
     const actionName = actionType === 'approve' ? 'Genehmigen' : 'Ablehnen';
     if (!confirm(`${selectedQueryIds.size} Anfragen ${actionName}?`)) return;
 
     const endpoint = actionType === 'approve' ? '/api/queries/bulk_approve' : '/api/queries/bulk_delete';
-    
+
     // UI sperren
     if(bulkApproveBtn) bulkApproveBtn.disabled = true;
     if(bulkRejectBtn) bulkRejectBtn.disabled = true;
@@ -2514,22 +2554,22 @@ async function performPlanBulkAction(actionType) {
         const response = await apiFetch(endpoint, 'POST', {
             query_ids: Array.from(selectedQueryIds)
         });
-        
+
         alert(response.message);
-        
+
         // Bulk Mode beenden und neu laden
         toggleBulkMode();
         await loadShiftQueries(); // Daten neu holen
         await renderGrid();       // Grid komplett neu zeichnen (um Schichten anzuzeigen)
         triggerNotificationUpdate();
-        
+
     } catch (error) {
         alert("Fehler: " + error.message);
         updateBulkStatus(); // Reset buttons
     }
 }
 
-// --- EVENT LISTENER FÜR BULK MODE (NEU) ---
+// --- EVENT LISTENER FÜR BULK MODE ---
 if (planBulkModeBtn) {
     planBulkModeBtn.onclick = (e) => {
         e.preventDefault();

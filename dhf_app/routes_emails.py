@@ -71,13 +71,17 @@ def send_test_email_from_template():
         return jsonify({"message": "Vorlage nicht gefunden."}), 404
 
     # Dummy-Daten für Platzhalter
+    # --- UPDATE: Monat und Jahr hinzugefügt für Rundmail-Test ---
+    now = datetime.now()
     dummy_context = {
         "vorname": "Max",
         "name": "Mustermann",
-        "datum": datetime.now().strftime('%d.%m.%Y'),
+        "datum": now.strftime('%d.%m.%Y'),
         "nachricht": "Dies ist eine Testnachricht.",
         "status": "Erledigt",
-        "shift_abbrev": "T."
+        "shift_abbrev": "T.",
+        "monat": now.strftime('%m'),
+        "jahr": now.strftime('%Y')
     }
 
     try:

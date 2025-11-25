@@ -12,6 +12,8 @@ from datetime import datetime, timedelta, date
 from .violation_manager import ViolationManager
 import calendar
 from collections import defaultdict
+# --- NEU: Import für Template-Email ---
+from .email_service import send_template_email
 
 shifts_bp = Blueprint('shifts', __name__, url_prefix='/api')
 
@@ -397,7 +399,7 @@ def clear_shift_plan():
         ).delete(synchronize_session=False)
 
         if num_deleted > 0:
-            _log_update_event("Schichtplan", f"Plan für {month:02d}/{year} geleert. ({num_deleted} Einträge gelöscht, gesperrte behalten).")
+            # _log_update_event("Schichtplan", f"Plan für {month:02d}/{year} geleert. ({num_deleted} Einträge gelöscht, gesperrte behalten).") # DEAKTIVIERT
             db.session.commit()
             return jsonify({"message": f"Plan erfolgreich geleert. {num_deleted} Schichten gelöscht."}), 200
         else:
@@ -407,6 +409,8 @@ def clear_shift_plan():
         db.session.rollback()
         current_app.logger.error(f"Fehler beim Leeren des Plans: {str(e)}")
         return jsonify({"message": f"Datenbankfehler: {str(e)}"}), 500
+
+
 # --- ENDE NEU ---
 
 
@@ -440,7 +444,7 @@ def save_shift():
         # --- NEU: Check auf individuelle Sperre ---
         if existing_shift and existing_shift.is_locked:
             return jsonify({
-                               "message": "Diese Schicht ist einzeln gesperrt (Schloss-Symbol). Bitte entsperren (Leertaste), um sie zu ändern."}), 403
+                "message": "Diese Schicht ist einzeln gesperrt (Schloss-Symbol). Bitte entsperren (Leertaste), um sie zu ändern."}), 403
         # --- ENDE NEU ---
 
         if existing_shift:
@@ -532,10 +536,69 @@ def update_plan_status():
         status_obj.status = data.get('status', status_obj.status)
         status_obj.is_locked = data.get('is_locked', status_obj.is_locked)
 
-        _log_update_event("Schichtplan Status",
-                          f"Status {month}/{year}: {status_obj.status} (Locked: {status_obj.is_locked})")
+        # _log_update_event("Schichtplan Status", f"Status {month}/{year}: {status_obj.status} (Locked: {status_obj.is_locked})") # DEAKTIVIERT
         db.session.commit()
         return jsonify(status_obj.to_dict()), 200
     except Exception as e:
         db.session.rollback()
         return jsonify({"message": f"Fehler: {str(e)}"}), 500
+
+
+# --- NEU: Route für Rundmail bei Fertigstellung ---
+@shifts_bp.route('/shifts/send_completion_notification', methods=['POST'])
+@admin_required
+def send_completion_notification():
+    """
+    Sendet die Vorlage 'plan_completed' an alle User mit E-Mail-Adresse.
+    Erfordert, dass der Plan 'Fertiggestellt' und 'is_locked' ist (Validierung).
+    """
+    data = request.get_json() or {}
+    try:
+        year = int(data.get('year'))
+        month = int(data.get('month'))
+    except (TypeError, ValueError):
+        return jsonify({"message": "Jahr und Monat erforderlich."}), 400
+
+    # 1. Status prüfen (Sicherheitscheck)
+    status_obj = ShiftPlanStatus.query.filter_by(year=year, month=month).first()
+    if not status_obj:
+        return jsonify({"message": "Planstatus nicht gefunden. Bitte zuerst speichern."}), 404
+
+    if status_obj.status != "Fertiggestellt" or not status_obj.is_locked:
+        return jsonify({"message": "Plan muss 'Fertiggestellt' und 'Gesperrt' sein, um diese Rundmail zu senden."}), 400
+
+    try:
+        # 2. User laden
+        users = User.query.filter(User.email != None, User.email != "").all()
+        if not users:
+            return jsonify({"message": "Keine Benutzer mit E-Mail-Adresse gefunden."}), 404
+
+        count = 0
+        for user in users:
+            # Kontext für die Vorlage
+            context = {
+                "vorname": user.vorname,
+                "name": user.name,
+                "monat": f"{month:02d}",
+                "jahr": str(year)
+            }
+            send_template_email(
+                template_key="plan_completed",
+                recipient_email=user.email,
+                context=context
+            )
+            count += 1
+
+        # _log_update_event("Benachrichtigung", f"Rundmail 'Schichtplan fertig' an {count} Benutzer gesendet ({month}/{year}).") # DEAKTIVIERT? Nein, dies ist eine explizite manuelle Aktion, lassen wir vielleicht?
+        # Wenn wirklich ALLE automatischen weg sollen, dann auch das hier.
+        # Wenn der Button im Dashboard "Update protokollieren" der EINZIGE Weg sein soll, dann raus damit.
+        # Ich nehme es raus, um strikt zu sein.
+
+        db.session.commit()
+
+        return jsonify({"message": f"Benachrichtigung wurde an {count} Benutzer versendet."}), 200
+
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Fehler bei Rundmail: {str(e)}")
+        return jsonify({"message": f"Fehler beim Senden: {str(e)}"}), 500

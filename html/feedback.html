@@ -9,6 +9,9 @@
         @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap');
 
         :root {
+            --status-offen: #f0ad4e; /* Gelb/Orange für Offen */
+            --status-erledigt: #95a5a6; /* Grau für Erledigt */
+            /* Farben für Feedback Status */
             --status-neu: #e74c3c;
             --status-gesehen: #3498db;
             --status-archiviert: #95a5a6;
@@ -53,7 +56,7 @@
         header nav {
             display: flex;
             gap: 20px;
-            align-items: center; /* Hinzugefügt für Konsistenz */
+            align-items: center;
         }
 
         header nav a {
@@ -64,8 +67,8 @@
             padding: 10px;
             border-radius: 5px;
             transition: background-color 0.3s, color 0.3s;
-            display: inline-flex; /* Hinzugefügt für Konsistenz */
-            align-items: center; /* Hinzugefügt für Konsistenz */
+            display: inline-flex;
+            align-items: center;
         }
 
         header nav a.active, header nav a:hover {
@@ -73,16 +76,15 @@
             color: #ffffff;
         }
 
-        /* (Stil für den neuen Admin-Badge) */
         .nav-badge {
-            background: var(--status-neu);
+            background: #e74c3c;
             color: white;
             font-size: 10px;
             font-weight: 600;
             padding: 2px 5px;
             border-radius: 5px;
-            margin-left: 8px; /* Korrigiert auf 8px für Konsistenz */
-            display: none; /* (Wird per JS angezeigt) */
+            margin-left: 8px;
+            display: none;
         }
 
         #user-info {
@@ -106,7 +108,6 @@
             background: #c0392b;
         }
 
-        /* (Neuer Report-Button - wird in shared_feedback.js erstellt) */
         .report-btn {
             background: #3498db;
             margin-right: 15px;
@@ -115,7 +116,7 @@
             background: #2980b9;
         }
 
-        /* --- START NEU: Sub-Nav (Kopiert von anfragen.html) --- */
+        /* Sub-Nav (Glas-Effekt) */
         .sub-nav {
             background: rgba(255, 255, 255, 0.05);
             border-bottom: 1px solid rgba(255, 255, 255, 0.1);
@@ -144,7 +145,7 @@
             color: #ffffff;
             border-bottom-color: #3498db;
         }
-        /* --- ENDE NEU --- */
+
 
         main {
             padding: 30px;
@@ -200,7 +201,7 @@
             color: white;
         }
 
-        /* (Innovatives Ticket-Design statt Tabelle) */
+        /* Ticket-Design */
         #feedback-list {
             list-style: none;
             padding: 0;
@@ -333,6 +334,8 @@
             <a href="users.html" id="nav-users" style="display: none;">Benutzerverwaltung</a>
 
             <a href="emails.html" id="nav-emails" style="display: none;">E-Mails</a>
+
+            <a href="logs.html" id="nav-logs" style="display: none;">Logs</a>
 
             <a href="feedback.html" class="active" id="nav-feedback" style="display: none;">
                 Meldungen
