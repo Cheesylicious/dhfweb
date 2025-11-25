@@ -1,0 +1,594 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <title>Schichtarten - DHF-Planer</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <style>
+        /* Import einer modernen Schriftart */
+        @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap');
+
+        body {
+            font-family: 'Poppins', sans-serif;
+            margin: 0;
+            background: #1a1a1a;
+            color: #ffffff; /* Standard-Textfarbe auf Weiß */
+            overflow-x: hidden;
+        }
+
+        /* Das Canvas-Element für die Animation */
+        #particle-canvas {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            z-index: -1; /* Liegt hinter allem */
+        }
+
+        /* Header (Glas-Effekt) */
+        header {
+            background: rgba(255, 255, 255, 0.05);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+
+            padding: 15px 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        header h1 {
+            margin: 0;
+            color: #ffffff;
+            font-size: 24px;
+        }
+
+        header nav {
+            display: flex;
+            gap: 20px;
+            align-items: center;
+        }
+
+        header nav a {
+            text-decoration: none;
+            color: #bdc3c7;
+            font-weight: 500;
+            font-size: 16px;
+            padding: 10px;
+            border-radius: 5px;
+            transition: background-color 0.3s, color 0.3s;
+            display: inline-flex; /* (NEU) */
+            align-items: center; /* (NEU) */
+        }
+
+        header nav a.active, header nav a:hover {
+            background-color: rgba(255, 255, 255, 0.1);
+            color: #ffffff;
+        }
+
+        #user-info {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            color: #bdc3c7;
+        }
+
+        #logout-btn {
+            background: #e74c3c;
+            color: white;
+            padding: 10px 15px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 15px;
+            transition: background-color 0.3s;
+        }
+        #logout-btn:hover {
+            background: #c0392b;
+        }
+
+        /* --- NEU: Feedback Button Styles --- */
+        .report-btn {
+            background: #3498db;
+            color: white;
+            padding: 10px 15px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 15px;
+            transition: background-color 0.3s;
+            margin-right: 15px;
+        }
+        .report-btn:hover {
+            background: #2980b9;
+        }
+
+        .nav-badge {
+            background: #e74c3c;
+            color: white;
+            font-size: 10px;
+            font-weight: 600;
+            padding: 2px 5px;
+            border-radius: 5px;
+            margin-left: 8px;
+            display: none; /* (Wird per JS angezeigt) */
+        }
+        /* --- ENDE NEU --- */
+
+        main {
+            padding: 30px;
+            max-width: 1400px;
+            margin: auto;
+        }
+
+        /* Card (Glas-Effekt) */
+        .card {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            box-shadow: 0 4px 30px rgba(0, 0, 0, 0.2);
+            border-radius: 10px;
+            overflow: hidden;
+        }
+
+        /* Card Header (Glas-Effekt) */
+        .card-header {
+            padding: 20px 25px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .card-header h2 {
+            margin: 0;
+            color: #ffffff;
+            font-weight: 600;
+        }
+
+        /* Tabelle (Glas-Effekt) */
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th, td {
+            text-align: left;
+            padding: 15px 20px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            color: #bdc3c7;
+            white-space: nowrap; /* (Verhindert Zeilenumbruch in Zellen) */
+        }
+
+        th {
+            background: rgba(255, 255, 255, 0.05);
+            color: #ffffff;
+            font-size: 13px;
+            text-transform: uppercase;
+            font-weight: 600;
+        }
+
+        tbody tr:nth-child(even) {
+            background-color: rgba(255, 255, 255, 0.03);
+        }
+
+        tr:last-child td {
+            border-bottom: 0;
+        }
+
+        .actions button {
+            padding: 8px 12px;
+            margin-right: 5px;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: opacity 0.3s;
+        }
+        .actions button:hover {
+            opacity: 0.8;
+        }
+
+        /* Buttons (Farben bleiben gleich) */
+        .btn-edit { background: #3498db; color: white; }
+        .btn-delete { background: #e74c3c; color: white; }
+        .btn-primary { background: #007bff; color: white; padding: 10px 15px; border: none; border-radius: 5px; cursor: pointer; font-size: 15px; }
+        .btn-primary:hover { opacity: 0.8; }
+
+        /* Modal (Hintergrund-Overlay) */
+        .modal {
+            display: none;
+            position: fixed;
+            z-index: 100;
+            left: 0; top: 0;
+            width: 100%; height: 100%;
+            overflow: auto;
+            background-color: rgba(0,0,0,0.6);
+        }
+
+        /* Modal-Inhalt (Glas-Effekt) */
+        .modal-content {
+            background: rgba(30, 30, 30, 0.8); /* Dunkleres Glas */
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+
+            margin: 10% auto;
+            padding: 0;
+            width: 80%;
+            /* --- NEU: Breiteres Modal --- */
+            max-width: 750px;
+            border-radius: 8px;
+            box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+        }
+
+        .modal-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 15px 25px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .modal-header h2 {
+            margin: 0;
+            color: #ffffff;
+            font-weight: 600;
+        }
+
+        .close {
+            color: #bdc3c7;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+            transition: color 0.3s;
+        }
+        .close:hover {
+            color: #ffffff;
+        }
+
+        .modal-body { padding: 25px; }
+
+        .modal-footer {
+            padding: 15px 25px;
+            background: rgba(0, 0, 0, 0.2);
+            border-top: 1px solid rgba(255, 255, 255, 0.1);
+            text-align: right;
+            border-radius: 0 0 8px 8px;
+        }
+
+        .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+        .form-grid-hours { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px; }
+        .form-grid-times { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+
+        /* --- NEU: Grid für 4 Spalten (Besetzung) --- */
+        .form-grid-staffing {
+            display: grid;
+            grid-template-columns: 1fr 1fr 1fr 1fr;
+            gap: 20px;
+            border-top: 1px solid rgba(255,255,255,0.1);
+            padding-top: 15px; margin-top: 15px;
+        }
+        /* --- ENDE NEU --- */
+
+
+        .form-group { margin-bottom: 15px; }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-weight: 300;
+            color: #bdc3c7;
+        }
+
+        /* Formular-Inputs (Glas-Effekt) */
+        .form-group input[type="text"], .form-group input[type="number"], .form-group input[type="color"] {
+            width: 100%;
+            padding: 10px;
+            box-sizing: border-box;
+            background: rgba(0, 0, 0, 0.2);
+            border: 1px solid #3498db;
+            border-radius: 5px;
+            color: #ffffff;
+            font-family: 'Poppins', sans-serif;
+            font-size: 14px;
+        }
+        .form-group input[type="color"] { padding: 5px; height: 40px; }
+        .form-group input[type="checkbox"] { width: auto; margin-right: 10px; }
+        .form-group input:disabled { background: rgba(0,0,0,0.1); color: #777; border-color: #555;}
+
+        /* Sub-Nav (Glas-Effekt) */
+        .sub-nav {
+            background: rgba(255, 255, 255, 0.05);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+
+            padding: 0 30px;
+            margin-bottom: 30px;
+            margin-top: -1px; /* (Schließt Lücke zum Header) */
+            display: flex;
+            align-items: center;
+        }
+
+        .sub-nav a {
+            display: inline-block;
+            padding: 15px 20px;
+            text-decoration: none;
+            color: #bdc3c7;
+            font-weight: 500;
+            border-bottom: 3px solid transparent;
+            transition: color 0.3s;
+        }
+
+        .sub-nav a.active, .sub-nav a:hover {
+            color: #ffffff;
+            border-bottom-color: #3498db;
+        }
+
+        /* --- Dropdown-Menü (Glas-Effekt) --- */
+        .dropdown { position: relative; display: inline-block; }
+        .dropdown .dropbtn {
+            font-family: 'Poppins', sans-serif;
+            text-decoration: none; color: #bdc3c7; font-weight: 500; font-size: 16px;
+            padding: 15px 20px;
+            background: none; border: none; cursor: pointer;
+            border-bottom: 3px solid transparent;
+            transition: color 0.3s;
+        }
+        .dropdown-content {
+            display: none;
+            position: absolute;
+            background: rgba(30, 30, 30, 0.9); /* Dunkles Glas für Dropdown */
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            min-width: 200px;
+            box-shadow: 0px 8px 16px 0px rgba(0,0,0,0.2);
+            z-index: 100;
+            border-radius: 5px;
+            margin-top: -1px;
+        }
+        .dropdown-content a {
+            color: #bdc3c7;
+            padding: 12px 16px;
+            text-decoration: none;
+            display: block;
+            font-size: 15px;
+            border-bottom: none;
+            transition: background-color 0.3s, color 0.3s;
+        }
+        .dropdown-content a:hover {
+            background-color: rgba(255, 255, 255, 0.05);
+            color: #ffffff;
+        }
+        .dropdown:hover .dropdown-content { display: block; }
+        .dropdown:hover .dropbtn, .dropbtn.active {
+            color: #ffffff;
+            border-bottom-color: #3498db;
+        }
+        .dropdown-content a.active {
+            background-color: rgba(52, 152, 219, 0.2); /* Blauer Akzent */
+            font-weight: 600;
+            color: #3498db;
+        }
+
+        /* --- NEU: Restricted View Style --- */
+        #content-wrapper.restricted-view {
+             max-width: 600px;
+             margin: 50px auto;
+             padding: 30px;
+             text-align: center;
+             background: rgba(255, 255, 255, 0.05);
+             border-radius: 10px;
+             border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+        #content-wrapper.restricted-view h2 { color: #e74c3c; }
+        /* --- ENDE NEU --- */
+    </style>
+</head>
+<body>
+
+    <canvas id="particle-canvas"></canvas>
+
+    <header>
+        <h1>DHF-Planer</h1>
+        <nav>
+            <a href="dashboard.html" id="nav-dashboard">Dashboard</a>
+            <a href="users.html" id="nav-users">Benutzerverwaltung</a>
+            <a href="feedback.html" id="nav-feedback" style="display: none;">
+                Meldungen
+                <span id="feedback-badge" class="nav-badge">0</span>
+            </a>
+            <a href="schichtplan.html" class="active">Schichtplan</a>
+        </nav>
+        <div id="user-info">
+            <span id="welcome-user"></span>
+            <button class="report-btn" id="global-report-btn">🐞 Problem melden</button>
+            <button id="logout-btn">Abmelden</button>
+        </div>
+    </header>
+
+    <div class="sub-nav">
+        <a href="schichtplan.html">Schichtplan</a>
+        <div class="dropdown">
+            <button class="dropbtn active" id="settings-dropbtn">Einstellungen &raquo;</button>
+            <div class="dropdown-content" id="settings-dropdown-content">
+                <a href="einstellungen.html" class="admin-only">Mitarbeiter Sortierung</a>
+                <a href="schichtarten.html" class="admin-only active">Schichtarten</a>
+                <a href="shortcuts.html" class="admin-only">Shortcuts</a>
+                <a href="feiertage.html" class="admin-only">Feiertage & Sondertermine</a>
+                <a href="farbeeinstellungen.html" class="admin-only">Farbeinstellungen</a>
+            </div>
+        </div>
+    </div>
+
+    <main>
+        <div id="content-wrapper">
+            <div class="card">
+                <div class="card-header">
+                    <h2>Schichtarten</h2>
+                    <button class="btn-primary" id="add-type-btn">Neue Schichtart erstellen</button>
+                </div>
+                <div style="overflow-x: auto;">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Name</th>
+                                <th>Abkürzung</th>
+                                <th>Farbe</th>
+                                <th>Std. (Tag)</th>
+                                <th>Std. (Übertrag)</th>
+                                <th>Startzeit</th>
+                                <th>Endzeit</th>
+                                <th>Zählt als Arbeitszeit</th>
+                                <th>Hintergrund Priorität?</th>
+                                <th>Aktionen</th>
+                            </tr>
+                        </thead>
+                        <tbody id="type-table-body">
+                            </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+    </main>
+
+    <div id="type-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="modal-title">Schichtart bearbeiten</h2>
+                <span class="close" id="close-type-modal">&times;</span>
+            </div>
+            <div class="modal-body">
+                <input type="hidden" id="type-id">
+
+                <div class="form-grid">
+                    <div class="form-group">
+                        <label for="type-name">Name:</label>
+                        <input type="text" id="type-name" placeholder="z.B. 'Tag (T)'">
+                    </div>
+                    <div class="form-group">
+                        <label for="type-abbreviation">Abkürzung (max 10 Zeichen):</label>
+                        <input type="text" id="type-abbreviation" placeholder="z.B. 'T.'">
+                    </div>
+                </div>
+
+                <div class="form-grid-hours">
+                    <div class="form-group">
+                        <label for="type-hours">Stunden (Tag):</label>
+                        <input type="number" id="type-hours" step="0.1" value="0.0" title="Stunden, die am selben Tag angerechnet werden.">
+                    </div>
+                    <div class="form-group">
+                        <label for="type-hours-spillover">Std. (Übertrag):</label>
+                        <input type="number" id="type-hours-spillover" step="0.1" value="0.0" title="Stunden, die am Folgetag (nach 00:00 Uhr) angerechnet werden.">
+                    </div>
+                    <div class="form-group">
+                        <label for="type-color">Farbe:</label>
+                        <input type="color" id="type-color" value="#FFFFFF">
+                    </div>
+                </div>
+
+                <div class="form-grid-times">
+                    <div class="form-group">
+                        <label for="type-start-time">Startzeit (HH:MM):</label>
+                        <input type="text" id="type-start-time" pattern="\d{2}:\d{2}" placeholder="06:00" title="Uhrzeit im Format HH:MM">
+                    </div>
+                    <div class="form-group">
+                        <label for="type-end-time">Endzeit (HH:MM):</label>
+                        <input type="text" id="type-end-time" pattern="\d{2}:\d{2}" placeholder="14:00" title="Uhrzeit im Format HH:MM (Endet nach 00:00: z.B. 06:00)">
+                    </div>
+                </div>
+
+                <div class="form-grid-staffing">
+                    <div class="form-group">
+                        <label for="type-min-staff-mo">SOLL (Mo):</label>
+                        <input type="number" id="type-min-staff-mo" step="1" value="0" min="0">
+                    </div>
+                    <div class="form-group">
+                        <label for="type-min-staff-di">SOLL (Di):</label>
+                        <input type="number" id="type-min-staff-di" step="1" value="0" min="0">
+                    </div>
+                    <div class="form-group">
+                        <label for="type-min-staff-mi">SOLL (Mi):</label>
+                        <input type="number" id="type-min-staff-mi" step="1" value="0" min="0">
+                    </div>
+                    <div class="form-group">
+                        <label for="type-min-staff-do">SOLL (Do):</label>
+                        <input type="number" id="type-min-staff-do" step="1" value="0" min="0">
+                    </div>
+                    <div class="form-group">
+                        <label for="type-min-staff-fr">SOLL (Fr):</label>
+                        <input type="number" id="type-min-staff-fr" step="1" value="0" min="0">
+                    </div>
+                    <div class="form-group">
+                        <label for="type-min-staff-sa">SOLL (Sa):</label>
+                        <input type="number" id="type-min-staff-sa" step="1" value="0" min="0">
+                    </div>
+                    <div class="form-group">
+                        <label for="type-min-staff-so">SOLL (So):</label>
+                        <input type="number" id="type-min-staff-so" step="1" value="0" min="0">
+                    </div>
+                    <div class="form-group">
+                        <label for="type-min-staff-holiday" style="color: #3498db; font-weight: 600;">SOLL (Feiertag):</label>
+                        <input type="number" id="type-min-staff-holiday" step="1" value="0" min="0">
+                    </div>
+                </div>
+                <div class="form-group" style="margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.1);">
+                    <input type="checkbox" id="type-is-work-shift">
+                    <label for="type-is-work-shift" style="display: inline-block;">Zählt als Arbeitszeit (für Stundensumme)</label>
+
+                    <input type="checkbox" id="type-prioritize-background" style="margin-left: 20px;">
+                    <label for="type-prioritize-background" style="display: inline-block;">Hintergrund priorisieren</label>
+                </div>
+                </div>
+            <div class="modal-footer">
+                <div id="modal-status" style="text-align: left; color: #e74c3c; float: left;"></div> <button class="btn-primary" id="save-type-btn">Speichern</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- START: PARTIKEL-ANIMATION ---
+        const canvas = document.getElementById('particle-canvas');
+        const ctx = canvas.getContext('2d');
+        const nodeColor = '#3498db';
+        const lineColor = '#ecf0f1';
+        let particlesArray;
+        function setCanvasSize() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; }
+        setCanvasSize();
+        class Particle { constructor(x, y, directionX, directionY, size) { this.x = x; this.y = y; this.directionX = directionX; this.directionY = directionY; this.size = size; } draw() { ctx.beginPath(); ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2, false); ctx.fillStyle = nodeColor; ctx.fill(); } update() { if (this.x > canvas.width || this.x < 0) { this.directionX = -this.directionX; } if (this.y > canvas.height || this.y < 0) { this.directionY = -this.directionY; } this.x += this.directionX; this.y += this.directionY; this.draw(); } }
+        function init() {
+            particlesArray = []; let numberOfParticles = (canvas.height * canvas.width) / 9000; if (numberOfParticles > 100) numberOfParticles = 100;
+            for (let i = 0; i < numberOfParticles; i++) {
+                let size = (Math.random() * 2) + 1; let x = (Math.random() * ((canvas.width - size * 2) - (size * 2)) + size * 2);
+                let y = (Math.random() * ((canvas.height - size * 2) - (size * 2)) + size * 2);
+                let directionX = (Math.random() * 0.4) - 0.2; let directionY = (Math.random() * 0.4) - 0.2;
+                particlesArray.push(new Particle(x, y, directionX, directionY, size));
+            }
+        }
+        function connect() {
+            let maxDistance = 150; ctx.strokeStyle = lineColor;
+            for (let a = 0; a < particlesArray.length; a++) {
+                for (let b = a; b < particlesArray.length; b++) {
+                    let distance = ((particlesArray[a].x - particlesArray[b].x) * (particlesArray[a].x - particlesArray[b].x)) + ((particlesArray[a].y - particlesArray[b].y) * (particlesArray[a].y - particlesArray[b].y));
+                    if (distance < (maxDistance * maxDistance)) { let opacity = 1 - (distance / (maxDistance * maxDistance)); ctx.globalAlpha = opacity; ctx.beginPath(); ctx.moveTo(particlesArray[a].x, particlesArray[a].y); ctx.lineTo(particlesArray[b].x, particlesArray[b].y); ctx.stroke(); }
+                }
+            }
+            ctx.globalAlpha = 1.0;
+        }
+        function animate() { requestAnimationFrame(animate); ctx.clearRect(0, 0, canvas.width, canvas.height); for (let i = 0; i < particlesArray.length; i++) { particlesArray[i].update(); } connect(); }
+        window.addEventListener('resize', () => { setCanvasSize(); init(); });
+        init(); animate();
+        // --- ENDE: PARTIKEL-ANIMATION ---
+    </script>
+
+    <script src="schichtarten.js" defer></script>
+
+    <script src="shared_feedback.js" defer></script>
+    <script src="shared_notifications.js" defer></script>
+</body>
+</html>
