@@ -1,109 +1,49 @@
-// cheesylicious/dhfweb/dhfweb-ec604d738e9bd121b65cc8557f8bb98d2aa18062/html/feedback.js
+// html/feedback.js
+
+import { API_URL } from './js/utils/constants.js';
+import { apiFetch } from './js/utils/api.js';
+import { initAuthCheck, logout } from './js/utils/auth.js';
+
 // --- Globales Setup ---
-const API_URL = 'http://46.224.63.203:5000';
 let user;
 let isAdmin = false;
 
-// --- Auth-Check und Logout-Setup ---
-async function logout() {
-    try { await apiFetch('/api/logout', 'POST'); }
-    catch (e) { console.error(e); }
-    finally {
-        localStorage.removeItem('dhf_user');
-        window.location.href = 'index.html?logout=true';
-    }
-}
-
+// 1. Auth Check
 try {
-    user = JSON.parse(localStorage.getItem('dhf_user'));
-    if (!user || !user.vorname || !user.role) { throw new Error("Kein User oder fehlende Rolle"); }
-    document.getElementById('welcome-user').textContent = `Willkommen, ${user.vorname}!`;
+    const authData = initAuthCheck();
+    user = authData.user;
+    isAdmin = authData.isAdmin;
 
-    isAdmin = user.role.name === 'admin';
-    const isVisitor = user.role.name === 'Besucher';
-    const isPlanschreiber = user.role.name === 'Planschreiber';
-    const isHundefuehrer = user.role.name === 'Hundeführer';
-
-    // *** Zugriffsschutz (Nur Admin) ***
+    // --- Zugriffsschutz (Nur Admin) ---
     if (!isAdmin) {
-        const wrapper = document.getElementById('content-wrapper');
-        wrapper.classList.add('restricted-view');
-        wrapper.innerHTML = `
-            <h2 style="color: #e74c3c;">Zugriff verweigert</h2>
-            <p>Nur Administratoren dürfen auf die Meldungsverwaltung zugreifen.</p>
+        document.getElementById('content-wrapper').innerHTML = `
+            <div class="restricted-view">
+                <h2 style="color: #e74c3c;">Zugriff verweigert</h2>
+                <p>Nur Administratoren haben Zugriff auf die Meldungsverwaltung.</p>
+            </div>
         `;
-        // Verstecke Sub-Nav, falls vorhanden
-        const subNav = document.getElementById('sub-nav-tasks');
-        if(subNav) subNav.style.display = 'none';
-
-        throw new Error("Keine Admin-Rechte für Feedback-Verwaltung.");
+        throw new Error("Keine Admin-Rechte.");
     }
 
-    // Navigation anpassen
-    const navDashboard = document.getElementById('nav-dashboard');
-    const navUsers = document.getElementById('nav-users');
-    const navFeedback = document.getElementById('nav-feedback');
+    // --- NAVIGATION ANPASSEN (Fix für fehlende Links) ---
 
-    // --- NEU: Statistik Link Logik ---
+    // Statistik-Link anzeigen
     const navStatistik = document.getElementById('nav-statistik');
-
-    if (navDashboard) navDashboard.style.display = isVisitor ? 'none' : 'inline-flex';
-
-    // Statistik-Link anzeigen, wenn Admin oder explizite Berechtigung
-    if (navStatistik) {
-        if (isAdmin || (user.can_see_statistics === true)) {
-            navStatistik.style.display = 'inline-flex';
-        } else {
-            navStatistik.style.display = 'none';
-        }
-    }
-    // --- ENDE NEU ---
-
-    if (isAdmin) {
-        if (navUsers) navUsers.style.display = 'inline-flex';
-        if (navFeedback) navFeedback.style.display = 'inline-flex';
-    } else if (isPlanschreiber) {
-         if (navUsers) navUsers.style.display = 'none';
-         if (navFeedback) navFeedback.style.display = 'inline-flex';
+    if(navStatistik && (isAdmin || user.can_see_statistics)) {
+        navStatistik.style.display = 'inline-flex';
     }
 
-    document.getElementById('logout-btn').onclick = logout;
+    // NEU: E-Mails Link anzeigen (hatte gefehlt)
+    const navEmails = document.getElementById('nav-emails');
+    if(navEmails && isAdmin) {
+        navEmails.style.display = 'inline-flex';
+    }
 
 } catch (e) {
-    if (!e.message.includes("Keine Admin-Rechte")) {
-         // Nur ausloggen, wenn es ein echter Fehler ist, nicht beim Zugriffsschutz
-         if (!user) logout();
-    }
+    console.error("Feedback Init Error:", e);
 }
 
-// --- Globale API-Funktion ---
-async function apiFetch(endpoint, method = 'GET', body = null) {
-    const options = {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include'
-    };
-    if (body) { options.body = JSON.stringify(body); }
-    const response = await fetch(API_URL + endpoint, options);
-    if (response.status === 401 || response.status === 403) {
-        if (response.status === 401) { logout(); }
-        throw new Error('Sitzung ungültig oder fehlende Rechte.');
-    }
-    const contentType = response.headers.get("content-type");
-    let data;
-    if (contentType && contentType.indexOf("application/json") !== -1) {
-        data = await response.json();
-    } else {
-        data = { message: await response.text() };
-    }
-    if (!response.ok) {
-        throw new Error(data.message || 'API-Fehler');
-    }
-    return data;
-}
-
-
-// --- Seitenlogik für Feedback-Verwaltung ---
+// --- Seitenlogik für Meldungs-LISTE ---
 
 const feedbackList = document.getElementById('feedback-list');
 const filterButtonsContainer = document.querySelector('.filter-buttons');
@@ -117,7 +57,6 @@ async function loadReports() {
         const reports = await apiFetch(`/api/feedback?status=${currentFilter}`);
         renderReports(reports);
     } catch (error) {
-        console.error("Fehler beim Laden der Reports:", error);
         feedbackList.innerHTML = `<li style="color: var(--status-neu); padding: 20px;">Fehler beim Laden: ${error.message}</li>`;
     }
 }
@@ -144,7 +83,6 @@ function renderReports(reports) {
         });
 
         let actionButtons = '';
-        // Buttons nur anzeigen, wenn Status passend
         if (report.status !== 'gesehen') {
             actionButtons += `<button class="btn-seen" data-action="gesehen">Als 'gesehen' markieren</button>`;
         }
@@ -184,10 +122,8 @@ async function handleUpdateStatus(id, newStatus) {
         // Wenn der neue Status nicht dem Filter entspricht, ausblenden
         if (currentFilter && currentFilter !== newStatus) {
             item.classList.add('fade-out');
-            setTimeout(() => item.remove(), 500);
-
-            // Prüfen ob Liste leer ist nach Entfernen
             setTimeout(() => {
+                item.remove();
                 if(feedbackList.children.length === 0) {
                      feedbackList.innerHTML = '<li style="color: #bdc3c7; padding: 20px; text-align: center;">Keine Meldungen für diesen Filter gefunden.</li>';
                 }
@@ -199,7 +135,6 @@ async function handleUpdateStatus(id, newStatus) {
                 statusBadge.dataset.status = newStatus;
                 statusBadge.textContent = newStatus;
             }
-            // Liste neu laden um Buttons zu aktualisieren
             loadReports();
         }
 
@@ -224,7 +159,6 @@ async function handleDelete(id) {
         item.classList.add('fade-out');
         setTimeout(() => item.remove(), 500);
 
-        // Trigger Update für Banner
         if(window.triggerNotificationUpdate) window.triggerNotificationUpdate();
 
     } catch (error) {

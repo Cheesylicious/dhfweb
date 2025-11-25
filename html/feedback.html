@@ -328,15 +328,18 @@
 
     <header>
         <h1>DHF-Planer</h1>
-        <nav id="main-nav"> <a href="dashboard.html" id="nav-dashboard" style="display: none;">Dashboard</a>
+        <nav id="main-nav">
+            <a href="dashboard.html" id="nav-dashboard" style="display: none;">Dashboard</a>
             <a href="users.html" id="nav-users" style="display: none;">Benutzerverwaltung</a>
+
+            <a href="emails.html" id="nav-emails" style="display: none;">E-Mails</a>
+
             <a href="feedback.html" class="active" id="nav-feedback" style="display: none;">
                 Meldungen
                 <span id="feedback-badge" class="nav-badge">0</span>
             </a>
-            <!-- NEU: Statistik Link (Standardmäßig ausgeblendet) -->
-            <a href="statistik.html" id="nav-statistik" style="display: none;">Statistik</a>
 
+            <a href="statistik.html" id="nav-statistik" style="display: none;">Statistik</a>
             <a href="schichtplan.html">Schichtplan</a>
         </nav>
         <div id="user-info">
@@ -373,7 +376,6 @@
 
     <script>
         // --- START: PARTIKEL-ANIMATION ---
-        // (Hier ist der identische Partikel-Animationscode wie in den anderen Dateien)
         const canvas = document.getElementById('particle-canvas');
         const ctx = canvas.getContext('2d');
         const nodeColor = '#3498db';
@@ -457,7 +459,8 @@
         // --- ENDE: PARTIKEL-ANIMATION ---
     </script>
 
-    <script type="module" src="feedback.js" defer></script>
+    <script type="module" src="shared_feedback.js" defer></script>
     <script type="module" src="shared_notifications.js" defer></script>
+    <script type="module" src="feedback.js" defer></script>
 </body>
 </html>

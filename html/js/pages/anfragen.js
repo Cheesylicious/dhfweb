@@ -63,17 +63,18 @@ const tabContentAnfragen = document.getElementById('tab-content-anfragen');
 const tabContentWunsch = document.getElementById('tab-content-wunsch');
 const contentWrapper = document.getElementById('content-wrapper');
 
-// --- NEU: BULK ELEMENTS ---
+// --- NEU: BULK ELEMENTS (ANFRAGEN) ---
 const bulkBarAnfragen = document.getElementById('bulk-bar-anfragen');
 const selectAllAnfragen = document.getElementById('select-all-anfragen');
 const btnBulkDoneAnfragen = document.getElementById('btn-bulk-done-anfragen');
 const btnBulkDeleteAnfragen = document.getElementById('btn-bulk-delete-anfragen');
 
+// --- NEU: BULK ELEMENTS (WÜNSCHE) ---
 const bulkBarWunsch = document.getElementById('bulk-bar-wunsch');
 const selectAllWunsch = document.getElementById('select-all-wunsch');
 const btnBulkApproveWunsch = document.getElementById('btn-bulk-approve-wunsch');
 const btnBulkRejectWunsch = document.getElementById('btn-bulk-reject-wunsch');
-// --- ENDE NEU ---
+const btnBulkDeletePureWunsch = document.getElementById('btn-bulk-delete-pure-wunsch'); // NEU
 
 let currentFilterAnfragen = "offen";
 let currentFilterWunsch = "offen";
@@ -99,18 +100,23 @@ async function loadQueries() {
     if(currentList) currentList.innerHTML = '<li>Lade Anfragen...</li>';
 
     // Reset Bulk Bars beim Laden
-    if(bulkBarAnfragen) bulkBarAnfragen.classList.remove('visible');
-    if(bulkBarWunsch) bulkBarWunsch.classList.remove('visible');
-    if(selectAllAnfragen) selectAllAnfragen.checked = false;
-    if(selectAllWunsch) selectAllWunsch.checked = false;
+    resetBulkSelection();
 
     try {
-        const queries = await apiFetch(`/api/queries?status=`);
+        // Wir laden ALLE Status, um auch erledigte in der Liste zu haben (wichtig für Löschen)
+        const queries = await apiFetch(`/api/queries`);
         allQueriesCache = queries;
         renderQueries();
     } catch (error) {
         if(currentList) currentList.innerHTML = `<li style="color: var(--status-offen); padding: 20px;">Fehler beim Laden: ${error.message}</li>`;
     }
+}
+
+function resetBulkSelection() {
+    if(bulkBarAnfragen) bulkBarAnfragen.classList.remove('visible');
+    if(bulkBarWunsch) bulkBarWunsch.classList.remove('visible');
+    if(selectAllAnfragen) selectAllAnfragen.checked = false;
+    if(selectAllWunsch) selectAllWunsch.checked = false;
 }
 
 // --- Konversations-Logik (unverändert) ---
@@ -193,7 +199,6 @@ async function sendReply(queryId) {
         itemBody.dataset.loaded = 'false'; // Reload trigger
         triggerNotificationUpdate();
         await loadQueries();
-        // (Da loadQueries die Liste neu baut, müssen wir das Element nicht manuell updaten, sondern nur neu laden falls offen)
     } catch (e) {
         alert(`Fehler beim Senden: ${e.message}`);
     } finally {
@@ -239,6 +244,7 @@ function createQueryElement(query) {
     actionButtons += `<button class="btn-goto-date" data-action="goto-date">Zum Termin</button>`;
 
     if (isWunsch && query.status === 'offen' && isAdmin) {
+        // WICHTIG: Alle drei Buttons müssen hier sein
         actionButtons += `<button class="btn-approve" data-action="approve">Genehmigen</button>`;
         actionButtons += `<button class="btn-reject" data-action="reject">Ablehnen</button>`;
         actionButtons += `<button class="btn-delete-query" data-action="delete">Löschen</button>`;
@@ -265,14 +271,20 @@ function createQueryElement(query) {
         </div>
     `;
 
-    // --- NEU: Checkbox (nur wenn offen & berechtigt) ---
+    // --- NEU: Checkbox ---
     let checkboxHtml = '';
-    const canBulkAction = isAdmin || (isScheduler && !isWunsch); // Scheduler darf nur Notizen bulken
+    // Admin und Scheduler dürfen immer, HF nur wenns eigene sind (aber HF hat kein Bulk Delete im UI Design oben)
+    // Wir beschränken Bulk auf Admin/Scheduler für jetzt
+    const canBulk = isAdmin || (isScheduler && !isWunsch);
 
-    if (query.status === 'offen' && canBulkAction) {
-        checkboxHtml = `<div onclick="event.stopPropagation()"><input type="checkbox" class="item-chk" value="${query.id}"></div>`;
+    // WICHTIGE ÄNDERUNG: Checkbox immer anzeigen, wenn User berechtigt ist
+    if (canBulk) {
+        // Checkbox IMMER rendern, damit sie Platz einnimmt und Layout nicht springt
+        checkboxHtml = `<div onclick="event.stopPropagation()" style="display:flex; align-items:center; padding-right: 10px;">
+                            <input type="checkbox" class="item-chk" value="${query.id}" style="width: 18px; height: 18px; cursor: pointer;">
+                        </div>`;
     } else {
-        checkboxHtml = `<div></div>`; // Leerer Platzhalter
+        checkboxHtml = `<div></div>`;
     }
 
     li.innerHTML = `
@@ -308,53 +320,59 @@ function renderQueries() {
         return !isWunschAnfrage(q);
     });
 
-    // Anfragen Liste (Notizen)
     if (queriesAnfragen.length === 0 && queryListAnfragen) {
-        queryListAnfragen.innerHTML = '<li style="color: #bdc3c7; padding: 20px; text-align: center;">Keine Anfragen für diesen Filter gefunden.</li>';
+        queryListAnfragen.innerHTML = '<li style="color: #bdc3c7; padding: 20px; text-align: center;">Keine Anfragen gefunden.</li>';
     } else if (queryListAnfragen) {
         queriesAnfragen.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
         queriesAnfragen.forEach(query => queryListAnfragen.appendChild(createQueryElement(query)));
     }
 
-    // Wunsch Liste (HF)
     if (isAdmin || isHundefuehrer) {
         if (queriesWunsch.length === 0 && queryListWunsch) {
-            queryListWunsch.innerHTML = '<li style="color: #bdc3c7; padding: 20px; text-align: center;">Keine Wunsch-Anfragen für diesen Filter gefunden.</li>';
+            queryListWunsch.innerHTML = '<li style="color: #bdc3c7; padding: 20px; text-align: center;">Keine Wunsch-Anfragen gefunden.</li>';
         } else if (queryListWunsch) {
             queriesWunsch.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
             queriesWunsch.forEach(query => queryListWunsch.appendChild(createQueryElement(query)));
         }
     }
 
-    // --- NEU: Listener für Checkboxen registrieren ---
+    // Checkbox Listener anhängen
     attachCheckboxListeners();
 }
 
-// --- NEU: BULK ACTIONS LOGIK ---
+// --- BULK ACTIONS LOGIK ---
 
 function attachCheckboxListeners() {
     const checkboxes = document.querySelectorAll('.item-chk');
     checkboxes.forEach(cb => {
         cb.addEventListener('change', updateBulkBarVisibility);
+        cb.addEventListener('click', (e) => e.stopPropagation());
     });
 }
 
 function updateBulkBarVisibility() {
-    // Prüfe Tab Anfragen
     if (currentView === 'anfragen' && bulkBarAnfragen) {
         const selected = queryListAnfragen.querySelectorAll('.item-chk:checked');
-        if (selected.length > 0) bulkBarAnfragen.classList.add('visible');
-        else bulkBarAnfragen.classList.remove('visible');
+        if (selected.length > 0) {
+            bulkBarAnfragen.classList.add('visible');
+            if(btnBulkDeleteAnfragen) btnBulkDeleteAnfragen.textContent = `Löschen (${selected.length})`;
+        } else {
+            bulkBarAnfragen.classList.remove('visible');
+        }
     }
-    // Prüfe Tab Wunsch
     else if (currentView === 'wunsch' && bulkBarWunsch) {
         const selected = queryListWunsch.querySelectorAll('.item-chk:checked');
-        if (selected.length > 0) bulkBarWunsch.classList.add('visible');
-        else bulkBarWunsch.classList.remove('visible');
+        if (selected.length > 0) {
+            bulkBarWunsch.classList.add('visible');
+            // Button Texts anpassen
+            if(btnBulkRejectWunsch) btnBulkRejectWunsch.textContent = `Markierte Ablehnen`;
+            if(btnBulkDeletePureWunsch) btnBulkDeletePureWunsch.textContent = `Markierte Löschen (${selected.length})`;
+        } else {
+            bulkBarWunsch.classList.remove('visible');
+        }
     }
 }
 
-// Select All Handler
 if (selectAllAnfragen) {
     selectAllAnfragen.addEventListener('change', (e) => {
         const checkboxes = queryListAnfragen.querySelectorAll('.item-chk');
@@ -370,56 +388,37 @@ if (selectAllWunsch) {
     });
 }
 
-// Bulk API Helper
 async function performBulkAction(endpoint, containerId) {
     const container = document.getElementById(containerId);
+    if (!container) return;
+
     const checkboxes = container.querySelectorAll('.item-chk:checked');
     const ids = Array.from(checkboxes).map(cb => parseInt(cb.value));
 
     if (ids.length === 0) return;
 
-    if (!confirm(`Möchten Sie die Aktion für ${ids.length} Elemente durchführen?`)) return;
+    if (!confirm(`Sind Sie sicher, dass Sie diese Aktion für ${ids.length} Elemente durchführen möchten?`)) return;
 
     try {
         const response = await apiFetch(endpoint, 'POST', { query_ids: ids });
         alert(response.message);
-        await loadQueries(); // Reload
+        await loadQueries();
         triggerNotificationUpdate();
     } catch (error) {
         alert("Fehler: " + error.message);
     }
 }
 
-// Button Listeners
-if (btnBulkDoneAnfragen) {
-    btnBulkDoneAnfragen.onclick = () => performBulkAction('/api/queries/bulk_approve', 'query-list-anfragen');
-}
-if (btnBulkDeleteAnfragen) {
-    btnBulkDeleteAnfragen.onclick = () => performBulkAction('/api/queries/bulk_delete', 'query-list-anfragen');
-}
-if (btnBulkApproveWunsch) {
-    btnBulkApproveWunsch.onclick = async () => {
-        // Hier müssen wir den Endpoint für "Genehmigen" nutzen.
-        // ACHTUNG: Genehmigen bedeutet Shift erstellen! Das geht noch nicht per Bulk.
-        // Bulk Approve setzt nur Status auf 'erledigt'.
-        // Für echte Schicht-Genehmigung (Eintrag in Plan) müssen wir eine separate Logik bauen oder
-        // den User warnen, dass dies nur den Status ändert.
-        // -> Da "Genehmigen" normalerweise "Schicht eintragen" heißt, machen wir hier erstmal nur "Erledigt setzen".
-        // Falls echte Plan-Eintragung gewünscht ist, müsste das Backend komplexer werden (Loop über Shifts).
+// Buttons binden
+if (btnBulkDoneAnfragen) btnBulkDoneAnfragen.onclick = () => performBulkAction('/api/queries/bulk_approve', 'query-list-anfragen');
+if (btnBulkDeleteAnfragen) btnBulkDeleteAnfragen.onclick = () => performBulkAction('/api/queries/bulk_delete', 'query-list-anfragen');
 
-        // Wir nutzen hier die Bulk-Approve Route, die wir im Backend gebaut haben (setzt status='erledigt').
-        // Das ist OK für den Workflow "Ich habe es manuell eingetragen und markiere jetzt alle als fertig".
-        performBulkAction('/api/queries/bulk_approve', 'query-list-wunsch');
-    };
-}
-if (btnBulkRejectWunsch) {
-    btnBulkRejectWunsch.onclick = () => performBulkAction('/api/queries/bulk_delete', 'query-list-wunsch');
-}
-
-// --- ENDE NEU ---
+if (btnBulkApproveWunsch) btnBulkApproveWunsch.onclick = () => performBulkAction('/api/queries/bulk_approve', 'query-list-wunsch');
+if (btnBulkRejectWunsch) btnBulkRejectWunsch.onclick = () => performBulkAction('/api/queries/bulk_delete', 'query-list-wunsch');
+if (btnBulkDeletePureWunsch) btnBulkDeletePureWunsch.onclick = () => performBulkAction('/api/queries/bulk_delete', 'query-list-wunsch'); // Auch Löschen nutzt bulk_delete, aber Backend filtert die Mails
 
 
-// --- Actions (Einzeln) ---
+// --- Einzel-Aktionen ---
 
 async function handleUpdateStatus(id, newStatus) {
     try {
@@ -432,7 +431,7 @@ async function handleUpdateStatus(id, newStatus) {
 }
 
 async function handleDelete(id) {
-    if (!confirm("Sicher löschen?")) return;
+    if (!confirm("Wirklich löschen?")) return;
     try {
         await apiFetch(`/api/queries/${id}`, 'DELETE');
         await loadQueries();
@@ -458,7 +457,6 @@ async function handleApprove(queryId) {
             date: query.shift_date,
             shifttype_id: shiftType.id
         });
-        // Update Status (löst Mail aus)
         await handleUpdateStatus(queryId, 'erledigt');
     } catch (error) {
         alert(`Fehler: ${error.message}`);
@@ -466,7 +464,9 @@ async function handleApprove(queryId) {
 }
 
 async function handleReject(queryId) {
-    if (!confirm("Anfrage ablehnen (löschen)?")) return;
+    // WICHTIG: Dies ist die "Ablehnen" Logik, die Sie angesprochen haben.
+    // Sie leert die Schicht UND löscht die Anfrage.
+    if (!confirm("Anfrage ablehnen (Schicht leeren und Anfrage löschen)?")) return;
     try {
         // Zuerst Schicht leeren (falls schon was drin war)
         await apiFetch('/api/shifts', 'POST', {
@@ -564,10 +564,10 @@ async function initializePage() {
 
     if(contentWrapper) {
         contentWrapper.addEventListener('click', (e) => {
-            // Prüfen ob Checkbox geklickt wurde -> Stop Propagation
+            // Checkbox Click abfangen, damit das Accordion nicht aufklappt
             if (e.target.classList.contains('item-chk') || e.target.closest('.item-chk')) {
-                e.stopPropagation();
-                updateBulkBarVisibility(); // Update bar visibility
+                // Kein e.stopPropagation() hier, da der Listener direkt an der Checkbox das schon macht
+                updateBulkBarVisibility();
                 return;
             }
 

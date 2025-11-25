@@ -488,8 +488,9 @@ def bulk_approve_queries():
 @scheduler_or_admin_required
 def bulk_delete_queries():
     """
-    Löscht mehrere Anfragen (Ablehnung) und sendet EINE Zusammenfassungs-Mail pro User.
-    Fix für "Instance deleted": Daten VOR dem Löschen extrahieren.
+    Löscht mehrere Anfragen.
+    - Wenn status == 'offen': Ablehnung -> Mail wird gesendet.
+    - Wenn status == 'erledigt': Aufräumen -> KEINE Mail.
     """
     data = request.get_json()
     query_ids = data.get('query_ids', [])
@@ -510,9 +511,10 @@ def bulk_delete_queries():
         mails_to_send = defaultdict(list)
 
         for q in queries:
-            # Nur wenn Admin löscht (=Ablehnung) und nicht eigener User
-            if q.sender_user_id != current_user.id and q.sender and q.sender.email:
-                # WICHTIG: Werte in Variablen speichern, keine Referenz auf das Objekt!
+            # --- NEU: E-Mail nur, wenn noch OFFEN (also eine echte Ablehnung) ---
+            should_send_mail = (q.status == 'offen' and q.sender_user_id != current_user.id and q.sender and q.sender.email)
+
+            if should_send_mail:
                 info = {
                     'email': q.sender.email,
                     'name': q.sender.vorname,
@@ -654,8 +656,11 @@ def delete_shift_query(query_id):
         date_str = query.shift_date.strftime('%d.%m.%Y')
         target_name = f"{query.target_user.vorname} {query.target_user.name}" if query.target_user else "Thema des Tages"
 
-        # --- E-Mail Benachrichtigung bei Ablehnung (Löschung durch Fremden) ---
-        if query.sender_user_id != current_user.id and query.sender and query.sender.email:
+        # --- E-Mail Benachrichtigung nur bei Ablehnung (OFFEN) ---
+        # Wenn Status "erledigt" ist, wird KEINE Mail gesendet (Aufräumen).
+        should_send_mail = (query.status == 'offen' and query.sender_user_id != current_user.id and query.sender and query.sender.email)
+
+        if should_send_mail:
             email_subject = f"DHF-Planer: Anfrage abgelehnt/gelöscht ({date_str})"
             email_body = f"""
             Hallo {query.sender.vorname},
