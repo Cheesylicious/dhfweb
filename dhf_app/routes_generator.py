@@ -26,9 +26,10 @@ GENERATOR_STATE = {
 }
 
 
-def _generator_task(app, year, month):
+def _generator_task(app, year, month, variant_id=None):
     """
     Der Hintergrund-Task, der den Generator ausführt.
+    Jetzt mit Unterstützung für Varianten.
     """
     with app.app_context():
         try:
@@ -45,7 +46,8 @@ def _generator_task(app, year, month):
                     GENERATOR_STATE["logs"].pop(0)
 
             if ShiftPlanGenerator:
-                gen = ShiftPlanGenerator(db, year, month, log_callback)
+                # <<< NEU: variant_id übergeben
+                gen = ShiftPlanGenerator(db, year, month, log_callback, variant_id)
                 GENERATOR_STATE["instance"] = gen
                 success = gen.run()
 
@@ -53,9 +55,12 @@ def _generator_task(app, year, month):
                     GENERATOR_STATE["status"] = "finished"
                     GENERATOR_STATE["progress"] = 100
 
+                    # Info für Log
+                    plan_info = f"Variante {variant_id}" if variant_id else "Hauptplan"
+
                     new_log = UpdateLog(
                         area="Schichtplan Generator",
-                        description=f"Plan für {month:02d}/{year} erfolgreich generiert.",
+                        description=f"Plan für {month:02d}/{year} ({plan_info}) erfolgreich generiert.",
                         updated_at=datetime.utcnow()
                     )
                     db.session.add(new_log)
@@ -79,6 +84,7 @@ def _generator_task(app, year, month):
 def start_generator():
     """
     Startet den Generator-Prozess.
+    Erwartet optional 'variant_id' im Body.
     """
     if GENERATOR_STATE["is_running"]:
         return jsonify({"message": "Generator läuft bereits."}), 409
@@ -86,12 +92,15 @@ def start_generator():
     data = request.get_json()
     year = data.get('year')
     month = data.get('month')
+    # <<< NEU: Variant ID auslesen
+    variant_id = data.get('variant_id') # Kann None sein
 
     if not year or not month:
         return jsonify({"message": "Jahr und Monat erforderlich."}), 400
 
     app = current_app._get_current_object()
-    thread = threading.Thread(target=_generator_task, args=(app, year, month))
+    # <<< NEU: variant_id an Thread übergeben
+    thread = threading.Thread(target=_generator_task, args=(app, year, month, variant_id))
     thread.start()
 
     return jsonify({"message": "Generator gestartet."}), 202
@@ -125,15 +134,15 @@ def get_generator_config():
         except json.JSONDecodeError:
             return jsonify({"message": "Fehler beim Parsen der Konfiguration."}), 500
 
-    # --- UPDATE: Neue Standard-Werte für Erst-Initialisierung ---
+    # Standard-Werte
     default_config = {
         "max_consecutive_same_shift": 4,
         "mandatory_rest_days_after_max_shifts": 2,
         "generator_fill_rounds": 3,
         "fairness_threshold_hours": 10.0,
         "min_hours_score_multiplier": 5.0,
-        "max_monthly_hours": 170.0,  # NEU
-        "shifts_to_plan": ["6", "T.", "N."]  # NEU
+        "max_monthly_hours": 170.0,
+        "shifts_to_plan": ["6", "T.", "N."]
     }
     return jsonify(default_config), 200
 

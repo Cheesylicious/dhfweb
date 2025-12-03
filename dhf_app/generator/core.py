@@ -20,10 +20,11 @@ class ShiftPlanGenerator:
     Daten laden -> Konfiguration -> Planung -> Speichern.
     """
 
-    def __init__(self, db_session, year, month, log_callback=None):
+    def __init__(self, db_session, year, month, log_callback=None, variant_id=None):
         self.db = db_session
         self.year = year
         self.month = month
+        self.variant_id = variant_id  # <<< NEU: Ziel-Variante
         # Logging-Funktion (Default: print, falls nichts übergeben)
         self.log = log_callback if log_callback else lambda msg, p=None: print(msg)
 
@@ -64,7 +65,8 @@ class ShiftPlanGenerator:
             self.log("Initialisiere Generator...", 5)
 
             # 1. Daten laden (DataManager)
-            self.data_manager = ShiftPlanDataManager(self.db, self.year, self.month)
+            # <<< NEU: variant_id übergeben
+            self.data_manager = ShiftPlanDataManager(self.db, self.year, self.month, self.variant_id)
             self.data_manager.load_data()
 
             # Daten in Generator-Scope übernehmen (für schnellen Zugriff der Helfer)
@@ -216,7 +218,14 @@ class ShiftPlanGenerator:
 
             # 5. Speichern
             self.log("Speichere Plan in Datenbank...", 95)
-            success, count, err = save_generation_batch_to_db(self.live_shifts_data, self.year, self.month)
+
+            # <<< NEU: variant_id übergeben
+            success, count, err = save_generation_batch_to_db(
+                self.live_shifts_data,
+                self.year,
+                self.month,
+                self.variant_id
+            )
 
             if success:
                 self.log(f"Erfolgreich! {count} Einträge gespeichert.", 100)

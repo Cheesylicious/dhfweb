@@ -114,6 +114,33 @@ class ShiftType(db.Model):
                 }
 
 
+# --- NEU: Plan-Varianten Modell ---
+class PlanVariant(db.Model):
+    """
+    Speichert Metadaten für Plan-Varianten (z.B. 'Variante A' für Jan 2025).
+    """
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(50), nullable=False)  # z.B. "Variante A"
+    year = db.Column(db.Integer, nullable=False)
+    month = db.Column(db.Integer, nullable=False)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    # Sicherstellen, dass Name pro Monat eindeutig ist (z.B. nur eine 'Variante A' im Jan 2025)
+    __table_args__ = (db.UniqueConstraint('name', 'year', 'month', name='_variant_month_uc'),)
+
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "name": self.name,
+            "year": self.year,
+            "month": self.month,
+            "created_at": self.created_at.isoformat()
+        }
+
+
+# --- ENDE NEU ---
+
+
 class Shift(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
@@ -126,9 +153,20 @@ class Shift(db.Model):
     # --- Sperr-Flag ---
     is_locked = db.Column(db.Boolean, default=False, nullable=False)
 
+    # --- NEU: Verknüpfung zur Variante ---
+    # Wenn NULL: Gehört zum Hauptplan (öffentlich sichtbar).
+    # Wenn gesetzt: Gehört zu einer spezifischen Entwurfs-Variante.
+    variant_id = db.Column(db.Integer, db.ForeignKey('plan_variant.id'), nullable=True)
+    variant = db.relationship('PlanVariant', backref=db.backref('shifts', cascade="all, delete-orphan"))
+    # --- ENDE NEU ---
+
     user = db.relationship('User', backref=db.backref('shifts', lazy=True))
     shift_type = db.relationship('ShiftType')
-    __table_args__ = (db.UniqueConstraint('user_id', 'date', name='_user_date_uc'),)
+
+    # HINWEIS: Wir entfernen hier den UniqueConstraint ('user_id', 'date'),
+    # da ein User nun am selben Tag in verschiedenen Varianten Schichten haben kann.
+    # Die Eindeutigkeit (1 Schicht pro Tag pro Variante) muss von der Anwendungslogik sichergestellt werden.
+    # __table_args__ = (db.UniqueConstraint('user_id', 'date', name='_user_date_uc'),)
 
     def to_dict(self):
         abbr = ""
@@ -143,7 +181,8 @@ class Shift(db.Model):
             "date": self.date.isoformat(),
             "shifttype_id": self.shifttype_id,
             "shifttype_abbreviation": abbr,
-            "is_locked": self.is_locked
+            "is_locked": self.is_locked,
+            "variant_id": self.variant_id
         }
 
 
@@ -209,10 +248,10 @@ class ActivityLog(db.Model):
     Protokolliert detaillierte Benutzeraktivitäten (Login, Logout, PW-Change, etc.).
     """
     id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True) # Nullable, falls User gelöscht wird
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True)  # Nullable, falls User gelöscht wird
     user = db.relationship('User')
-    action = db.Column(db.String(50), nullable=False) # Typ: LOGIN, LOGOUT, UPDATE_PROFILE, etc.
-    details = db.Column(db.String(255), nullable=True) # Z.B. "Dauer: 5min", "E-Mail geändert"
+    action = db.Column(db.String(50), nullable=False)  # Typ: LOGIN, LOGOUT, UPDATE_PROFILE, etc.
+    details = db.Column(db.String(255), nullable=True)  # Z.B. "Dauer: 5min", "E-Mail geändert"
     ip_address = db.Column(db.String(50), nullable=True)
     timestamp = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
 
@@ -225,6 +264,8 @@ class ActivityLog(db.Model):
             "ip_address": self.ip_address,
             "timestamp": self.timestamp.isoformat()
         }
+
+
 # --- ENDE NEU ---
 
 
@@ -401,12 +442,13 @@ class EmailTemplate(db.Model):
     Speichert anpassbare E-Mail-Vorlagen für das System.
     """
     id = db.Column(db.Integer, primary_key=True)
-    key = db.Column(db.String(50), unique=True, nullable=False, index=True)  # Eindeutiger Schlüssel (z.B. 'password_reset')
-    name = db.Column(db.String(100), nullable=False) # Angezeigter Name für den Admin
-    subject = db.Column(db.String(255), nullable=False) # Betreffzeile
-    body = db.Column(db.Text, nullable=False) # E-Mail Inhalt (HTML oder Text)
-    description = db.Column(db.String(255), nullable=True) # Erklärung, wann diese Mail gesendet wird
-    available_placeholders = db.Column(db.String(255), nullable=True) # JSON-String oder CSV der verfügbaren Variablen
+    key = db.Column(db.String(50), unique=True, nullable=False,
+                    index=True)  # Eindeutiger Schlüssel (z.B. 'password_reset')
+    name = db.Column(db.String(100), nullable=False)  # Angezeigter Name für den Admin
+    subject = db.Column(db.String(255), nullable=False)  # Betreffzeile
+    body = db.Column(db.Text, nullable=False)  # E-Mail Inhalt (HTML oder Text)
+    description = db.Column(db.String(255), nullable=True)  # Erklärung, wann diese Mail gesendet wird
+    available_placeholders = db.Column(db.String(255), nullable=True)  # JSON-String oder CSV der verfügbaren Variablen
 
     def to_dict(self):
         return {

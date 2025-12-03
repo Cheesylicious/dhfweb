@@ -6,14 +6,15 @@ from ..extensions import db
 from ..models import Shift, ShiftType
 
 
-def save_generation_batch_to_db(live_shifts_data, year, month):
+def save_generation_batch_to_db(live_shifts_data, year, month, variant_id=None):
     """
     Speichert den generierten Plan in die Datenbank.
     Nutzt SQLAlchemy für Transaktionssicherheit und Konsistenz.
+    Unterstützt Plan-Varianten.
 
     Strategie:
     1. Alle Schichtarten laden (Mapping Abkürzung -> ID).
-    2. Alle existierenden Schichten des Monats laden.
+    2. Alle existierenden Schichten des Monats (für die Variante) laden.
     3. Abgleich:
        - Neue Einträge -> INSERT
        - Geänderte Einträge -> UPDATE
@@ -25,13 +26,15 @@ def save_generation_batch_to_db(live_shifts_data, year, month):
         abbr_to_id = {st.abbreviation: st.id for st in shift_types}
 
         # 2. Bestehende Schichten für den Monat laden (Batch)
+        # Filtert nach der spezifischen Variante (oder Hauptplan, wenn None)
         _, last_day = calendar.monthrange(year, month)
         start_date = date(year, month, 1)
         end_date = date(year, month, last_day)
 
         existing_shifts = Shift.query.filter(
             Shift.date >= start_date,
-            Shift.date <= end_date
+            Shift.date <= end_date,
+            Shift.variant_id == variant_id  # <<< NEU: Filterung nach Variante
         ).all()
 
         # Map für schnellen Zugriff: (user_id, "YYYY-MM-DD") -> Shift-Objekt
@@ -72,7 +75,8 @@ def save_generation_batch_to_db(live_shifts_data, year, month):
                         new_shift = Shift(
                             user_id=user_id,
                             date=datetime.strptime(date_str, '%Y-%m-%d').date(),
-                            shifttype_id=target_type_id
+                            shifttype_id=target_type_id,
+                            variant_id=variant_id  # <<< NEU: Variante setzen
                         )
                         db.session.add(new_shift)
                         count_inserts += 1
@@ -89,7 +93,8 @@ def save_generation_batch_to_db(live_shifts_data, year, month):
 
         total_ops = count_inserts + count_updates + count_deletes
         # Debug-Ausgabe im Server-Log
-        print(f"[Persistence] Batch OK: +{count_inserts} / ~{count_updates} / -{count_deletes}")
+        variant_label = f"Variante {variant_id}" if variant_id else "Hauptplan"
+        print(f"[Persistence] Batch OK ({variant_label}): +{count_inserts} / ~{count_updates} / -{count_deletes}")
 
         return True, total_ops, None
 

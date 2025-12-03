@@ -18,8 +18,12 @@ export const PlanApi = {
         return await apiFetch('/api/shifttypes');
     },
 
-    async fetchShiftData(year, month) {
-        return await apiFetch(`/api/shifts?year=${year}&month=${month}`);
+    async fetchShiftData(year, month, variantId = null) {
+        let url = `/api/shifts?year=${year}&month=${month}`;
+        if (variantId !== null) {
+            url += `&variant_id=${variantId}`;
+        }
+        return await apiFetch(url);
     },
 
     async fetchSpecialDates(year, type) {
@@ -37,50 +41,37 @@ export const PlanApi = {
     // --- SCHICHTEN & STATUS ---
 
     async saveShift(payload) {
-        // payload: { user_id, date, shifttype_id }
         return await apiFetch('/api/shifts', 'POST', payload);
     },
 
-    async toggleShiftLock(userId, dateStr) {
-        return await apiFetch('/api/shifts/toggle_lock', 'POST', {
-            user_id: userId,
-            date: dateStr
-        });
+    async toggleShiftLock(userId, dateStr, variantId = null) {
+        const body = { user_id: userId, date: dateStr };
+        if (variantId !== null) body.variant_id = variantId;
+        return await apiFetch('/api/shifts/toggle_lock', 'POST', body);
     },
 
-    async clearShiftPlan(year, month) {
-        return await apiFetch('/api/shifts/clear', 'DELETE', {
-            year: year,
-            month: month
-        });
+    async clearShiftPlan(year, month, variantId = null) {
+        const body = { year: year, month: month };
+        if (variantId !== null) body.variant_id = variantId;
+        return await apiFetch('/api/shifts/clear', 'DELETE', body);
     },
 
     async updatePlanStatus(year, month, status, isLocked) {
-        const payload = {
-            year: year,
-            month: month,
-            status: status,
-            is_locked: isLocked
-        };
+        const payload = { year: year, month: month, status: status, is_locked: isLocked };
         return await apiFetch('/api/shifts/status', 'PUT', payload);
     },
 
     async sendCompletionNotification(year, month) {
-        return await apiFetch('/api/shifts/send_completion_notification', 'POST', {
-            year: year,
-            month: month
-        });
+        return await apiFetch('/api/shifts/send_completion_notification', 'POST', { year: year, month: month });
     },
 
     async saveStaffingOrder(payload) {
-        // payload: [{id, order}, ...]
         return await apiFetch('/api/shifttypes/staffing_order', 'PUT', payload);
     },
 
     // --- ANFRAGEN (QUERIES) ---
 
     async createQuery(payload) {
-        // payload: { target_user_id, shift_date, message }
         return await apiFetch('/api/queries', 'POST', payload);
     },
 
@@ -120,8 +111,12 @@ export const PlanApi = {
         return await apiFetch('/api/generator/config', 'PUT', configPayload);
     },
 
-    async startGenerator(year, month) {
-        return await apiFetch('/api/generator/start', 'POST', { year: year, month: month });
+    // <<< HIER WAR DER FEHLER: variantId fehlte >>>
+    async startGenerator(year, month, variantId = null) {
+        const payload = { year: year, month: month };
+        if (variantId !== null) payload.variant_id = variantId;
+
+        return await apiFetch('/api/generator/start', 'POST', payload);
     },
 
     async getGeneratorStatus() {

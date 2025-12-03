@@ -31,6 +31,9 @@ export const PlanHandlers = {
             PlanState.currentYear++;
         }
 
+        // Bei Monatswechsel wird Variante resetet (da Varianten monatsspezifisch sind)
+        PlanState.currentVariantId = null;
+
         // Callback aufrufen (kompletter Reload nötig)
         if (this.reloadGridCallback) this.reloadGridCallback();
     },
@@ -38,6 +41,7 @@ export const PlanHandlers = {
     async handleYearMonthSelect(year, month) {
         PlanState.currentYear = year;
         PlanState.currentMonth = month;
+        PlanState.currentVariantId = null; // Reset Variante
         if (this.reloadGridCallback) this.reloadGridCallback();
     },
 
@@ -45,7 +49,9 @@ export const PlanHandlers = {
 
     async saveShift(shifttypeId, userId, dateStr, closeModalsFn) {
         if (!PlanState.isAdmin) return;
-        if (PlanState.currentPlanStatus.is_locked) {
+
+        // Sperr-Prüfung: Gilt nur für Hauptplan (variantId === null)
+        if (PlanState.currentVariantId === null && PlanState.currentPlanStatus.is_locked) {
             alert(`Aktion blockiert: Der Schichtplan für ${PlanState.currentMonth}/${PlanState.currentYear} ist gesperrt.`);
             return;
         }
@@ -55,11 +61,17 @@ export const PlanHandlers = {
         if (cell) cell.textContent = '...'; // Visuelles Feedback
 
         try {
-            const savedData = await PlanApi.saveShift({
+            // Payload mit variant_id
+            const payload = {
                 user_id: userId,
                 date: dateStr,
                 shifttype_id: shifttypeId
-            });
+            };
+            if (PlanState.currentVariantId !== null) {
+                payload.variant_id = PlanState.currentVariantId;
+            }
+
+            const savedData = await PlanApi.saveShift(payload);
 
             if (closeModalsFn) closeModalsFn();
 
@@ -85,7 +97,6 @@ export const PlanHandlers = {
             if (savedData.violations) {
                 savedData.violations.forEach(v => PlanState.currentViolations.add(`${v[0]}-${v[1]}`));
             }
-            // (Violations werden beim nächsten Hover/Refresh sichtbar, das reicht meist)
 
             // 3. Besetzung (Staffing) aktualisieren
             PlanState.currentStaffingActual = savedData.staffing_actual || {};
@@ -98,10 +109,9 @@ export const PlanHandlers = {
                 PlanRenderer.updateUserTotalHours(userId, diff);
             }
 
-            // Anfragen neu laden (im Hintergrund), da sich Status geändert haben könnte
+            // Anfragen neu laden (Status könnte sich geändert haben)
             const queries = await PlanApi.fetchOpenQueries(PlanState.currentYear, PlanState.currentMonth);
             PlanState.currentShiftQueries = queries;
-            // Falls Anfragen-Status sich änderte, muss die Zelle ggf. nochmal aktualisiert werden
             PlanRenderer.refreshSingleCell(userId, dateStr);
 
         } catch (error) {
@@ -112,13 +122,16 @@ export const PlanHandlers = {
 
     async toggleShiftLock(userId, dateStr) {
         if (!PlanState.isAdmin) return;
-        if (PlanState.currentPlanStatus.is_locked) {
+
+        // Sperre nur relevant für Hauptplan
+        if (PlanState.currentVariantId === null && PlanState.currentPlanStatus.is_locked) {
             alert("Globaler Plan ist gesperrt.");
             return;
         }
 
         try {
-            const response = await PlanApi.toggleShiftLock(userId, dateStr);
+            // variantId übergeben
+            const response = await PlanApi.toggleShiftLock(userId, dateStr, PlanState.currentVariantId);
             const key = `${userId}-${dateStr}`;
 
             if (response.deleted) {
@@ -138,7 +151,12 @@ export const PlanHandlers = {
     // --- ANFRAGEN (USER / ADMIN) ---
 
     async requestShift(shiftAbbrev, userId, dateStr) {
-        if (PlanState.isVisitor || PlanState.currentPlanStatus.is_locked) return;
+        if (PlanState.isVisitor) return;
+        // Sperre gilt global
+        if (PlanState.currentPlanStatus.is_locked) {
+             // Optional: Allow request even if locked? Usually not.
+             return;
+        }
 
         try {
             await PlanApi.createQuery({
@@ -251,9 +269,6 @@ export const PlanHandlers = {
             const queries = await PlanApi.fetchOpenQueries(PlanState.currentYear, PlanState.currentMonth);
             PlanState.currentShiftQueries = queries;
 
-            // Betroffene Zelle updaten
-            // (Wir wissen user/date aus dem Kontext oder müssen es suchen)
-            // Einfachheitshalber: Wir haben modalQueryContext oft gesetzt
             if (PlanState.modalQueryContext && PlanState.modalQueryContext.userId) {
                 PlanRenderer.refreshSingleCell(PlanState.modalQueryContext.userId, PlanState.modalQueryContext.dateStr);
             }
@@ -269,7 +284,10 @@ export const PlanHandlers = {
     // --- SHORTCUTS ---
 
     handleKeyboardShortcut(event) {
-        if (!PlanState.isAdmin || PlanState.currentPlanStatus.is_locked) return;
+        if (!PlanState.isAdmin) return;
+        // Sperre nur für Hauptplan
+        if (PlanState.currentVariantId === null && PlanState.currentPlanStatus.is_locked) return;
+
         if (!PlanState.hoveredCellContext || !PlanState.hoveredCellContext.userId) return;
 
         // Modals offen?

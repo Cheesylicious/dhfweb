@@ -59,6 +59,10 @@ def create_app(config_name='default'):
     from .routes_emails import emails_bp
     app.register_blueprint(emails_bp)
 
+    # --- NEU: Varianten Blueprint ---
+    from .routes_variants import variants_bp
+    app.register_blueprint(variants_bp)
+
     # 5. Startup-Logik
     with app.app_context():
         db.create_all()

@@ -13,14 +13,15 @@ from ..models import User, Shift, ShiftType, SpecialDate, GlobalSetting, ShiftQu
 class ShiftPlanDataManager:
     """
     Zentrale Klasse für das Laden und Bereitstellen aller planungsrelevanten Daten.
-    Optimiert für Performance (Regel 2): Lädt Daten in Batches und hält sie im Speicher,
-    um Datenbankzugriffe während des Generator-Laufs zu minimieren.
+    Optimiert für Performance (Regel 2): Lädt Daten in Batches und hält sie im Speicher.
+    Unterstützt jetzt Plan-Varianten.
     """
 
-    def __init__(self, db_session, year, month):
+    def __init__(self, db_session, year, month, variant_id=None):
         self.db = db_session
         self.year = year
         self.month = month
+        self.variant_id = variant_id  # <<< NEU: Speichert die Ziel-Variante
 
         # Cache-Strukturen
         self.all_users = []
@@ -49,15 +50,14 @@ class ShiftPlanDataManager:
         }
 
         # Generator-Konfiguration (Default)
-        # --- UPDATE: Neue Felder hinzugefügt ---
         self.generator_config = {
             "max_consecutive_same_shift": 4,
             "mandatory_rest_days_after_max_shifts": 2,
             "generator_fill_rounds": 3,
             "fairness_threshold_hours": 10.0,
             "min_hours_score_multiplier": 5.0,
-            "max_monthly_hours": 170.0,  # NEU
-            "shifts_to_plan": ["6", "T.", "N."],  # NEU
+            "max_monthly_hours": 170.0,
+            "shifts_to_plan": ["6", "T.", "N."],
             "user_preferences": {},
             "preferred_partners_prioritized": [],
             "avoid_partners_prioritized": []
@@ -67,14 +67,17 @@ class ShiftPlanDataManager:
         """
         Führt alle Lade-Operationen in der korrekten Reihenfolge aus.
         """
-        print(f"[DataManager] Lade Daten für {self.month:02d}/{self.year}...")
+        variant_info = f" (Variante ID: {self.variant_id})" if self.variant_id else " (Hauptplan)"
+        print(f"[DataManager] Lade Daten für {self.month:02d}/{self.year}{variant_info}...")
+
         self._load_generator_config()
         self._fetch_shift_types()
         self._fetch_users()
-        self._fetch_shifts()  # Aktueller, voriger und nächster Monat
-        self._fetch_calendar_events()  # Feiertage
-        self._fetch_requests()  # Urlaub und Wünsche
+        self._fetch_shifts()  # <<< Hier liegt die Hauptänderung für Varianten
+        self._fetch_calendar_events()
+        self._fetch_requests()
         self._build_staffing_rules()
+
         print("[DataManager] Daten erfolgreich geladen.")
 
     def _load_generator_config(self):
@@ -84,7 +87,6 @@ class ShiftPlanDataManager:
             try:
                 loaded_conf = json.loads(setting.value)
                 self.generator_config.update(loaded_conf)
-                # User Preferences separat extrahieren für schnellen Zugriff
                 self.user_preferences = self.generator_config.get('user_preferences', {})
             except json.JSONDecodeError:
                 print("[DataManager] Fehler beim Parsen der Generator-Config.")
@@ -96,33 +98,29 @@ class ShiftPlanDataManager:
             self.shift_types[st.id] = st
             self.shift_types_data[st.abbreviation] = st.to_dict()
 
-            # Preprocess Zeiten für Overlap-Check (HH:MM -> Minuten)
             if st.is_work_shift and st.start_time and st.end_time:
                 try:
                     s_t = datetime.strptime(st.start_time, '%H:%M').time()
                     e_t = datetime.strptime(st.end_time, '%H:%M').time()
                     s_min = s_t.hour * 60 + s_t.minute
                     e_min = e_t.hour * 60 + e_t.minute
-                    if e_min <= s_min: e_min += 24 * 60  # Nachtschicht
+                    if e_min <= s_min: e_min += 24 * 60
                     self._preprocessed_shift_times[st.abbreviation] = (s_min, e_min)
                 except ValueError:
                     pass
 
     def _fetch_users(self):
         """Lädt alle aktiven und sichtbaren Benutzer."""
-        # Relevantes Datum für "aktiv ab": Letzter Tag des Monats
         last_day = calendar.monthrange(self.year, self.month)[1]
         month_end = date(self.year, self.month, last_day)
         prev_month_end = date(self.year, self.month, 1) - timedelta(days=1)
 
-        # Filterung
         users_query = self.db.session.query(User).filter(
             User.shift_plan_visible == True,
             or_(User.aktiv_ab_datum.is_(None), User.aktiv_ab_datum <= month_end)
         ).order_by(User.shift_plan_sort_order, User.name).all()
 
         for u in users_query:
-            # Python-seitige Filterung für inaktiv_ab
             if u.inaktiv_ab_datum is not None and u.inaktiv_ab_datum <= prev_month_end:
                 continue
 
@@ -130,14 +128,20 @@ class ShiftPlanDataManager:
             self.all_users.append(u_dict)
             self.user_data_map[u.id] = u_dict
 
-            # Default Preferences setzen, falls nicht vorhanden
             if str(u.id) not in self.user_preferences:
                 self.user_preferences[str(u.id)] = {}
 
     def _fetch_shifts(self):
-        """Lädt Schichten für den aktuellen, vorherigen und nächsten Monat."""
+        """
+        Lädt Schichten für den aktuellen, vorherigen und nächsten Monat.
 
-        # Datumsbereiche
+        LOGIK FÜR VARIANTEN:
+        - Vormonat: Lädt IMMER den Hauptplan (variant_id IS NULL), da dies die historische Basis ist.
+        - Aktueller Monat: Lädt die spezifische Variante (self.variant_id) ODER Hauptplan (wenn None).
+        - Nächster Monat: Lädt IMMER den Hauptplan (variant_id IS NULL).
+        """
+
+        # Datumsbereiche berechnen
         start_curr = date(self.year, self.month, 1)
         last_day = calendar.monthrange(self.year, self.month)[1]
         end_curr = date(self.year, self.month, last_day)
@@ -146,13 +150,35 @@ class ShiftPlanDataManager:
         end_prev = start_curr - timedelta(days=1)
 
         start_next = end_curr + timedelta(days=1)
-        end_next = (start_next.replace(day=28) + timedelta(days=4)).replace(day=1) - timedelta(
-            days=1)  # Ende nächster Monat
+        # Ende nächster Monat (ca.)
+        end_next = (start_next.replace(day=28) + timedelta(days=4)).replace(day=1) - timedelta(days=1)
 
-        # Query für alle 3 Monate
-        shifts = self.db.session.query(Shift).options(joinedload(Shift.shift_type)).filter(
+        # Filter erstellen
+
+        # 1. Vormonat (Basis ist immer Hauptplan)
+        filter_prev = and_(
             Shift.date >= start_prev,
-            Shift.date <= end_next
+            Shift.date <= end_prev,
+            Shift.variant_id == None
+        )
+
+        # 2. Aktueller Monat (Ziel-Variante)
+        filter_curr = and_(
+            Shift.date >= start_curr,
+            Shift.date <= end_curr,
+            Shift.variant_id == self.variant_id
+        )
+
+        # 3. Nächster Monat (Basis ist immer Hauptplan)
+        filter_next = and_(
+            Shift.date >= start_next,
+            Shift.date <= end_next,
+            Shift.variant_id == None
+        )
+
+        # Gesamtabfrage mit OR
+        shifts = self.db.session.query(Shift).options(joinedload(Shift.shift_type)).filter(
+            or_(filter_prev, filter_curr, filter_next)
         ).all()
 
         for s in shifts:
@@ -162,10 +188,13 @@ class ShiftPlanDataManager:
 
             if start_prev <= s.date <= end_prev:
                 self.prev_month_shifts[uid][date_str] = abbrev
+
             elif start_curr <= s.date <= end_curr:
+                # Dies sind nun die Schichten der korrekten Variante (oder Hauptplan)
                 self.existing_shifts_data[uid][date_str] = abbrev
-                # Bereits gesetzte Schichten im aktuellen Monat gelten als "Locked" für den Generator
+                # Diese gelten als "Locked" für den Generator, da sie bereits in der DB stehen (z.B. manuell eingetragen oder kopiert)
                 self.locked_shifts_data[uid][date_str] = abbrev
+
             elif start_next <= s.date <= end_next:
                 self.next_month_shifts[uid][date_str] = abbrev
 
@@ -184,8 +213,8 @@ class ShiftPlanDataManager:
     def _fetch_requests(self):
         """
         Lädt Urlaubsanträge und Wunschfrei-Anfragen.
+        Diese sind global und nicht an Varianten gebunden.
         """
-        # 1. Wunschfrei / Urlaub aus ShiftQueries
         queries = self.db.session.query(ShiftQuery).filter(
             extract('year', ShiftQuery.shift_date) == self.year,
             extract('month', ShiftQuery.shift_date) == self.month,
@@ -206,10 +235,9 @@ class ShiftPlanDataManager:
 
     def _build_staffing_rules(self):
         """
-        Erstellt die Besetzungsregeln (Soll-Stärken) basierend auf den Schichtarten-Einstellungen.
+        Erstellt die Besetzungsregeln.
         """
         for st in self.shift_types.values():
-            # Weekdays (0=Mo, 6=So)
             mapping = [
                 st.min_staff_mo, st.min_staff_di, st.min_staff_mi,
                 st.min_staff_do, st.min_staff_fr, st.min_staff_sa, st.min_staff_so
@@ -222,7 +250,6 @@ class ShiftPlanDataManager:
                         self.staffing_rules['weekday_staffing'][day_str] = {}
                     self.staffing_rules['weekday_staffing'][day_str][st.abbreviation] = amount
 
-            # Holiday
             if st.min_staff_holiday > 0:
                 if 'holiday_staffing' not in self.staffing_rules:
                     self.staffing_rules['holiday_staffing'] = {}
@@ -240,11 +267,7 @@ class ShiftPlanDataManager:
         return self.next_month_shifts
 
     def get_min_staffing_for_date(self, date_obj):
-        """
-        Gibt das SOLL-Personal für ein bestimmtes Datum zurück.
-        """
         if date_obj in self.holidays_in_month:
             return self.staffing_rules.get('holiday_staffing', {}).copy()
-
-        weekday_str = str(date_obj.weekday())  # 0=Mo
+        weekday_str = str(date_obj.weekday())
         return self.staffing_rules.get('weekday_staffing', {}).get(weekday_str, {}).copy()

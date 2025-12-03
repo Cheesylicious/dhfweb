@@ -4,7 +4,7 @@ from flask import Blueprint, request, jsonify, current_app
 from .models import Shift, ShiftType, User, ShiftPlanStatus, UpdateLog, ShiftQuery
 from .extensions import db
 from .utils import admin_required
-from flask_login import login_required
+from flask_login import login_required, current_user
 from sqlalchemy import extract, func
 from sqlalchemy.orm import joinedload
 from sqlalchemy.exc import IntegrityError, OperationalError
@@ -12,7 +12,6 @@ from datetime import datetime, timedelta, date
 from .violation_manager import ViolationManager
 import calendar
 from collections import defaultdict
-# --- NEU: Import für Template-Email ---
 from .email_service import send_template_email
 
 shifts_bp = Blueprint('shifts', __name__, url_prefix='/api')
@@ -30,12 +29,15 @@ def _log_update_event(area, description):
     db.session.add(new_log)
 
 
-def _calculate_user_total_hours(user_id, year, month, shift_types_map=None):
+def _calculate_user_total_hours(user_id, year, month, shift_types_map=None, variant_id=None):
     """
     Berechnet Gesamtstunden für einen User in einem Monat.
     Inkludiert:
-    1. Genehmigte Schichten (Shift)
-    2. Offene Wunsch-Anfragen (ShiftQuery)
+    1. Genehmigte Schichten (Shift) der gewählten Variante (oder Hauptplan)
+    2. Offene Wunsch-Anfragen (ShiftQuery) (gelten global)
+
+    HINWEIS: Übertrag vom Vormonat wird IMMER aus dem Hauptplan (variant_id=None) gezogen,
+    da Varianten meist nur für den aktuellen Planungsmonat existieren.
     """
     try:
         days_in_month = calendar.monthrange(year, month)[1]
@@ -46,7 +48,7 @@ def _calculate_user_total_hours(user_id, year, month, shift_types_map=None):
         current_app.logger.error(f"Ungültiges Datum in _calculate_user_total_hours: {year}-{month}")
         return 0.0
 
-    # Map laden falls nicht übergeben (für Einzelaufrufe in save_shift)
+    # Map laden falls nicht übergeben
     if shift_types_map is None:
         all_types = ShiftType.query.all()
         shift_types_map = {st.abbreviation: st for st in all_types}
@@ -54,14 +56,15 @@ def _calculate_user_total_hours(user_id, year, month, shift_types_map=None):
     total_hours = 0.0
 
     # --- 1. Genehmigte Schichten (Shift) ---
+    # Filtert nach Variante (oder Hauptplan wenn variant_id None ist)
     shifts_in_this_month = Shift.query.options(joinedload(Shift.shift_type)).filter(
         Shift.user_id == user_id,
         extract('year', Shift.date) == year,
-        extract('month', Shift.date) == month
+        extract('month', Shift.date) == month,
+        Shift.variant_id == variant_id
     ).all()
 
     for shift in shifts_in_this_month:
-        # Prüfen ob shift_type existiert (könnte bei Locked-Empty-Shift None sein)
         if shift.shift_type and shift.shift_type.is_work_shift:
             try:
                 total_hours += float(shift.shift_type.hours or 0.0)
@@ -71,10 +74,11 @@ def _calculate_user_total_hours(user_id, year, month, shift_types_map=None):
             except Exception:
                 pass
 
-    # Übertrag vom Vormonat (Shift)
+    # --- Übertrag vom Vormonat (IMMER Hauptplan) ---
     shifts_on_last_day_prev_month = Shift.query.options(joinedload(Shift.shift_type)).filter(
         Shift.user_id == user_id,
-        Shift.date == last_day_of_previous_month
+        Shift.date == last_day_of_previous_month,
+        Shift.variant_id == None  # Immer Hauptplan
     ).all()
 
     for shift in shifts_on_last_day_prev_month:
@@ -85,6 +89,7 @@ def _calculate_user_total_hours(user_id, year, month, shift_types_map=None):
                 pass
 
     # --- 2. Offene Wunsch-Anfragen (ShiftQuery) ---
+    # Anfragen sind global (nicht an Variante gebunden) -> gelten für alle.
 
     # A) Anfragen im aktuellen Monat
     queries_this_month = ShiftQuery.query.filter(
@@ -135,8 +140,8 @@ def _calculate_user_total_hours(user_id, year, month, shift_types_map=None):
 
 def _calculate_actual_staffing(shifts_in_month_dicts, queries_in_month_dicts, shifttypes_dicts, year, month):
     """
-    Berechnet die IST-Besetzung (tatsächliche Zählung) für alle Schichtarten.
-    Zählt genehmigte Schichten UND offene Wunsch-Anfragen.
+    Berechnet die IST-Besetzung.
+    (Logik bleibt gleich, da 'shifts_in_month_dicts' bereits vom Caller gefiltert wird)
     """
     days_in_month = calendar.monthrange(year, month)[1]
 
@@ -217,8 +222,16 @@ def get_shifts():
     try:
         year = int(request.args.get('year'))
         month = int(request.args.get('month'))
+        # --- NEU: Variant ID auslesen ---
+        variant_id_raw = request.args.get('variant_id')
+        variant_id = int(variant_id_raw) if variant_id_raw and variant_id_raw != 'null' else None
     except (TypeError, ValueError):
-        return jsonify({"message": "Jahr und Monat sind erforderlich"}), 400
+        return jsonify({"message": "Ungültige Parameter"}), 400
+
+    # Sicherheitscheck: Nur Admins dürfen Varianten sehen
+    if variant_id is not None:
+        if not current_user.role or current_user.role.name != 'admin':
+            return jsonify({"message": "Keine Berechtigung für Variantenansicht"}), 403
 
     current_month_start_date = date(year, month, 1)
     days_in_month = calendar.monthrange(year, month)[1]
@@ -236,37 +249,34 @@ def get_shifts():
         if user.inaktiv_ab_datum is None or user.inaktiv_ab_datum > prev_month_end_date:
             users.append(user)
 
-    shifts_for_calc = Shift.query.options(joinedload(Shift.shift_type)).filter(
-        db.or_(
-            db.and_(extract('year', Shift.date) == year, extract('month', Shift.date) == month),
-            Shift.date == prev_month_end_date
-        )
+    # --- SCHICHTEN LADEN ---
+    # 1. Aktueller Monat: Filtert nach variant_id (Entweder Hauptplan oder spezifische Variante)
+    shifts_current_month = Shift.query.options(joinedload(Shift.shift_type)).filter(
+        extract('year', Shift.date) == year,
+        extract('month', Shift.date) == month,
+        Shift.variant_id == variant_id
+    ).all()
+
+    # 2. Vormonat: Lädt IMMER den Hauptplan (variant_id=None) für Konsistenz
+    shifts_prev_month = Shift.query.options(joinedload(Shift.shift_type)).filter(
+        Shift.date == prev_month_end_date,
+        Shift.variant_id == None
     ).all()
 
     shift_types = ShiftType.query.order_by(ShiftType.staffing_sort_order, ShiftType.abbreviation).all()
-
-    # Map erstellen für effizientere Berechnung
     st_map = {st.abbreviation: st for st in shift_types}
 
-    shifts_data = []
-    shifts_last_month_data = []
-
-    for s in shifts_for_calc:
-        s_dict = s.to_dict()
-        if s.date >= current_month_start_date:
-            shifts_data.append(s_dict)
-        else:
-            shifts_last_month_data.append(s_dict)
+    shifts_data = [s.to_dict() for s in shifts_current_month]
+    shifts_last_month_data = [s.to_dict() for s in shifts_prev_month]
 
     shifts_all_data = shifts_data + shifts_last_month_data
     users_data = [u.to_dict() for u in users]
     shifttypes_data = [st.to_dict() for st in shift_types]
 
     # Berechnungen
-    # Wir müssen auch User berücksichtigen, die nur Anfragen haben, aber noch keine Schichten
     totals_dict = {}
     for user in users:
-        totals_dict[user.id] = _calculate_user_total_hours(user.id, year, month, st_map)
+        totals_dict[user.id] = _calculate_user_total_hours(user.id, year, month, st_map, variant_id)
 
     violation_manager = ViolationManager(shifttypes_data)
     violations_set = violation_manager.calculate_all_violations(year, month, shifts_all_data, users_data)
@@ -291,7 +301,8 @@ def get_shifts():
         "violations": list(violations_set),
         "staffing_actual": staffing_actual,
         "shifts_last_month": shifts_last_month_data,
-        "plan_status": plan_status_data
+        "plan_status": plan_status_data,
+        "current_variant_id": variant_id  # Zur Bestätigung im Frontend
     }), 200
 
 
@@ -312,53 +323,62 @@ def _parse_date_from_payload(data):
     raise ValueError('Ungültiges Datum')
 
 
-# --- NEU: Route zum Umschalten des Sperrstatus ---
 @shifts_bp.route('/shifts/toggle_lock', methods=['POST'])
 @admin_required
 def toggle_shift_lock():
     """
     Schaltet den 'is_locked' Status einer Schichtzelle um.
-    Wenn die Zelle leer ist, wird ein neuer Shift-Eintrag (shifttype_id=None) erstellt, der gesperrt ist.
+    Unterstützt Varianten.
     """
     data = request.get_json()
-    if not data:
-        return jsonify({"message": "Keine Daten gesendet."}), 400
+    if not data: return jsonify({"message": "Keine Daten gesendet."}), 400
 
     try:
         user_id = int(data.get('user_id'))
         shift_date = _parse_date_from_payload(data)
+        # Variant ID
+        variant_id_raw = data.get('variant_id')
+        variant_id = int(variant_id_raw) if variant_id_raw and variant_id_raw != 'null' else None
     except (TypeError, ValueError):
-        return jsonify({"message": "Ungültige User-ID oder Datum."}), 400
+        return jsonify({"message": "Ungültige Parameter."}), 400
 
-    # Globale Plansperre prüfen
-    status_obj = ShiftPlanStatus.query.filter_by(year=shift_date.year, month=shift_date.month).first()
-    if status_obj and status_obj.is_locked:
-        return jsonify({"message": "Plan ist global gesperrt."}), 403
+    # Globale Plansperre prüfen (Gilt nur für Hauptplan)
+    if variant_id is None:
+        status_obj = ShiftPlanStatus.query.filter_by(year=shift_date.year, month=shift_date.month).first()
+        if status_obj and status_obj.is_locked:
+            return jsonify({"message": "Plan ist global gesperrt."}), 403
 
     try:
-        shift = Shift.query.filter_by(user_id=user_id, date=shift_date).first()
+        # Schicht suchen (unter Berücksichtigung der Variante)
+        shift = Shift.query.filter_by(
+            user_id=user_id,
+            date=shift_date,
+            variant_id=variant_id
+        ).first()
 
         if shift:
-            # Status umschalten
             shift.is_locked = not shift.is_locked
-
-            # Aufräumen: Wenn es eine "leere" Schicht war (shifttype=None) und sie jetzt entsperrt wird,
-            # ist sie überflüssig -> löschen.
+            # Aufräumen wenn leer und entsperrt
             if shift.shifttype_id is None and not shift.is_locked:
                 db.session.delete(shift)
                 was_deleted = True
             else:
                 was_deleted = False
         else:
-            # Neue leere, gesperrte Schicht erstellen
-            shift = Shift(user_id=user_id, date=shift_date, shifttype_id=None, is_locked=True)
+            # Neue leere, gesperrte Schicht
+            shift = Shift(
+                user_id=user_id,
+                date=shift_date,
+                shifttype_id=None,
+                is_locked=True,
+                variant_id=variant_id
+            )
             db.session.add(shift)
             was_deleted = False
 
         db.session.commit()
 
         if was_deleted:
-            # Dem Frontend signalisieren, dass der Eintrag weg ist
             return jsonify({"deleted": True, "user_id": user_id, "date": shift_date.isoformat()}), 200
         else:
             return jsonify(shift.to_dict()), 200
@@ -368,38 +388,38 @@ def toggle_shift_lock():
         return jsonify({"message": f"DB Fehler: {str(e)}"}), 500
 
 
-# --- NEU: Route zum Leeren des Schichtplans (Behält gesperrte Schichten) ---
 @shifts_bp.route('/shifts/clear', methods=['DELETE'])
 @admin_required
 def clear_shift_plan():
     """
-    Löscht alle Schichten eines Monats, sofern der Plan nicht global gesperrt ist.
-    Einzeln gesperrte Schichten (is_locked=True) werden NICHT gelöscht.
+    Löscht Schichten einer Variante oder des Hauptplans.
+    Behält einzeln gesperrte Schichten.
     """
     data = request.get_json() or {}
     try:
         year = int(data.get('year'))
         month = int(data.get('month'))
+        variant_id_raw = data.get('variant_id')
+        variant_id = int(variant_id_raw) if variant_id_raw and variant_id_raw != 'null' else None
     except (TypeError, ValueError):
-        return jsonify({"message": "Jahr und Monat sind erforderlich."}), 400
+        return jsonify({"message": "Parameter fehlen."}), 400
 
-    # 1. Globale Sperre prüfen
-    status_obj = ShiftPlanStatus.query.filter_by(year=year, month=month).first()
-    if status_obj and status_obj.is_locked:
-        return jsonify({"message": "Der Schichtplan ist global gesperrt. Löschen nicht möglich."}), 403
+    # Globale Sperre nur bei Hauptplan
+    if variant_id is None:
+        status_obj = ShiftPlanStatus.query.filter_by(year=year, month=month).first()
+        if status_obj and status_obj.is_locked:
+            return jsonify({"message": "Hauptplan ist gesperrt."}), 403
 
     try:
-        # 2. Performantes Löschen aller NICHT gesperrten Schichten für den Zeitraum
-        # Wir nutzen synchronize_session=False für maximale Performance (Regel 2)
-        # Dies generiert ein effizientes "DELETE FROM shift WHERE ..." Statement
+        # Löschen (mit variant_id Filter)
         num_deleted = Shift.query.filter(
             extract('year', Shift.date) == year,
             extract('month', Shift.date) == month,
-            Shift.is_locked == False  # WICHTIG: Gesperrte Schichten behalten!
+            Shift.is_locked == False,
+            Shift.variant_id == variant_id
         ).delete(synchronize_session=False)
 
         if num_deleted > 0:
-            # _log_update_event("Schichtplan", f"Plan für {month:02d}/{year} geleert. ({num_deleted} Einträge gelöscht, gesperrte behalten).") # DEAKTIVIERT
             db.session.commit()
             return jsonify({"message": f"Plan erfolgreich geleert. {num_deleted} Schichten gelöscht."}), 200
         else:
@@ -407,11 +427,8 @@ def clear_shift_plan():
 
     except Exception as e:
         db.session.rollback()
-        current_app.logger.error(f"Fehler beim Leeren des Plans: {str(e)}")
+        current_app.logger.error(f"Fehler beim Leeren: {str(e)}")
         return jsonify({"message": f"Datenbankfehler: {str(e)}"}), 500
-
-
-# --- ENDE NEU ---
 
 
 @shifts_bp.route('/shifts', methods=['POST'])
@@ -425,12 +442,17 @@ def save_shift():
         raw_shift_type = data.get('shifttype_id') or data.get('shifttypeId')
         shifttype_id = int(raw_shift_type) if raw_shift_type not in (None, '', 'null') else None
         shift_date = _parse_date_from_payload(data)
+
+        variant_id_raw = data.get('variant_id')
+        variant_id = int(variant_id_raw) if variant_id_raw and variant_id_raw != 'null' else None
     except (TypeError, ValueError) as e:
         return jsonify({"message": f"Ungültige Daten: {str(e)}"}), 400
 
-    status_obj = ShiftPlanStatus.query.filter_by(year=shift_date.year, month=shift_date.month).first()
-    if status_obj and status_obj.is_locked:
-        return jsonify({"message": f"Aktion blockiert: Plan gesperrt."}), 403
+    # Sperrprüfung nur für Hauptplan
+    if variant_id is None:
+        status_obj = ShiftPlanStatus.query.filter_by(year=shift_date.year, month=shift_date.month).first()
+        if status_obj and status_obj.is_locked:
+            return jsonify({"message": f"Aktion blockiert: Plan gesperrt."}), 403
 
     free_type = ShiftType.query.filter_by(abbreviation='FREI').first()
     is_free = (shifttype_id is None) or (free_type and shifttype_id == free_type.id) or (shifttype_id == 0)
@@ -439,13 +461,15 @@ def save_shift():
     status_code = 200
 
     try:
-        existing_shift = Shift.query.filter_by(user_id=user_id, date=shift_date).first()
+        # Suche nach existierender Schicht in dieser Variante
+        existing_shift = Shift.query.filter_by(
+            user_id=user_id,
+            date=shift_date,
+            variant_id=variant_id
+        ).first()
 
-        # --- NEU: Check auf individuelle Sperre ---
         if existing_shift and existing_shift.is_locked:
-            return jsonify({
-                "message": "Diese Schicht ist einzeln gesperrt (Schloss-Symbol). Bitte entsperren (Leertaste), um sie zu ändern."}), 403
-        # --- ENDE NEU ---
+            return jsonify({"message": "Schicht ist gesperrt. Bitte entsperren."}), 403
 
         if existing_shift:
             saved_shift_id = existing_shift.id
@@ -457,7 +481,12 @@ def save_shift():
                 db.session.add(existing_shift)
                 action_taken = 'update'
         elif not is_free:
-            new_shift = Shift(user_id=user_id, shifttype_id=shifttype_id, date=shift_date)
+            new_shift = Shift(
+                user_id=user_id,
+                shifttype_id=shifttype_id,
+                date=shift_date,
+                variant_id=variant_id
+            )
             db.session.add(new_shift)
             db.session.flush()
             saved_shift_id = new_shift.id
@@ -478,8 +507,20 @@ def save_shift():
     elif action_taken == 'delete':
         response_data = {"message": "Gelöscht"}
 
-    # Totals neu berechnen (inkl. Queries!)
-    response_data['new_total_hours'] = _calculate_user_total_hours(user_id, shift_date.year, shift_date.month)
+    # Totals berechnen (mit Variante)
+    response_data['new_total_hours'] = _calculate_user_total_hours(user_id, shift_date.year, shift_date.month,
+                                                                   variant_id=variant_id)
+
+    # Violations und Staffing (brauchen auch variant_id im Kontext, aber hier nutzen wir
+    # für die Berechnung die Daten aus dem aktuellen Kontext.
+    # Um Performance zu sparen, laden wir hier NICHT den ganzen Monat neu,
+    # sondern verlassen uns darauf, dass das Frontend bei Bedarf neu lädt oder
+    # wir implementieren die Violation-Checks später varianten-aware.
+    # Für den Moment laden wir die Daten neu, aber gefiltert nach Variante.)
+
+    # ... (Code für Violation/Staffing Calc hier vereinfacht, um Monolith zu vermeiden.
+    # ViolationManager müsste eigentlich auch variant_id können, aber er arbeitet auf Listen.
+    # Wir laden hier die Shifts der Variante für die Berechnung.)
 
     month_start = date(shift_date.year, shift_date.month, 1)
     month_end = date(shift_date.year, shift_date.month, calendar.monthrange(shift_date.year, shift_date.month)[1])
@@ -487,27 +528,37 @@ def save_shift():
     day_after = month_end + timedelta(days=1)
 
     shifts_for_calc_all = Shift.query.options(joinedload(Shift.shift_type)).filter(
-        Shift.date.between(day_before, day_after)
+        Shift.date.between(day_before, day_after),
+        Shift.variant_id == variant_id  # Nur Schichten dieser Variante
     ).all()
 
     relevant_user_ids = {s.user_id for s in shifts_for_calc_all}
+    if user_id not in relevant_user_ids: relevant_user_ids.add(user_id)  # Aktuellen User immer dazu
+
     users = User.query.filter(User.id.in_(relevant_user_ids)).all()
-    shift_types = ShiftType.query.order_by(ShiftType.staffing_sort_order, ShiftType.abbreviation).all()
+    shift_types = ShiftType.query.all()
 
     shifts_all_data = [s.to_dict() for s in shifts_for_calc_all]
     users_data = [u.to_dict() for u in users]
     shifttypes_data = [st.to_dict() for st in shift_types]
 
     violation_manager = ViolationManager(shifttypes_data)
+    # Beachte: Violation Manager braucht Vormonat. Da wir nur Shifts der Variante laden,
+    # fehlt ggf. der Vormonat (wenn Variante leer begann).
+    # Das ist akzeptabel für Varianten-Entwürfe oder wir müssten Vormonat (Main) dazu laden.
+    # Hier laden wir Vormonat (Main) dazu:
+    prev_month_shifts = Shift.query.options(joinedload(Shift.shift_type)).filter(
+        Shift.date == day_before,
+        Shift.variant_id == None
+    ).all()
+    shifts_all_data.extend([s.to_dict() for s in prev_month_shifts])
+
     response_data['violations'] = list(
         violation_manager.calculate_all_violations(shift_date.year, shift_date.month, shifts_all_data, users_data))
 
-    shifts_data_for_staffing = []
-    for s in shifts_for_calc_all:
-        if s.date >= month_start and s.date <= month_end:
-            shifts_data_for_staffing.append(s.to_dict())
+    # Staffing
+    shifts_data_for_staffing = [s.to_dict() for s in shifts_for_calc_all if month_start <= s.date <= month_end]
 
-    # Queries für Staffing mit einbeziehen
     queries_for_calc = ShiftQuery.query.filter(
         extract('year', ShiftQuery.shift_date) == shift_date.year,
         extract('month', ShiftQuery.shift_date) == shift_date.month,
@@ -524,6 +575,7 @@ def save_shift():
 @shifts_bp.route('/shifts/status', methods=['PUT'])
 @admin_required
 def update_plan_status():
+    # Status gilt weiterhin nur für den Hauptplan (variant_id spielt hier keine Rolle)
     data = request.get_json() or {}
     try:
         year = int(data.get('year'))
@@ -536,7 +588,6 @@ def update_plan_status():
         status_obj.status = data.get('status', status_obj.status)
         status_obj.is_locked = data.get('is_locked', status_obj.is_locked)
 
-        # _log_update_event("Schichtplan Status", f"Status {month}/{year}: {status_obj.status} (Locked: {status_obj.is_locked})") # DEAKTIVIERT
         db.session.commit()
         return jsonify(status_obj.to_dict()), 200
     except Exception as e:
@@ -544,14 +595,10 @@ def update_plan_status():
         return jsonify({"message": f"Fehler: {str(e)}"}), 500
 
 
-# --- NEU: Route für Rundmail bei Fertigstellung ---
 @shifts_bp.route('/shifts/send_completion_notification', methods=['POST'])
 @admin_required
 def send_completion_notification():
-    """
-    Sendet die Vorlage 'plan_completed' an alle User mit E-Mail-Adresse.
-    Erfordert, dass der Plan 'Fertiggestellt' und 'is_locked' ist (Validierung).
-    """
+    # Rundmail nur für Hauptplan-Fertigstellung sinnvoll
     data = request.get_json() or {}
     try:
         year = int(data.get('year'))
@@ -559,23 +606,20 @@ def send_completion_notification():
     except (TypeError, ValueError):
         return jsonify({"message": "Jahr und Monat erforderlich."}), 400
 
-    # 1. Status prüfen (Sicherheitscheck)
     status_obj = ShiftPlanStatus.query.filter_by(year=year, month=month).first()
     if not status_obj:
-        return jsonify({"message": "Planstatus nicht gefunden. Bitte zuerst speichern."}), 404
+        return jsonify({"message": "Planstatus nicht gefunden."}), 404
 
     if status_obj.status != "Fertiggestellt" or not status_obj.is_locked:
-        return jsonify({"message": "Plan muss 'Fertiggestellt' und 'Gesperrt' sein, um diese Rundmail zu senden."}), 400
+        return jsonify({"message": "Plan muss 'Fertiggestellt' und 'Gesperrt' sein."}), 400
 
     try:
-        # 2. User laden
         users = User.query.filter(User.email != None, User.email != "").all()
         if not users:
             return jsonify({"message": "Keine Benutzer mit E-Mail-Adresse gefunden."}), 404
 
         count = 0
         for user in users:
-            # Kontext für die Vorlage
             context = {
                 "vorname": user.vorname,
                 "name": user.name,
@@ -589,13 +633,7 @@ def send_completion_notification():
             )
             count += 1
 
-        # _log_update_event("Benachrichtigung", f"Rundmail 'Schichtplan fertig' an {count} Benutzer gesendet ({month}/{year}).") # DEAKTIVIERT? Nein, dies ist eine explizite manuelle Aktion, lassen wir vielleicht?
-        # Wenn wirklich ALLE automatischen weg sollen, dann auch das hier.
-        # Wenn der Button im Dashboard "Update protokollieren" der EINZIGE Weg sein soll, dann raus damit.
-        # Ich nehme es raus, um strikt zu sein.
-
         db.session.commit()
-
         return jsonify({"message": f"Benachrichtigung wurde an {count} Benutzer versendet."}), 200
 
     except Exception as e:
