@@ -123,6 +123,56 @@
             margin: auto;
         }
 
+        /* --- NEU: TABS STYLING --- */
+        .page-tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            padding-bottom: 15px;
+            flex-wrap: wrap;
+        }
+
+        .page-tab-btn {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: #bdc3c7;
+            padding: 12px 25px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 15px;
+            font-weight: 500;
+            transition: all 0.3s ease;
+        }
+
+        .page-tab-btn:hover {
+            background: rgba(255, 255, 255, 0.15);
+            color: #ffffff;
+        }
+
+        .page-tab-btn.active {
+            background: #3498db;
+            color: #ffffff;
+            border-color: #3498db;
+            box-shadow: 0 4px 15px rgba(52, 152, 219, 0.4);
+        }
+
+        .tab-content {
+            display: none;
+            animation: fadeIn 0.4s ease;
+        }
+
+        .tab-content.active {
+            display: block;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+        /* --- ENDE TABS --- */
+
+
         /* Card (Glas-Effekt) */
         .card {
             background: rgba(255, 255, 255, 0.05);
@@ -148,6 +198,33 @@
             margin: 0;
             color: #ffffff;
             font-weight: 600;
+        }
+
+        /* Jahres-Navigation Styles */
+        .year-nav-controls {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        .year-nav-btn {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: #ffffff;
+            padding: 5px 10px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: background 0.3s;
+        }
+        .year-nav-btn:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+        .year-label {
+            font-size: 18px; /* etwas kleiner als h2 */
+            font-weight: 600;
+            min-width: 60px;
+            text-align: center;
+            color: #3498db; /* Akzentfarbe */
         }
 
         /* Tabelle (Glas-Effekt) */
@@ -392,8 +469,8 @@
     <div class="sub-nav">
         <a href="schichtplan.html">Schichtplan</a>
         <div class="dropdown">
-            <button class="dropbtn active">Einstellungen &raquo;</button>
-            <div class="dropdown-content">
+            <button class="dropbtn active" id="settings-dropbtn">Einstellungen &raquo;</button>
+            <div class="dropdown-content" id="settings-dropdown-content">
                 <a href="einstellungen.html" class="admin-only">Mitarbeiter Sortierung</a>
                 <a href="schichtarten.html" class="admin-only">Schichtarten</a>
                 <a href="shortcuts.html" class="admin-only">Shortcuts</a>
@@ -404,60 +481,116 @@
     </div>
 
     <main id="content-wrapper">
-        <div class="card">
-            <div class="card-header">
-                <h2>Feiertage</h2>
-                <button class="btn-primary" id="add-holiday-btn">Feiertag hinzufügen</button>
-            </div>
-            <div style="overflow-x: auto;">
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Name</th>
-                            <th>Datum</th>
-                            <th>Aktionen</th>
-                        </tr>
-                    </thead>
-                    <tbody id="holiday-table-body"></tbody>
-                </table>
+
+        <div class="page-tabs">
+            <button class="page-tab-btn active" data-target="tab-holidays">Feiertage</button>
+            <button class="page-tab-btn" data-target="tab-training">Ausbildung</button>
+            <button class="page-tab-btn" data-target="tab-shooting">Schießen</button>
+            <button class="page-tab-btn" data-target="tab-dpo">DPO - Prüfung</button>
+        </div>
+
+        <div id="tab-holidays" class="tab-content active">
+            <div class="card">
+                <div class="card-header">
+                    <div class="year-nav-controls">
+                        <h2>Feiertage <span id="holiday-year-label" class="year-label">2025</span></h2>
+                        <button class="year-nav-btn year-nav" data-type="holiday" data-delta="-1">&lt;</button>
+                        <button class="year-nav-btn year-nav" data-type="holiday" data-delta="1">&gt;</button>
+                    </div>
+                    <div style="display: flex; gap: 10px;">
+                        <button class="btn-primary" id="generate-holidays-btn" style="background-color: #8e44ad;" title="Feiertage automatisch generieren">
+                           🪄 Startwerte füllen
+                        </button>
+                        <button class="btn-primary" id="add-holiday-btn">Manuell hinzufügen</button>
+                    </div>
+                </div>
+                <div style="overflow-x: auto;">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Name</th>
+                                <th>Datum</th>
+                                <th>Aktionen</th>
+                            </tr>
+                        </thead>
+                        <tbody id="holiday-table-body"></tbody>
+                    </table>
+                </div>
             </div>
         </div>
 
-        <div class="card">
-            <div class="card-header">
-                <h2>Ausbildungstermine</h2>
-                <button class="btn-primary" id="add-training-btn">Termin hinzufügen</button>
-            </div>
-            <div style="overflow-x: auto;">
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Name</th>
-                            <th>Datum</th>
-                            <th>Aktionen</th>
-                        </tr>
-                    </thead>
-                    <tbody id="training-table-body"></tbody>
-                </table>
+        <div id="tab-training" class="tab-content">
+            <div class="card">
+                <div class="card-header">
+                    <div class="year-nav-controls">
+                        <h2>Ausbildung <span id="training-year-label" class="year-label">2025</span></h2>
+                        <button class="year-nav-btn year-nav" data-type="training" data-delta="-1">&lt;</button>
+                        <button class="year-nav-btn year-nav" data-type="training" data-delta="1">&gt;</button>
+                    </div>
+                    <button class="btn-primary" id="add-training-btn">Termin hinzufügen</button>
+                </div>
+                <div style="overflow-x: auto;">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Name</th>
+                                <th>Datum</th>
+                                <th>Aktionen</th>
+                            </tr>
+                        </thead>
+                        <tbody id="training-table-body"></tbody>
+                    </table>
+                </div>
             </div>
         </div>
 
-        <div class="card">
-            <div class="card-header">
-                <h2>Schießtermine</h2>
-                <button class="btn-primary" id="add-shooting-btn">Termin hinzufügen</button>
+        <div id="tab-shooting" class="tab-content">
+            <div class="card">
+                <div class="card-header">
+                    <div class="year-nav-controls">
+                        <h2>Schießen <span id="shooting-year-label" class="year-label">2025</span></h2>
+                        <button class="year-nav-btn year-nav" data-type="shooting" data-delta="-1">&lt;</button>
+                        <button class="year-nav-btn year-nav" data-type="shooting" data-delta="1">&gt;</button>
+                    </div>
+                    <button class="btn-primary" id="add-shooting-btn">Termin hinzufügen</button>
+                </div>
+                <div style="overflow-x: auto;">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Name</th>
+                                <th>Datum</th>
+                                <th>Aktionen</th>
+                            </tr>
+                        </thead>
+                        <tbody id="shooting-table-body"></tbody>
+                    </table>
+                </div>
             </div>
-            <div style="overflow-x: auto;">
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Name</th>
-                            <th>Datum</th>
-                            <th>Aktionen</th>
-                        </tr>
-                    </thead>
-                    <tbody id="shooting-table-body"></tbody>
-                </table>
+        </div>
+
+        <div id="tab-dpo" class="tab-content">
+            <div class="card">
+                <div class="card-header">
+                    <div class="year-nav-controls">
+                        <h2>DPO - Prüfung <span id="dpo-year-label" class="year-label">2025</span></h2>
+                        <button class="year-nav-btn year-nav" data-type="dpo" data-delta="-1">&lt;</button>
+                        <button class="year-nav-btn year-nav" data-type="dpo" data-delta="1">&gt;</button>
+                    </div>
+                    <button class="btn-primary" id="add-dpo-btn">Termin hinzufügen</button>
+                </div>
+                <div style="overflow-x: auto;">
+                    <table>
+                        <thead>
+                            <tr>
+                                <th>Name</th>
+                                <th>Datum</th>
+                                <th>Aktionen</th>
+                            </tr>
+                        </thead>
+                        <tbody id="dpo-table-body"></tbody>
+                    </table>
+                </div>
             </div>
         </div>
     </main>
@@ -470,14 +603,15 @@
             </div>
             <div class="modal-body">
                 <input type="hidden" id="date-type">
-                <div class="form-group">
+                <div class="form-group" id="event-name-group">
                     <label for="date-name">Name:</label>
                     <input type="text" id="date-name" placeholder="z.B. Neujahr">
                 </div>
                 <div class="form-group">
                     <label for="date-value">Datum:</label>
-                    <input type="date" id="date-value">
+                    <input type="text" id="date-value" placeholder="TT.MM.JJJJ">
                 </div>
+                 <p class="holiday-note" style="font-size: 12px; color: #bdc3c7; display:none; margin-top: 5px;">Hinweis: Feiertage werden automatisch berechnet, können aber hier manuell ergänzt werden.</p>
                 <button class="btn-primary" id="save-date-btn">Speichern</button>
             </div>
         </div>
@@ -568,8 +702,8 @@
         // --- ENDE: PARTIKEL-ANIMATION ---
     </script>
 
-    <script src="feiertage.js" defer></script>
-    <script src="shared_feedback.js" defer></script>
-    <script src="shared_notifications.js" defer></script>
+    <script type="module" src="feiertage.js"></script>
+    <script type="module" src="shared_feedback.js"></script>
+    <script type="module" src="shared_notifications.js"></script>
 </body>
 </html>

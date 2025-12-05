@@ -289,6 +289,47 @@
             border-radius: 4px;
             font-family: 'Poppins', sans-serif;
         }
+        
+        .shortcut-label {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            color: #bdc3c7;
+            cursor: pointer;
+        }
+
+        .color-preview {
+            width: 20px;
+            height: 20px;
+            border-radius: 3px;
+            border: 1px solid #555;
+        }
+
+        .shortcut-input {
+            width: 60px;
+            padding: 5px;
+            background: rgba(0,0,0,0.2);
+            border: 1px solid #3498db;
+            border-radius: 4px;
+            color: #fff;
+            text-align: center;
+            font-family: monospace;
+            font-size: 16px;
+        }
+        
+        #shortcut-list {
+            list-style: none;
+            padding: 20px;
+            margin: 0;
+        }
+        
+        .shortcut-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px;
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+        }
 
         /* --- NEU: Restricted View Style --- */
         #content-wrapper.restricted-view {
@@ -336,8 +377,8 @@
     <div class="sub-nav">
         <a href="schichtplan.html">Schichtplan</a>
         <div class="dropdown">
-            <button class="dropbtn active">Einstellungen &raquo;</button>
-            <div class="dropdown-content">
+            <button class="dropbtn active" id="settings-dropbtn">Einstellungen &raquo;</button>
+            <div class="dropdown-content" id="settings-dropdown-content">
                 <a href="einstellungen.html" class="admin-only">Mitarbeiter Sortierung</a>
                 <a href="schichtarten.html" class="admin-only">Schichtarten</a>
                 <a href="shortcuts.html" class="admin-only active">Shortcuts</a>
@@ -357,18 +398,12 @@
                 Weisen Sie den Schichtarten Tastatur-Kürzel zu, um im Schichtplan schneller zu arbeiten.
                 <br>Bewegen Sie die Maus über eine Zelle und drücken Sie die Taste.
             </div>
-            <div style="overflow-x: auto;">
-                <table>
-                    <thead>
-                        <tr>
-                            <th>Schichtart</th>
-                            <th>Kürzel (Taste)</th>
-                        </tr>
-                    </thead>
-                    <tbody id="shortcuts-table-body">
-                        </tbody>
-                </table>
-            </div>
+            
+            <ul id="shortcut-list">
+                <li style="color: #777; text-align: center;">Lade Daten...</li>
+            </ul>
+            
+            <div id="status-message" style="text-align: center; margin-bottom: 15px;"></div>
         </div>
     </main>
 
@@ -457,8 +492,8 @@
         // --- ENDE: PARTIKEL-ANIMATION ---
     </script>
 
-    <script src="shortcuts.js" defer></script>
-    <script src="shared_feedback.js" defer></script>
-    <script src="shared_notifications.js" defer></script>
+    <script type="module" src="shortcuts.js" defer></script>
+    <script type="module" src="shared_feedback.js" defer></script>
+    <script type="module" src="shared_notifications.js" defer></script>
 </body>
 </html>

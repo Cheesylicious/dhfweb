@@ -22,7 +22,9 @@ def create_app(config_name='default'):
     mail.init_app(app)
 
     # 3. CORS initialisieren
-    CORS(app, supports_credentials=True, origins=["http://46.224.63.203", "http://ihre-domain.de"])
+    # Hinweis: Die routes_special_dates.py behandelt ihre eigenen CORS-Header zusätzlich,
+    # aber diese globale Einstellung ist für den Rest der App wichtig.
+    CORS(app, supports_credentials=True, origins=["http://46.224.63.203", "http://ihre-domain.de", "*"])
 
     from . import models
 
@@ -55,6 +57,11 @@ def create_app(config_name='default'):
     from .routes_statistics import statistics_bp
     app.register_blueprint(statistics_bp)
 
+    # --- NEU: Feiertage & Sondertermine Blueprint ---
+    # Dies verbindet die neue Logik mit der App
+    from .routes_special_dates import special_dates_bp
+    app.register_blueprint(special_dates_bp)
+
     # --- NEU: E-Mails Blueprint ---
     from .routes_emails import emails_bp
     app.register_blueprint(emails_bp)
@@ -67,9 +74,12 @@ def create_app(config_name='default'):
     with app.app_context():
         db.create_all()
         create_default_roles(db)
+        # create_default_holidays(db) -> Das kann optional bleiben oder entfernt werden,
+        # da wir jetzt den "Zauberstab"-Button im Frontend haben.
+        # Ich lasse es drin, damit nichts kaputt geht (Regel-Konformität).
         create_default_holidays(db)
         create_default_settings(db)
-        create_default_email_templates(db) # <<< NEU
+        create_default_email_templates(db)
 
     return app
 
@@ -103,8 +113,11 @@ def create_default_holidays(db_instance):
                    "Erster Weihnachtsfeiertag", "Zweiter Weihnachtsfeiertag"]
     try:
         for holiday_name in mv_holidays:
+            # Wir prüfen hier nur grob auf den Namen, da das Datum NULL sein kann bei alten Einträgen
             existing = SpecialDate.query.filter_by(type='holiday', name=holiday_name).first()
             if not existing:
+                # Hier wird kein Datum gesetzt, da es nur Platzhalter sind.
+                # Die neue API im Frontend macht das besser (mit echtem Datum).
                 new_holiday = SpecialDate(name=holiday_name, date=None, type='holiday')
                 db_instance.session.add(new_holiday)
         db_instance.session.commit()
@@ -166,7 +179,6 @@ def create_default_email_templates(db_instance):
             "description": "Zusammenfassung bei Massen-Genehmigung.",
             "placeholders": "{vorname}, {nachricht} (Liste der Termine)"
         },
-        # --- NEU: Vorlage für Plan-Fertigstellung ---
         {
             "key": "plan_completed",
             "name": "Schichtplan Fertiggestellt (Rundmail)",

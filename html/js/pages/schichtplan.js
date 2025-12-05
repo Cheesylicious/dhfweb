@@ -26,6 +26,13 @@ const bulkApproveBtn = document.getElementById('bulk-approve-btn');
 const bulkRejectBtn = document.getElementById('bulk-reject-btn');
 const staffingSortToggleBtn = document.getElementById('staffing-sort-toggle');
 
+// --- Month Picker Elemente ---
+const monthPickerDropdown = document.getElementById('month-picker-dropdown');
+const mpPrevYearBtn = document.getElementById('mp-prev-year');
+const mpNextYearBtn = document.getElementById('mp-next-year');
+const mpYearDisplay = document.getElementById('mp-year-display');
+const mpMonthsGrid = document.getElementById('mp-months-grid');
+
 // Modals & Links
 const openGeneratorLink = document.getElementById('open-generator-modal');
 const openGenSettingsLink = document.getElementById('open-gen-settings-modal');
@@ -62,7 +69,10 @@ const camBtnReject = document.getElementById('cam-btn-reject');
 let generatorInterval = null;
 let visualInterval = null;
 let visualQueue = [];
-let processedLogCount = 0; // Zähler für bereits geladene Logs
+let processedLogCount = 0;
+
+// Lokaler State für Month Picker
+let pickerYear = new Date().getFullYear();
 
 // --- 1. Initialisierung ---
 
@@ -82,6 +92,9 @@ async function initialize() {
         PlanState.currentVariantId = null;
         PlanState.variants = [];
 
+        // Generator Config Init (für Animation)
+        PlanState.generatorConfig = {};
+
         // UI Setup
         setupUIByRole();
 
@@ -92,6 +105,13 @@ async function initialize() {
         await loadColorSettings();
         await populateStaticElements();
         loadShortcuts();
+
+        // Generator Config vorladen (für UI Logik)
+        if (PlanState.isAdmin) {
+            try {
+                PlanState.generatorConfig = await PlanApi.getGeneratorConfig();
+            } catch(e) { console.warn("Konnte Generator-Config nicht laden", e); }
+        }
 
         // Highlight Check
         checkHighlights();
@@ -112,10 +132,18 @@ async function initialize() {
 
 function injectWarningStyles() {
     const style = document.createElement('style');
+    // .warning = Gelb (Unterbesetzung / "6" fehlt)
+    // .critical = Rot (Keine Besetzung bei T/N)
     style.innerHTML = `
         .hud-day-box.warning {
+            border-color: #f1c40f !important;
+            background: rgba(241, 196, 21, 0.4) !important;
+            color: #fff !important;
+            box-shadow: 0 0 10px #f1c40f !important;
+        }
+        .hud-day-box.critical {
             border-color: #e74c3c !important;
-            background: rgba(231, 76, 60, 0.3) !important;
+            background: rgba(231, 76, 60, 0.4) !important;
             color: #fff !important;
             box-shadow: 0 0 10px #e74c3c !important;
         }
@@ -251,6 +279,50 @@ async function switchVariant(variantId) {
     PlanState.currentVariantId = variantId;
     renderVariantTabs();
     await renderGrid();
+}
+
+// --- MONTH PICKER LOGIC ---
+
+function toggleMonthPicker() {
+    if (!monthPickerDropdown) return;
+
+    const isVisible = monthPickerDropdown.style.display === 'block';
+
+    if (isVisible) {
+        monthPickerDropdown.style.display = 'none';
+    } else {
+        pickerYear = PlanState.currentYear;
+        renderMonthPicker();
+        monthPickerDropdown.style.display = 'block';
+    }
+}
+
+function renderMonthPicker() {
+    if (!mpYearDisplay || !mpMonthsGrid) return;
+
+    mpYearDisplay.textContent = pickerYear;
+    mpMonthsGrid.innerHTML = '';
+
+    const monthNames = ["Jan", "Feb", "Mär", "Apr", "Mai", "Jun", "Jul", "Aug", "Sep", "Okt", "Nov", "Dez"];
+
+    monthNames.forEach((name, index) => {
+        const mNum = index + 1;
+        const btn = document.createElement('div');
+        btn.className = 'mp-month-btn';
+        btn.textContent = name;
+
+        if (pickerYear === PlanState.currentYear && mNum === PlanState.currentMonth) {
+            btn.classList.add('active');
+        }
+
+        btn.onclick = () => {
+            PlanHandlers.handleYearMonthSelect(pickerYear, mNum);
+            setTimeout(loadVariants, 100);
+            monthPickerDropdown.style.display = 'none';
+        };
+
+        mpMonthsGrid.appendChild(btn);
+    });
 }
 
 // --- 3. Render Grid ---
@@ -665,6 +737,17 @@ function attachGlobalListeners() {
     if(prevMonthBtn) prevMonthBtn.onclick = () => { PlanHandlers.handleMonthChange(-1); setTimeout(loadVariants, 100); };
     if(nextMonthBtn) nextMonthBtn.onclick = () => { PlanHandlers.handleMonthChange(1); setTimeout(loadVariants, 100); };
 
+    // --- Month Picker Listener ---
+    if (monthLabel) {
+        monthLabel.onclick = (e) => {
+            e.stopPropagation();
+            toggleMonthPicker();
+        };
+    }
+
+    if (mpPrevYearBtn) mpPrevYearBtn.onclick = (e) => { e.stopPropagation(); pickerYear--; renderMonthPicker(); };
+    if (mpNextYearBtn) mpNextYearBtn.onclick = (e) => { e.stopPropagation(); pickerYear++; renderMonthPicker(); };
+
     if(planLockBtn) planLockBtn.onclick = () => {
         const newLocked = !PlanState.currentPlanStatus.is_locked;
         PlanApi.updatePlanStatus(PlanState.currentYear, PlanState.currentMonth, PlanState.currentPlanStatus.status, newLocked)
@@ -689,7 +772,6 @@ function attachGlobalListeners() {
 
     if(staffingSortToggleBtn) staffingSortToggleBtn.onclick = () => StaffingModule.toggleStaffingSortMode();
 
-    // 1. Schichtplan Löschen
     if (deletePlanLink) {
         deletePlanLink.onclick = async (e) => {
             e.preventDefault();
@@ -703,7 +785,6 @@ function attachGlobalListeners() {
         };
     }
 
-    // 2. Generator Öffnen (NEU: HUD Initialisierung)
     if (openGeneratorLink) {
         openGeneratorLink.onclick = (e) => {
             e.preventDefault();
@@ -712,9 +793,8 @@ function attachGlobalListeners() {
             const label = document.getElementById('gen-target-month');
             if(label) label.textContent = `${PlanState.currentMonth}/${PlanState.currentYear}`;
 
-            generateHudGrid(); // Gitter erstellen
+            generateHudGrid();
 
-            // Reset Visual
             const logContainer = document.getElementById('generator-log-container');
             if(logContainer) logContainer.innerHTML = '<div class="hud-log-line">System bereit...</div>';
 
@@ -736,7 +816,6 @@ function attachGlobalListeners() {
         };
     }
 
-    // 3. Generator Starten (NEU: Queue System & Reset)
     if (startGeneratorBtn) {
         startGeneratorBtn.onclick = async () => {
             startGeneratorBtn.disabled = true;
@@ -744,18 +823,15 @@ function attachGlobalListeners() {
 
             // --- RESET ---
             visualQueue = [];
-            processedLogCount = 0; // Reset Index-Counter
+            processedLogCount = 0;
 
-            // Grid Reset (Alle Farben entfernen)
             document.querySelectorAll('.hud-day-box').forEach(b => {
-                b.classList.remove('done', 'processing', 'warning');
+                b.classList.remove('done', 'processing', 'warning', 'critical');
             });
 
-            // Progress Reset
             const progFill = document.getElementById('gen-progress-fill');
             if(progFill) progFill.style.width = '0%';
 
-            // Log Reset
             const logContainer = document.getElementById('generator-log-container');
             logContainer.innerHTML = '';
             visualQueue.push('<div class="hud-log-line highlight">> Startsequenz initiiert...</div>');
@@ -766,9 +842,8 @@ function attachGlobalListeners() {
                 statusText.style.color = "#2ecc71";
             }
 
-            // Starte Visual Loop
             if (visualInterval) clearInterval(visualInterval);
-            visualInterval = setInterval(processVisualQueue, 40); // 40ms
+            visualInterval = setInterval(processVisualQueue, 40);
 
             try {
                 await PlanApi.startGenerator(PlanState.currentYear, PlanState.currentMonth, PlanState.currentVariantId);
@@ -791,6 +866,10 @@ function attachGlobalListeners() {
             if(genSettingsModal) genSettingsModal.style.display = 'block';
             try {
                 const config = await PlanApi.getGeneratorConfig();
+
+                // --- NEU: Lokalen Cache aktualisieren wenn Settings geöffnet werden ---
+                PlanState.generatorConfig = config;
+
                 if(document.getElementById('gen-max-consecutive')) document.getElementById('gen-max-consecutive').value = config.max_consecutive_same_shift || 4;
                 if(document.getElementById('gen-rest-days')) document.getElementById('gen-rest-days').value = config.mandatory_rest_days_after_max_shifts || 2;
                 if(document.getElementById('gen-fill-rounds')) document.getElementById('gen-fill-rounds').value = config.generator_fill_rounds || 3;
@@ -843,6 +922,8 @@ function attachGlobalListeners() {
             };
             try {
                 await PlanApi.saveGeneratorConfig(payload);
+                // --- NEU: Lokalen Cache aktualisieren ---
+                PlanState.generatorConfig = payload;
                 statusEl.textContent = "Gespeichert!";
                 statusEl.style.color = "#2ecc71";
                 setTimeout(() => { if(genSettingsModal) genSettingsModal.style.display = 'none'; statusEl.textContent = ""; }, 1000);
@@ -861,6 +942,12 @@ function attachGlobalListeners() {
         if (modals.includes(e.target)) e.target.style.display = 'none';
         if (!e.target.closest('.grid-cell') && !e.target.closest('#click-action-modal') && !e.target.closest('#bulk-action-bar-plan') && !e.target.closest('#plan-bulk-mode-btn')) {
             if(clickActionModal) clickActionModal.style.display = 'none';
+        }
+
+        if (monthPickerDropdown && monthPickerDropdown.style.display === 'block') {
+            if (!e.target.closest('#month-picker-dropdown') && e.target !== monthLabel) {
+                monthPickerDropdown.style.display = 'none';
+            }
         }
     };
 
@@ -911,6 +998,32 @@ function generateHudGrid() {
     }
 }
 
+// --- NEU: Hilfsfunktion zur Ermittlung des Soll-Werts ---
+function getSollForShift(day, shiftName) {
+    const year = PlanState.currentYear;
+    const month = PlanState.currentMonth;
+    const date = new Date(year, month - 1, day);
+    const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+
+    // Prüfen ob Feiertag
+    let isHoliday = PlanState.currentSpecialDates[dateStr] === 'holiday';
+
+    // Schichtart finden
+    const st = PlanState.allShiftTypesList.find(s => s.abbreviation === shiftName);
+    if (!st) return 0;
+
+    // Soll zurückgeben
+    if (isHoliday) return st.min_staff_holiday || 0;
+
+    // Wochentag (0=So, 1=Mo, ...)
+    const dayIdx = date.getDay();
+    const map = [
+        st.min_staff_so, st.min_staff_mo, st.min_staff_di, st.min_staff_mi,
+        st.min_staff_do, st.min_staff_fr, st.min_staff_sa
+    ];
+    return map[dayIdx] || 0;
+}
+
 function processVisualQueue() {
     if (visualQueue.length === 0) return;
 
@@ -930,13 +1043,29 @@ function processVisualQueue() {
              startBtn.textContent = "ABGESCHLOSSEN";
         }
 
-        // Aufräumen (Grün setzen, wenn keine Warnung)
+        // Aufräumen (Grün setzen, wenn keine Warnung/Kritisch)
         const daysInMonth = new Date(PlanState.currentYear, PlanState.currentMonth, 0).getDate();
         for (let i = 1; i <= daysInMonth; i++) {
             const box = document.getElementById(`day-box-${i}`);
-            if(box && !box.classList.contains('warning')) {
+            // Prüfen ob Warnung (Gelb) oder Kritisch (Rot) vorliegt
+            if(box && !box.classList.contains('warning') && !box.classList.contains('critical')) {
+                // --- NEU: Check auf ignorierte "6er" Schichten ---
+                let forceWarning = false;
+                if (PlanState.generatorConfig && PlanState.generatorConfig.shifts_to_plan) {
+                    const includes6 = PlanState.generatorConfig.shifts_to_plan.includes('6');
+                    // Wenn "6" nicht generiert wird, aber > 0 benötigt wird:
+                    if (!includes6) {
+                        const soll6 = getSollForShift(i, '6');
+                        if (soll6 > 0) forceWarning = true;
+                    }
+                }
+
                 box.classList.remove('processing');
-                box.classList.add('done');
+                if (forceWarning) {
+                    box.classList.add('warning'); // Gelb erzwingen
+                } else {
+                    box.classList.add('done'); // Grün
+                }
             }
         }
 
@@ -962,8 +1091,24 @@ function processVisualQueue() {
             // Vorherige aufräumen
             for (let d = 1; d < day; d++) {
                 const box = document.getElementById(`day-box-${d}`);
-                if (box && !box.classList.contains('warning')) {
-                    box.classList.add('done');
+
+                // Vorherige Tage finalisieren
+                if (box && !box.classList.contains('warning') && !box.classList.contains('critical')) {
+                    // --- NEU: Check auch hier beim Übergang ---
+                    let forceWarning = false;
+                    if (PlanState.generatorConfig && PlanState.generatorConfig.shifts_to_plan) {
+                        const includes6 = PlanState.generatorConfig.shifts_to_plan.includes('6');
+                        if (!includes6) {
+                            const soll6 = getSollForShift(d, '6');
+                            if (soll6 > 0) forceWarning = true;
+                        }
+                    }
+
+                    if (forceWarning) {
+                        box.classList.add('warning');
+                    } else {
+                        box.classList.add('done');
+                    }
                 }
                 if (box) box.classList.remove('processing');
             }
@@ -975,16 +1120,36 @@ function processVisualQueue() {
             }
         }
 
-        // Warnung erkennen
-        if (text.includes('[WARN]') && text.includes('Tag')) {
-             const warnDayMatch = text.match(/Tag (\d+):/);
-             if (warnDayMatch) {
-                 const day = parseInt(warnDayMatch[1]);
-                 const box = document.getElementById(`day-box-${day}`);
-                 if (box) {
-                     box.classList.remove('processing');
-                     box.classList.remove('done');
+        // --- Intelligente Warn-Erkennung ---
+        // Regex liest Tag, Schichtname und Fehlmenge
+        const warnMatch = text.match(/Tag (\d+): Konnte (.+) nicht voll besetzen \(Fehlen: (\d+)\)/);
+
+        if (warnMatch) {
+             const day = parseInt(warnMatch[1]);
+             const shiftName = warnMatch[2].trim(); // z.B. "T." oder "6"
+             const missingCount = parseInt(warnMatch[3]);
+
+             const box = document.getElementById(`day-box-${day}`);
+             if (box) {
+                 box.classList.remove('processing');
+                 box.classList.remove('done');
+
+                 // 1. Soll ermitteln
+                 const soll = getSollForShift(day, shiftName);
+
+                 // 2. Entscheidungslogik
+                 // "6" ist immer Gelb (Warning)
+                 if (shiftName === '6' || shiftName === '6.') {
                      box.classList.add('warning');
+                 } else {
+                     // Bei anderen Schichten:
+                     // Wenn Missing >= Soll -> Keiner da -> Rot (Critical)
+                     // Wenn Missing < Soll -> Teilbesetzung -> Gelb (Warning)
+                     if (missingCount >= soll && soll > 0) {
+                         box.classList.add('critical');
+                     } else {
+                         box.classList.add('warning');
+                     }
                  }
              }
         }
@@ -998,13 +1163,8 @@ async function pollGeneratorStatus() {
         if(progFill) progFill.style.width = `${statusData.progress || 0}%`;
 
         if (statusData.logs && statusData.logs.length > 0) {
-            // Neue Logs holen (Index basiert)
             const newLogs = statusData.logs;
-            const startIdx = processedLogCount; // Starten wo wir aufgehört haben
-
-            // Falls Server rotiert hat (Array kürzer als unser Zähler), Reset
-            // Oder falls wir mehr Logs haben als das Array lang ist (unwahrscheinlich hier, da wir sammeln)
-            // Wir nehmen einfach alle ab dem Offset.
+            const startIdx = processedLogCount;
 
             for (let i = startIdx; i < newLogs.length; i++) {
                 const logMsg = newLogs[i];
@@ -1027,7 +1187,6 @@ async function pollGeneratorStatus() {
             generatorInterval = null;
 
             if (statusData.status === 'finished') {
-                // Erfolgsmeldung und Finish-Signal in die Queue
                 visualQueue.push({
                     type: 'log',
                     content: '<div class="hud-log-line success">> VORGANG ABGESCHLOSSEN.</div>'

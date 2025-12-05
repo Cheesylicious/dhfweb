@@ -55,10 +55,19 @@ export const PlanRenderer = {
         const shiftType = shift ? shift.shift_type : null;
         const violationKey = `${userId}-${day}`;
 
+        // --- NEU: Check ob heute ---
+        const today = new Date();
+        const isToday = (d.getFullYear() === today.getFullYear() &&
+                         d.getMonth() === today.getMonth() &&
+                         d.getDate() === today.getDate());
+
         let cellClasses = 'grid-cell';
         if (PlanState.loggedInUser.id === userId) cellClasses += ' current-user-row';
         if (PlanState.currentViolations.has(violationKey)) cellClasses += ' violation';
         if (shift && shift.is_locked) cellClasses += ' locked-shift';
+
+        // Klasse hinzufügen, wenn es heute ist
+        if (isToday) cellClasses += ' current-day-highlight';
 
         cell.textContent = '';
         cell.style.backgroundColor = '';
@@ -271,6 +280,12 @@ export const PlanRenderer = {
                 const cell = document.createElement('div');
                 cell.className = 'grid-cell'; // Initiale Klasse
                 cell.dataset.key = key;
+
+                // --- NEU: Heute markieren ---
+                if (PlanState.currentYear === today.getFullYear() && (PlanState.currentMonth - 1) === today.getMonth() && day === today.getDate()) {
+                    cell.classList.add('current-day-highlight');
+                }
+                // --- ENDE NEU ---
 
                 // Zelle ins Grid hängen
                 grid.appendChild(cell);
