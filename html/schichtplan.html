@@ -497,6 +497,37 @@
         .grid-header.day-color-training { background-color: var(--training-bg-color, #daffdb) !important; color: var(--text-color, #333); }
         .grid-header.day-color-shooting { background-color: var(--shooting-bg-color, #ffb0b0) !important; color: var(--text-color, #333); }
 
+        /* --- NEU: DPO Markierung (Rahmen & Label) --- */
+        .day-border-dpo {
+            /* Inset-Shadow für den Rahmen, damit das Layout nicht springt */
+            box-shadow: inset 0 0 0 3px var(--dpo-border-color, #ff0000) !important;
+            z-index: 5 !important;
+        }
+        .grid-header.day-border-dpo {
+            box-shadow: inset 0 0 0 3px var(--dpo-border-color, #ff0000) !important;
+            color: var(--dpo-border-color, #ff0000) !important; /* Text in Rahmenfarbe */
+
+            /* Flexbox für vertikale Stapelung (Label über Tag) */
+            display: flex !important;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            white-space: normal !important;
+            line-height: 1.2;
+            padding: 5px !important;
+        }
+
+        .dpo-header-label {
+            display: block;
+            color: var(--dpo-border-color, #ff0000);
+            font-weight: 900;
+            font-size: 12px;
+            margin-bottom: 2px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+        /* --- ENDE NEU --- */
+
         .current-day-highlight {
             box-shadow: inset 2px 0 0 0 #3498db, inset -2px 0 0 0 #3498db !important;
             background-color: rgba(52, 152, 219, 0.08);

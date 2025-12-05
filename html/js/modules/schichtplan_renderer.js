@@ -69,6 +69,10 @@ export const PlanRenderer = {
         // Klasse hinzufügen, wenn es heute ist
         if (isToday) cellClasses += ' current-day-highlight';
 
+        // --- NEU: DPO Rahmen ---
+        if (eventType === 'dpo') cellClasses += ' day-border-dpo';
+        // --- ENDE NEU ---
+
         cell.textContent = '';
         cell.style.backgroundColor = '';
         cell.style.color = '';
@@ -106,8 +110,10 @@ export const PlanRenderer = {
         if (shiftType) {
             cell.textContent = shiftType.abbreviation;
             if (shiftType.prioritize_background && dayHasSpecialBg) {
+                // Bei DPO wollen wir die Farbe der Schicht behalten, aber den Rahmen hinzufügen
                 if (eventType === 'holiday') cellClasses += ` day-color-${eventType}`;
                 else if (isWeekend) cellClasses += ' weekend';
+                // DPO wird durch day-border-dpo oben abgedeckt
             } else {
                 cell.style.backgroundColor = shiftType.color;
                 cell.style.color = isColorDark(shiftType.color) ? 'white' : 'black';
@@ -135,11 +141,6 @@ export const PlanRenderer = {
 
     /**
      * Baut das komplette DOM des Haupt-Grids auf.
-     * Nutzt Callbacks für Events, um Zirkelbezüge zu vermeiden.
-     * * @param {Object} callbacks - Objekt mit Event-Handlern:
-     * - onCellClick(e, user, dateStr, cell, isOwnRow)
-     * - onCellEnter(user, dateStr, cell)
-     * - onCellLeave()
      */
     buildGridDOM(callbacks = {}) {
         const grid = document.getElementById('schichtplan-grid');
@@ -163,7 +164,11 @@ export const PlanRenderer = {
             const eventType = PlanState.currentSpecialDates[dateStr];
             const headerCell = document.createElement('div');
             let headerClasses = 'grid-header';
-            if (eventType) {
+            if (eventType === 'dpo') {
+                headerClasses += ' day-border-dpo'; // Rahmen für Header
+            }
+            // Hintergrundfarben (wie bisher)
+            if (eventType && eventType !== 'dpo') {
                 headerClasses += ` day-color-${eventType}`;
             } else if (isWeekend) {
                 headerClasses += ' weekend';
@@ -190,7 +195,14 @@ export const PlanRenderer = {
             const dateStr = `${PlanState.currentYear}-${String(PlanState.currentMonth).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 
             const headerCell = renderDayHeader(day, isWeekend, dateStr);
-            headerCell.textContent = dayName;
+
+            // --- NEU: DPO Label ---
+            if (PlanState.currentSpecialDates[dateStr] === 'dpo') {
+                headerCell.innerHTML = `<span class="dpo-header-label">DPO</span><span>${dayName}</span>`;
+            } else {
+                headerCell.textContent = dayName;
+            }
+            // --- ENDE NEU ---
 
             if (PlanState.currentYear === today.getFullYear() && (PlanState.currentMonth - 1) === today.getMonth() && day === today.getDate()) {
                 headerCell.classList.add('current-day-highlight');
@@ -294,7 +306,6 @@ export const PlanRenderer = {
                 this.refreshSingleCell(user.id, dateStr);
 
                 // Event Listeners anhängen
-                // Wir nutzen die Callbacks, die von außen reingegeben werden
                 const handleClick = (e) => {
                     if (callbacks.onCellClick) {
                         callbacks.onCellClick(e, user, dateStr, cell, isCurrentUser);
@@ -322,7 +333,6 @@ export const PlanRenderer = {
                     cell.addEventListener('mouseleave', handleLeave);
                 }
 
-                // Kontextmenü verhindern
                 cell.addEventListener('contextmenu', e => e.preventDefault());
             }
 
@@ -335,12 +345,10 @@ export const PlanRenderer = {
             grid.appendChild(totalCell);
         });
 
-        // Layout Spaltenbreiten messen
         try {
             if (nameHeader2 && dogHeader) {
                 PlanState.computedColWidthName = `${nameHeader2.offsetWidth}px`;
                 PlanState.computedColWidthDetails = `${dogHeader.offsetWidth}px`;
-                // Grid update
                 grid.style.gridTemplateColumns = `${PlanState.computedColWidthName} ${PlanState.computedColWidthDetails} ${COL_WIDTH_UEBERTRAG} repeat(${daysInMonth}, ${COL_WIDTH_DAY}) ${COL_WIDTH_TOTAL}`;
             }
         } catch (e) {

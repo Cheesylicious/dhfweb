@@ -292,12 +292,25 @@ function setupModal(type, isEdit=false) {
         eventDateField.placeholder = `TT.MM (Jahr ${modalContextYear})`;
     }
 
+    // --- NEU: Namensfeld verstecken für DPO ---
+    if(eventNameGroup) {
+        // Holiday braucht Namen immer. DPO nie (weil automatisch).
+        // Training/Shooting lassen wir optional (Backend entscheidet),
+        // aber das UI kann es anzeigen.
+        // Der Nutzer wollte es explizit für DPO weg haben.
+        if (type === 'dpo') {
+            eventNameGroup.style.display = 'none';
+        } else {
+            eventNameGroup.style.display = 'block';
+        }
+    }
+
     // Hinweis nur bei Holiday anzeigen
     if(holidayNote) holidayNote.style.display = (type === 'holiday') ? 'block' : 'none';
-    if(eventNameGroup) eventNameGroup.style.display = 'block';
 
     openModal();
-    if(type === 'holiday' && eventNameField) eventNameField.focus();
+    // Fokus setzen je nach Sichtbarkeit
+    if(type === 'holiday' && eventNameField && eventNameGroup.style.display !== 'none') eventNameField.focus();
     else if(eventDateField) eventDateField.focus();
 }
 
@@ -315,6 +328,9 @@ function openEditModal(item) {
             eventDateField.value = item.date;
         }
     }
+
+    // Beim Bearbeiten zeigen wir das Namensfeld immer an, falls man es ändern will
+    if(eventNameGroup) eventNameGroup.style.display = 'block';
 
     openModal();
 }
@@ -351,6 +367,8 @@ if (saveEventBtn) {
             date: finalIsoDate // Wir senden jetzt IMMER YYYY-MM-DD an den Server
         };
 
+        // Nur für Feiertage ist der Name Client-Seitig Pflicht.
+        // Für DPO wird er im Backend gesetzt.
         if(!payload.name && type === 'holiday') { alert("Name fehlt"); return; }
 
         try {

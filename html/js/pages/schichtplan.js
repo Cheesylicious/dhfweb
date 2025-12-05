@@ -427,14 +427,18 @@ async function renderGrid() {
 async function loadFullSpecialDates() {
     try {
         const year = PlanState.currentYear;
-        const [holidays, training, shooting] = await Promise.all([
+        // --- NEU: DPO laden ---
+        const [holidays, training, shooting, dpo] = await Promise.all([
             PlanApi.fetchSpecialDates(year, 'holiday'),
             PlanApi.fetchSpecialDates(year, 'training'),
-            PlanApi.fetchSpecialDates(year, 'shooting')
+            PlanApi.fetchSpecialDates(year, 'shooting'),
+            PlanApi.fetchSpecialDates(year, 'dpo')
         ]);
         training.forEach(d => { if(d.date) PlanState.currentSpecialDates[d.date] = d.type; });
         shooting.forEach(d => { if(d.date) PlanState.currentSpecialDates[d.date] = d.type; });
         holidays.forEach(d => { if(d.date) PlanState.currentSpecialDates[d.date] = 'holiday'; });
+        // DPO hinzufügen
+        dpo.forEach(d => { if(d.date) PlanState.currentSpecialDates[d.date] = 'dpo'; });
     } catch (e) {}
 }
 

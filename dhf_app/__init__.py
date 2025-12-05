@@ -127,9 +127,12 @@ def create_default_holidays(db_instance):
 
 def create_default_settings(db_instance):
     from .models import GlobalSetting
+    # --- UPDATE: DPO Farbe hinzugefügt ---
     default_settings = {
         'weekend_bg_color': '#fff8f8', 'weekend_text_color': '#333333',
-        'holiday_bg_color': '#ffddaa', 'training_bg_color': '#daffdb', 'shooting_bg_color': '#ffb0b0'
+        'holiday_bg_color': '#ffddaa', 'training_bg_color': '#daffdb',
+        'shooting_bg_color': '#ffb0b0',
+        'dpo_border_color': '#ff0000' # Standard: Rot für DPO Rahmen
     }
     try:
         for key, default_value in default_settings.items():

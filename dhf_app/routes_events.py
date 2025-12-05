@@ -46,7 +46,8 @@ def get_special_dates():
 
     query = SpecialDate.query
 
-    if date_type in ['holiday', 'training', 'shooting']:
+    # --- UPDATE: dpo hinzugefügt ---
+    if date_type in ['holiday', 'training', 'shooting', 'dpo']:
         query = query.filter_by(type=date_type)
 
     if year:
@@ -74,7 +75,7 @@ def get_special_dates():
 def create_special_date():
     """
     Erstellt einen neuen Sondertermin.
-    ANGEPASST: Akzeptiert "namenlose" Eingaben für Training/Schießen.
+    ANGEPASST: Akzeptiert "namenlose" Eingaben für Training/Schießen/DPO.
     """
     data = request.get_json()
     date_type = data.get('type')
@@ -87,11 +88,15 @@ def create_special_date():
             name = "Quartals Ausbildung"
         elif date_type == 'shooting':
             name = "Schießen"
+        elif date_type == 'dpo':
+            name = "DPO - Prüfung"
     # --- ENDE NEUE LOGIK ---
 
     if not name or not date_type:
         return jsonify({"message": "Name und Typ sind erforderlich"}), 400
-    if date_type not in ['holiday', 'training', 'shooting']:
+
+    # --- UPDATE: dpo zur Validierung hinzugefügt ---
+    if date_type not in ['holiday', 'training', 'shooting', 'dpo']:
         return jsonify({"message": "Ungültiger Typ"}), 400
 
     date_str = none_if_empty(data.get('date'))
@@ -123,6 +128,8 @@ def create_special_date():
             log_area = "Quartals Ausbildung"
         elif date_type == 'shooting':
             log_area = "Schießtermine"
+        elif date_type == 'dpo':
+            log_area = "DPO Termine"
 
         _log_update_event(log_area, f"Neuer Termin '{name}' hinzugefügt am {parsed_date.strftime('%d.%m.%Y')}.")
 
@@ -146,7 +153,14 @@ def update_special_date(date_id):
         return jsonify({"message": "Termin nicht gefunden"}), 404
 
     data = request.get_json()
-    event.name = data.get('name', event.name)
+    new_name = data.get('name')
+
+    # --- KORREKTUR: Automatische Namensvergabe bei DPO ---
+    if event.type == 'dpo':
+        event.name = "DPO - Prüfung"
+    elif new_name is not None:
+        event.name = new_name
+    # -----------------------------------------------------
 
     date_str = none_if_empty(data.get('date', event.date))
     parsed_date = None
@@ -170,6 +184,8 @@ def update_special_date(date_id):
             log_area = "Quartals Ausbildung"
         elif event.type == 'shooting':
             log_area = "Schießtermine"
+        elif event.type == 'dpo':
+            log_area = "DPO Termine"
 
         _log_update_event(log_area, f"Termin '{event.name}' aktualisiert.")
 
@@ -204,6 +220,8 @@ def delete_special_date(date_id):
             log_area = "Quartals Ausbildung"
         elif event_type == 'shooting':
             log_area = "Schießtermine"
+        elif event_type == 'dpo':
+            log_area = "DPO Termine"
 
         _log_update_event(log_area, f"Termin '{name}' gelöscht.")
 

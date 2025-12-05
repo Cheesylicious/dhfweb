@@ -13,7 +13,8 @@ export const DEFAULT_COLORS = {
     'weekend_text_color': '#333333',
     'holiday_bg_color': '#ffddaa',
     'training_bg_color': '#daffdb',
-    'shooting_bg_color': '#ffb0b0'
+    'shooting_bg_color': '#ffb0b0',
+    'dpo_border_color': '#ff0000' // NEU: Standard Rot für DPO Rahmen
 };
 
 // Layout-Konstanten für das Grid
