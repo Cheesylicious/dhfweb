@@ -6,6 +6,7 @@ from .extensions import db
 from .utils import admin_required
 from .email_service import send_email
 from datetime import datetime
+from .email_service import send_email, _apply_email_design
 
 # Erstellt einen Blueprint für E-Mail-Management
 emails_bp = Blueprint('emails', __name__, url_prefix='/api/emails')
@@ -58,7 +59,6 @@ def update_email_template(template_id):
 def send_test_email_from_template():
     """
     Sendet eine Test-E-Mail basierend auf einer Vorlage an den aktuellen Admin.
-    Ersetzt Platzhalter mit Dummy-Daten.
     """
     data = request.get_json()
     template_id = data.get('template_id')
@@ -70,8 +70,7 @@ def send_test_email_from_template():
     if not template:
         return jsonify({"message": "Vorlage nicht gefunden."}), 404
 
-    # Dummy-Daten für Platzhalter
-    # --- UPDATE: Monat und Jahr hinzugefügt für Rundmail-Test ---
+    # Dummy-Daten
     now = datetime.now()
     dummy_context = {
         "vorname": "Max",
@@ -81,16 +80,14 @@ def send_test_email_from_template():
         "status": "Erledigt",
         "shift_abbrev": "T.",
         "monat": now.strftime('%m'),
-        "jahr": now.strftime('%Y')
+        "jahr": now.strftime('%Y'),
+        "plan_preview": "(Hier wäre das Bild des Schichtplans)"
     }
 
     try:
-        # Einfache String-Formatierung mit .format() und safe fallback
-        # Wir nutzen safe_substitute ähnliches Verhalten manuell
         subject = template.subject
         body = template.body
 
-        # Ersetze bekannte Platzhalter
         for key, val in dummy_context.items():
             placeholder = "{" + key + "}"
             if placeholder in subject:
@@ -98,15 +95,17 @@ def send_test_email_from_template():
             if placeholder in body:
                 body = body.replace(placeholder, str(val))
 
-        # Sende an den eingeloggten Admin (current_user ist verfügbar via admin_required)
         from flask_login import current_user
         recipient = current_user.email
 
         if not recipient:
-            return jsonify({"message": "Deinem Admin-Account fehlt eine E-Mail-Adresse für den Test."}), 400
+            return jsonify({"message": "Deinem Admin-Account fehlt eine E-Mail-Adresse."}), 400
 
-        # Sende als HTML
-        send_email(subject, [recipient], body, html_body=body.replace('\n', '<br>'))
+        # --- UPDATE: Design anwenden ---
+        raw_html = body.replace('\n', '<br>')
+        styled_html = _apply_email_design(raw_html, title="Vorschau: " + template.name)
+
+        send_email(subject, [recipient], body, html_body=styled_html)
 
         return jsonify({"message": f"Test-E-Mail an {recipient} gesendet."}), 200
 
