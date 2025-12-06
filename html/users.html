@@ -119,7 +119,8 @@
 
         main {
             padding: 30px;
-            max-width: 1200px;
+            /* OPTIMIERUNG: Volle Breite nutzen */
+            max-width: 98%;
             margin: auto;
         }
 
@@ -221,41 +222,44 @@
             left: 0; top: 0;
             width: 100%; height: 100%;
             overflow: auto;
-            background-color: rgba(0,0,0,0.6); /* Dunkleres Overlay */
+            background-color: rgba(0,0,0,0.75); /* Dunkleres Overlay */
         }
 
         /* Modal-Inhalt (Glas-Effekt) */
         .modal-content {
-            background: rgba(30, 30, 30, 0.8); /* Dunkleres Glas für Popups */
-            backdrop-filter: blur(10px);
-            -webkit-backdrop-filter: blur(10px);
+            background: #1e1e1e; /* Soliderer Hintergrund für bessere Lesbarkeit */
             border: 1px solid rgba(255, 255, 255, 0.1);
-
-            margin: 5% auto; /* Etwas höher positioniert */
+            margin: 3% auto;
             padding: 0;
-            width: 80%;
-            max-width: 650px; /* Breiter für mehr Felder */
-            border-radius: 8px;
-            box-shadow: 0 4px 30px rgba(0,0,0,0.4);
+            width: 90%;
+            max-width: 1100px; /* Viel breiter für Übersichtlichkeit */
+            border-radius: 12px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.5);
+            color: #ffffff;
+            display: flex;
+            flex-direction: column;
+            max-height: 90vh; /* Verhindert, dass das Modal größer als der Screen ist */
         }
 
         .modal-header {
             display: flex;
             justify-content: space-between;
             align-items: center;
-            padding: 15px 25px;
+            padding: 20px 30px;
             border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            background: rgba(255,255,255,0.03);
         }
 
         .modal-header h2 {
             margin: 0;
             color: #ffffff;
             font-weight: 600;
+            font-size: 1.4rem;
         }
 
         .close {
             color: #bdc3c7;
-            font-size: 28px;
+            font-size: 32px;
             font-weight: bold;
             cursor: pointer;
             transition: color 0.3s;
@@ -264,75 +268,77 @@
             color: #ffffff;
         }
 
-        .modal-body { padding: 25px; }
+        /* OPTIMIERUNG: Grid Layout im Modal statt Tabs */
+        .modal-body {
+            padding: 30px;
+            overflow-y: auto; /* Scrollen innerhalb des Modals erlauben */
+        }
+
+        .user-edit-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr; /* Zwei gleich große Spalten */
+            gap: 40px;
+        }
+
+        .edit-section h3 {
+            color: #3498db;
+            border-bottom: 1px solid rgba(52, 152, 219, 0.3);
+            padding-bottom: 10px;
+            margin-top: 0;
+            margin-bottom: 20px;
+            font-size: 16px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+        }
+
+        .full-width-section {
+            grid-column: 1 / -1; /* Über beide Spalten */
+            margin-top: 20px;
+            padding-top: 20px;
+            border-top: 1px dashed rgba(255, 255, 255, 0.1);
+        }
 
         .modal-footer {
-            padding: 15px 25px;
+            padding: 20px 30px;
             background: rgba(0, 0, 0, 0.2);
             border-top: 1px solid rgba(255, 255, 255, 0.1);
             text-align: right;
-            border-radius: 0 0 8px 8px;
-
-            /* --- NEU: Flexbox für Footer-Buttons --- */
+            border-radius: 0 0 12px 12px;
             display: flex;
             justify-content: space-between;
             align-items: center;
         }
 
-        .modal-tabs {
-            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-            background: rgba(0, 0, 0, 0.2);
-            padding-left: 25px;
-            border-radius: 8px 8px 0 0;
-        }
-
-        .modal-tabs button {
-            background: none;
-            border: none;
-            padding: 12px 18px;
-            cursor: pointer;
-            font-size: 15px;
-            font-weight: 500;
-            color: #bdc3c7;
-            border-bottom: 3px solid transparent;
-            margin-bottom: -1px;
-            transition: color 0.3s;
-        }
-        .modal-tabs button:hover {
-            color: #ffffff;
-        }
-        .modal-tabs button.active {
-            color: #ffffff;
-            border-bottom-color: #3498db;
-        }
-
-        .modal-tab-content { display: none; }
-        .modal-tab-content.active { display: block; }
-
         .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
 
-        .form-group { margin-bottom: 15px; }
+        .form-group { margin-bottom: 20px; }
 
         .form-group label {
             display: block;
             margin-bottom: 8px;
-            font-weight: 300;
+            font-weight: 500;
             color: #bdc3c7;
+            font-size: 13px;
         }
 
-        /* Formular-Inputs (Glas-Effekt) */
+        /* Formular-Inputs */
         .form-group input, .form-group select {
             width: 100%;
-            padding: 10px;
+            padding: 12px;
             box-sizing: border-box;
-            background: rgba(0, 0, 0, 0.2);
-            border: 1px solid #3498db;
-            border-radius: 5px;
+            background: rgba(0, 0, 0, 0.3);
+            border: 1px solid #444;
+            border-radius: 6px;
             color: #ffffff;
             font-family: 'Poppins', sans-serif;
             font-size: 14px;
+            transition: border-color 0.3s;
         }
-        /* (Stellt sicher, dass Select-Pfeil sichtbar ist) */
+        .form-group input:focus, .form-group select:focus {
+            border-color: #3498db;
+            outline: none;
+        }
+
         .form-group select {
              -webkit-appearance: none;
              -moz-appearance: none;
@@ -341,13 +347,26 @@
              background-repeat: no-repeat;
              background-position-x: 98%;
              background-position-y: 50%;
-             padding-right: 30px; /* Platz für Pfeil */
+             padding-right: 30px;
         }
 
-        .form-group input[type="checkbox"] { width: auto; margin-right: 10px; }
-        .form-group input:disabled { background: rgba(0,0,0,0.1); color: #777; border-color: #555;}
+        .form-group input[type="checkbox"] { width: auto; margin-right: 10px; transform: scale(1.2); }
+        .form-group input:disabled { background: rgba(0,0,0,0.1); color: #777; border-color: #333;}
 
         .hidden { display: none; }
+
+        /* Limits Grid im Modal */
+        #limits-container {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+            gap: 15px;
+        }
+        .limit-card {
+            background: rgba(255,255,255,0.05);
+            padding: 10px;
+            border-radius: 5px;
+            border: 1px solid #444;
+        }
 
         /* Column Modal (Glas-Effekt) */
         #column-modal .modal-content { max-width: 450px; }
@@ -437,9 +456,9 @@
         </div>
     </header>
 
-    <div class="sub-nav" id="sub-nav-users">
-        <a href="users.html" class="active">Benutzer</a>
-        <a href="roles.html" id="sub-nav-roles">Rollen</a>
+    <div class="sub-nav" id="sub-nav-roles-container">
+        <a href="users.html" id="sub-nav-users-link" class="active">Benutzer</a>
+        <a href="roles.html">Rollen</a>
     </div>
 
     <main>
@@ -487,89 +506,95 @@
                 <span class="close" id="close-user-modal">&times;</span>
             </div>
 
-            <div class="modal-tabs" id="user-modal-tabs">
-                <button class="tab-link active" data-tab="tab-stammdaten">Stammdaten</button>
-                <button class="tab-link" data-tab="tab-details">Details</button>
-                <button class="tab-link" data-tab="tab-limits" id="tab-link-limits" style="display: none;">Schicht-Limits</button>
-                <button class="tab-link" data-tab="tab-system">System</button>
-            </div>
             <div class="modal-body">
                 <input type="hidden" id="user-id">
-                <div id="tab-stammdaten" class="modal-tab-content active">
-                    <div class="form-grid">
-                        <div class="form-group"><label for="user-vorname">Vorname:</label><input type="text" id="user-vorname"></div>
-                        <div class="form-group"><label for="user-name">Nachname:</label><input type="text" id="user-name"></div>
-                    </div>
-                    <div class="form-group">
-                        <label for="user-email">E-Mail Adresse:</label>
-                        <input type="email" id="user-email" placeholder="benutzer@example.com">
-                    </div>
-                    <div class="form-group"><label for="user-passwort">Neues Passwort (leer lassen für "keine Änderung"):</label><input type="password" id="user-passwort" placeholder="Neues Passwort"></div>
-                    <div class="form-group"><label for="user-role">Rolle:</label><select id="user-role"></select></div>
-                </div>
-                <div id="tab-details" class="modal-tab-content">
-                    <div class="form-grid">
-                        <div class="form-group"><label for="user-geburtstag">Geburtstag:</label><input type="date" id="user-geburtstag"></div>
-                        <div class="form-group"><label for="user-telefon">Telefon:</label><input type="tel" id="user-telefon"></div>
-                    </div>
-                    <div class="form-grid">
-                        <div class="form-group"><label for="user-eintrittsdatum">Eintrittsdatum:</label><input type="date" id="user-eintrittsdatum"></div>
-                        <div class="form-group"><label for="user-aktiv-ab">Aktiv ab Datum:</label><input type="date" id="user-aktiv-ab"></div>
-                    </div>
 
-                    <div class="form-grid">
-                        <div class="form-group">
-                            <label for="user-inaktiv-ab">Inaktiv ab Datum:</label>
-                            <input type="date" id="user-inaktiv-ab">
+                <div class="user-edit-grid">
+                    <div class="edit-section">
+                        <h3>Persönliche Daten</h3>
+                        <div class="form-grid">
+                            <div class="form-group"><label for="user-vorname">Vorname:</label><input type="text" id="user-vorname"></div>
+                            <div class="form-group"><label for="user-name">Nachname:</label><input type="text" id="user-name"></div>
                         </div>
                         <div class="form-group">
-                            </div>
+                            <label for="user-email">E-Mail Adresse:</label>
+                            <input type="email" id="user-email" placeholder="benutzer@example.com">
+                        </div>
+                        <div class="form-group">
+                            <label for="user-passwort">Neues Passwort:</label>
+                            <input type="password" id="user-passwort" placeholder="Leer lassen für 'keine Änderung'">
+                        </div>
+                        <div class="form-grid">
+                            <div class="form-group"><label for="user-geburtstag">Geburtstag:</label><input type="date" id="user-geburtstag"></div>
+                            <div class="form-group"><label for="user-telefon">Telefon:</label><input type="tel" id="user-telefon"></div>
+                        </div>
                     </div>
-                    <div class="form-grid">
-                        <div class="form-group"><label for="user-urlaub-gesamt">Urlaub Gesamt:</label><input type="number" id="user-urlaub-gesamt"></div>
-                        <div class="form-group"><label for="user-urlaub-rest">Urlaub Rest:</label><input type="number" id="user-urlaub-rest"></div>
-                    </div>
-                    <div class="form-grid">
+
+                    <div class="edit-section">
+                        <h3>Organisation & Status</h3>
+                        <div class="form-group"><label for="user-role">Rolle:</label><select id="user-role"></select></div>
+
+                        <div class="form-grid">
+                            <div class="form-group"><label for="user-eintrittsdatum">Eintrittsdatum:</label><input type="date" id="user-eintrittsdatum"></div>
+                            <div class="form-group"><label for="user-aktiv-ab">Aktiv ab Datum:</label><input type="date" id="user-aktiv-ab"></div>
+                        </div>
+                        <div class="form-group">
+                            <label for="user-inaktiv-ab">Inaktiv ab Datum (Austritt):</label>
+                            <input type="date" id="user-inaktiv-ab">
+                        </div>
+
+                        <div class="form-grid">
+                            <div class="form-group"><label for="user-urlaub-gesamt">Urlaub Gesamt:</label><input type="number" id="user-urlaub-gesamt"></div>
+                            <div class="form-group"><label for="user-urlaub-rest">Urlaub Rest:</label><input type="number" id="user-urlaub-rest"></div>
+                        </div>
                         <div class="form-group"><label for="user-diensthund">Diensthund (Name):</label><input type="text" id="user-diensthund"></div>
-                        <div class="form-group" style="align-self: flex-end;"><input type="checkbox" id="user-tutorial"><label for="user-tutorial">Tutorial gesehen</label></div>
                     </div>
                 </div>
 
-                <div id="tab-limits" class="modal-tab-content">
-                    <div style="background: rgba(52, 152, 219, 0.1); border: 1px solid #3498db; padding: 10px; border-radius: 5px; margin-bottom: 15px; font-size: 13px; color: #bdc3c7;">
-                        <strong style="color: white;">Info:</strong> Hier können Sie festlegen, wie viele Wunsch-Anfragen dieser Benutzer pro Monat für den jeweiligen Schichttyp stellen darf.
-                        <br><strong>0 = Keine Anfragen erlaubt.</strong>
+                <div class="full-width-section">
+                    <h3>System Einstellungen</h3>
+                    <div class="form-grid" style="grid-template-columns: repeat(4, 1fr);">
+                        <div class="form-group" style="display:flex; align-items:center;">
+                            <input type="checkbox" id="user-tutorial">
+                            <label for="user-tutorial" style="margin:0; cursor:pointer;">Tutorial gesehen</label>
+                        </div>
+                        <div class="form-group" style="display:flex; align-items:center;">
+                            <input type="checkbox" id="user-can-see-stats">
+                            <label for="user-can-see-stats" style="margin:0; cursor:pointer;">Darf Statistik sehen</label>
+                        </div>
+                        <div class="form-group">
+                            <label style="font-size:11px;">Passwort geändert:</label>
+                            <input type="text" id="user-pass-geaendert" disabled style="padding:5px; font-size:12px;">
+                        </div>
+                        <div class="form-group">
+                            <label style="font-size:11px;">Zuletzt Online:</label>
+                            <input type="text" id="user-zuletzt-online" disabled style="padding:5px; font-size:12px;">
+                        </div>
                     </div>
-                    <div id="limits-container" class="form-grid">
+                    <div style="margin-top: 10px;">
+                        <button class="btn-warning" id="force-pw-reset-btn" style="font-size: 12px; padding: 5px 10px;">Passwort-Reset erzwingen</button>
+                    </div>
+                </div>
+
+                <div id="limits-wrapper" class="full-width-section">
+                    <h3>Monatliche Schicht-Limits (Anfragen)</h3>
+                    <div style="background: rgba(52, 152, 219, 0.1); border: 1px solid #3498db; padding: 10px; border-radius: 5px; margin-bottom: 15px; font-size: 13px; color: #bdc3c7;">
+                        <strong style="color: white;">Info:</strong> Legt fest, wie viele Wunsch-Anfragen dieser Benutzer pro Monat stellen darf. <strong>0 = Keine.</strong>
+                    </div>
+                    <div id="limits-container">
                         <p>Lade Limits...</p>
                     </div>
                 </div>
-                <div id="tab-system" class="modal-tab-content">
-                    <div class="form-group"><label for="user-pass-geaendert">Passwort zuletzt geändert:</label><input type="text" id="user-pass-geaendert" disabled></div>
-                    <div class="form-group"><label for="user-zuletzt-online">Zuletzt Online:</label><input type="text" id="user-zuletzt-online" disabled></div>
 
-                    <div class="form-group" style="margin-top: 15px; padding: 10px; background: rgba(255,255,255,0.05); border-radius: 5px;">
-                        <input type="checkbox" id="user-can-see-stats">
-                        <label for="user-can-see-stats" style="display: inline-block; font-weight: 500;">Zugriff auf Statistiken erlauben</label>
-                        <p style="font-size: 12px; color: #bdc3c7; margin: 5px 0 0 0;">
-                            Aktivieren, damit dieser Benutzer (auch ohne Admin-Rolle) die Statistik-Seite sehen kann.
-                        </p>
-                    </div>
-                    <div class="form-group" style="margin-top: 20px; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 20px;">
-                        <label>Admin-Aktionen:</label>
-                        <button class="btn-warning" id="force-pw-reset-btn">Passwortänderung erzwingen</button>
-                        <p style="font-size: 13px; color: #bdc3c7; margin-top: 10px;">
-                            Setzt das Flag zurück, sodass der Benutzer beim nächsten Login aufgefordert wird, sein Passwort neu zu setzen.
-                        </p>
-                    </div>
-                    </div>
             </div>
+
             <div class="modal-footer">
                 <div id="modal-status" style="text-align: left; color: #e74c3c; flex-grow: 1;"></div>
                 <button class="btn-primary" id="save-user-btn">Speichern</button>
             </div>
         </div>
     </div>
+
     <div id="column-modal" class="modal">
         <div class="modal-content">
             <div class="modal-header">
@@ -589,91 +614,6 @@
             </div>
         </div>
     </div>
-
-    <script>
-        // --- START: PARTIKEL-ANIMATION ---
-        const canvas = document.getElementById('particle-canvas');
-        const ctx = canvas.getContext('2d');
-        const nodeColor = '#3498db';
-        const lineColor = '#ecf0f1'; // (Angepasst für besseren Kontrast)
-        let particlesArray;
-
-        function setCanvasSize() {
-            canvas.width = window.innerWidth;
-            canvas.height = window.innerHeight;
-        }
-        setCanvasSize();
-
-        class Particle {
-            constructor(x, y, directionX, directionY, size) {
-                this.x = x; this.y = y; this.directionX = directionX; this.directionY = directionY; this.size = size;
-            }
-            draw() {
-                ctx.beginPath();
-                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2, false);
-                ctx.fillStyle = nodeColor;
-                ctx.fill();
-            }
-            update() {
-                if (this.x > canvas.width || this.x < 0) { this.directionX = -this.directionX; }
-                if (this.y > canvas.height || this.y < 0) { this.directionY = -this.directionY; }
-                this.x += this.directionX; this.y += this.directionY;
-                this.draw();
-            }
-        }
-
-        function init() {
-            particlesArray = [];
-            let numberOfParticles = (canvas.height * canvas.width) / 9000;
-            if (numberOfParticles > 100) numberOfParticles = 100;
-
-            for (let i = 0; i < numberOfParticles; i++) {
-                let size = (Math.random() * 2) + 1;
-                let x = (Math.random() * ((canvas.width - size * 2) - (size * 2)) + size * 2);
-                let y = (Math.random() * ((canvas.height - size * 2) - (size * 2)) + size * 2);
-                let directionX = (Math.random() * 0.4) - 0.2;
-                let directionY = (Math.random() * 0.4) - 0.2;
-                particlesArray.push(new Particle(x, y, directionX, directionY, size));
-            }
-        }
-
-        function connect() {
-            let maxDistance = 150;
-            ctx.strokeStyle = lineColor;
-            for (let a = 0; a < particlesArray.length; a++) {
-                for (let b = a; b < particlesArray.length; b++) {
-                    let distance = ((particlesArray[a].x - particlesArray[b].x) * (particlesArray[a].x - particlesArray[b].x))
-                                 + ((particlesArray[a].y - particlesArray[b].y) * (particlesArray[a].y - particlesArray[b].y));
-                    if (distance < (maxDistance * maxDistance)) {
-                        let opacity = 1 - (distance / (maxDistance * maxDistance));
-                        ctx.globalAlpha = opacity;
-                        ctx.beginPath();
-                        ctx.moveTo(particlesArray[a].x, particlesArray[a].y);
-                        ctx.lineTo(particlesArray[b].x, particlesArray[b].y);
-                        ctx.stroke();
-                    }
-                }
-            }
-            ctx.globalAlpha = 1.0;
-        }
-
-        function animate() {
-            requestAnimationFrame(animate);
-            ctx.clearRect(0, 0, canvas.width, canvas.height);
-            for (let i = 0; i < particlesArray.length; i++) {
-                particlesArray[i].update();
-            }
-            connect();
-        }
-
-        window.addEventListener('resize', () => {
-            setCanvasSize();
-            init();
-        });
-        init();
-        animate();
-        // --- ENDE: PARTIKEL-ANIMATION ---
-    </script>
 
     <script type="module" src="shared_feedback.js" defer></script>
     <script type="module" src="shared_notifications.js" defer></script>

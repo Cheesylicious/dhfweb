@@ -1,52 +1,48 @@
 // js/pages/users.js
 
-// --- IMPORTE (Regel 4: Wiederverwendung) ---
+// --- IMPORTE ---
 import { apiFetch } from '../utils/api.js';
 import { initAuthCheck } from '../utils/auth.js';
 
-// --- Globales Setup (Seiten-spezifisch) ---
+// --- Globales Setup ---
 let user;
 let allRoles = [];
-let isAdmin = false; // Wird durch initAuthCheck gesetzt
+let isAdmin = false;
 
 // --- 1. Authentifizierung & Zugriffsschutz ---
 try {
-    // Ruft die zentrale Auth-Prüfung auf (Regel 4).
     const authData = initAuthCheck();
     user = authData.user;
-    isAdmin = authData.isAdmin; // Setzt die globale 'isAdmin' Variable für diese Datei
+    isAdmin = authData.isAdmin;
 
-    // --- START: Seiten-spezifischer Zugriffsschutz (aus Original übernommen) ---
+    // Zugriffsschutz für Nicht-Admins
     if (!isAdmin) {
-        // Nur Admins sehen die Benutzerverwaltung.
         const navShiftplan = document.getElementById('nav-shiftplan');
         if (navShiftplan) navShiftplan.classList.remove('active');
 
-        // Ersetze Hauptinhalt durch Meldung
-        document.getElementById('content-wrapper').innerHTML = `
-            <div class="restricted-view">
-                <h2>Zugriff verweigert</h2>
-                <p>Sie haben keinen Zugriff auf die Benutzerverwaltung.</p>
-                <p>Bitte nutzen Sie den Link zum <a href="schichtplan.html" style="color: #3498db;">Schichtplan</a>.</p>
-            </div>
-        `;
-        // (Sicherstellen, dass das Sub-Nav-Element existiert, bevor darauf zugegriffen wird)
+        const wrapper = document.getElementById('content-wrapper');
+        if (wrapper) {
+            wrapper.innerHTML = `
+                <div class="restricted-view">
+                    <h2>Zugriff verweigert</h2>
+                    <p>Sie haben keinen Zugriff auf die Benutzerverwaltung.</p>
+                    <p>Bitte nutzen Sie den Link zum <a href="schichtplan.html" style="color: #3498db;">Schichtplan</a>.</p>
+                </div>
+            `;
+        }
         const subNavUsers = document.getElementById('sub-nav-users');
         if (subNavUsers) subNavUsers.style.display = 'none';
 
-        // Breche Initialisierung ab
+        // Stoppt die weitere Ausführung, damit keine API-Calls gemacht werden
         throw new Error("Nicht-Admin darf Benutzerverwaltung nicht sehen.");
     }
-    // --- ENDE: Seiten-spezifischer Zugriffsschutz ---
 
 } catch (e) {
-    // Auth-Fehler (entweder von initAuthCheck oder dem Block oben)
     console.error("Initialisierung von users.js gestoppt:", e.message);
-    // Stoppt die weitere Ausführung des Skripts
-    throw e;
+    // Skript hier beenden, wenn Auth fehlschlägt oder Rechte fehlen
 }
 
-// --- 2. DOM-Elemente (Seiten-spezifisch) ---
+// --- 2. DOM-Elemente ---
 const userTableBody = document.getElementById('user-table-body');
 const modal = document.getElementById('user-modal');
 const modalTitle = document.getElementById('modal-title');
@@ -54,10 +50,12 @@ const modalStatus = document.getElementById('modal-status');
 const addUserBtn = document.getElementById('add-user-btn');
 const saveUserBtn = document.getElementById('save-user-btn');
 const closeModalBtn = document.getElementById('close-user-modal');
+
+// Formular Felder
 const userIdField = document.getElementById('user-id');
 const vornameField = document.getElementById('user-vorname');
 const nameField = document.getElementById('user-name');
-const emailField = document.getElementById('user-email'); // E-Mail Feld
+const emailField = document.getElementById('user-email');
 const passwortField = document.getElementById('user-passwort');
 const roleField = document.getElementById('user-role');
 const geburtstagField = document.getElementById('user-geburtstag');
@@ -73,53 +71,26 @@ const tutorialField = document.getElementById('user-tutorial');
 const passGeaendertField = document.getElementById('user-pass-geaendert');
 const zuletztOnlineField = document.getElementById('user-zuletzt-online');
 const forcePwResetBtn = document.getElementById('force-pw-reset-btn');
+
+// Container für dynamische Sichtbarkeit (Limits Bereich)
+const limitsWrapper = document.getElementById('limits-wrapper');
+
+// Spalten-Konfiguration
 const columnModal = document.getElementById('column-modal');
 const toggleColumnsBtn = document.getElementById('toggle-columns-btn');
 const saveColumnToggleBtn = document.getElementById('save-column-toggle');
 const columnCheckboxes = document.querySelectorAll('.col-toggle-cb');
-const modalTabsContainer = document.getElementById('user-modal-tabs');
 
-// --- NEU: Test-Mail Button ---
+// Test-Mail
 const sendTestMailBtn = document.getElementById('send-test-mail-btn');
 
-// --- 3. Hilfsfunktionen (Seiten-spezifisch) ---
+// --- 3. Hilfsfunktionen ---
 
 function openModal(modalEl) {
-    modalEl.style.display = 'block';
+    if(modalEl) modalEl.style.display = 'block';
 }
 function closeModal(modalEl) {
-    modalEl.style.display = 'none';
-}
-
-/**
- * Öffnet den angeklickten Tab im Modal.
- */
-function openTab(evt, tabName) {
-    let i, tabcontent, tablinks;
-    tabcontent = document.getElementsByClassName("modal-tab-content");
-    for (i = 0; i < tabcontent.length; i++) {
-        tabcontent[i].style.display = "none";
-    }
-    tablinks = document.getElementsByClassName("tab-link");
-    for (i = 0; i < tablinks.length; i++) {
-        tablinks[i].className = tablinks[i].className.replace(" active", "");
-    }
-
-    const tabElement = document.getElementById(tabName);
-    if (tabElement) {
-        tabElement.style.display = "block";
-    }
-
-    // Wenn durch Klick ausgelöst, setze den Button aktiv
-    if (evt) {
-        evt.currentTarget.className += " active";
-    } else {
-        // Wenn manuell ausgelöst (beim Öffnen), setze den ersten Tab aktiv
-        const firstTab = modalTabsContainer.querySelector('button[data-tab="tab-stammdaten"]');
-        if (firstTab) {
-            firstTab.className += " active";
-        }
-    }
+    if(modalEl) modalEl.style.display = 'none';
 }
 
 function formatDateTime(isoString, type = 'date') {
@@ -133,11 +104,12 @@ function formatDateTime(isoString, type = 'date') {
     }
 }
 
+// Spalten-Sichtbarkeit
 const columnNames = [
-    'col-email', // E-Mail Spalte
-    'col-telefon', 'col-eintrittsdatum', 'col-aktiv_ab_datum',
+    'col-email', 'col-telefon', 'col-eintrittsdatum', 'col-aktiv_ab_datum',
     'col-urlaub_rest', 'col-diensthund', 'col-zuletzt_online'
 ];
+
 function applyColumnPreferences() {
     columnNames.forEach(colClass => {
         const isVisible = localStorage.getItem(colClass) === 'true';
@@ -152,19 +124,24 @@ function applyColumnPreferences() {
         if(checkbox) checkbox.checked = isVisible;
     });
 }
-toggleColumnsBtn.onclick = () => {
-    openModal(columnModal);
-};
-document.getElementById('close-column-modal').onclick = () => closeModal(columnModal);
-saveColumnToggleBtn.onclick = () => {
-    columnCheckboxes.forEach(cb => {
-        localStorage.setItem(cb.dataset.col, cb.checked);
-    });
-    applyColumnPreferences();
-    closeModal(columnModal);
-};
 
-// --- 4. Hauptlogik (Daten laden & Aktionen) ---
+if(toggleColumnsBtn) {
+    toggleColumnsBtn.onclick = () => openModal(columnModal);
+}
+if(document.getElementById('close-column-modal')) {
+    document.getElementById('close-column-modal').onclick = () => closeModal(columnModal);
+}
+if(saveColumnToggleBtn) {
+    saveColumnToggleBtn.onclick = () => {
+        columnCheckboxes.forEach(cb => {
+            localStorage.setItem(cb.dataset.col, cb.checked);
+        });
+        applyColumnPreferences();
+        closeModal(columnModal);
+    };
+}
+
+// --- 4. Hauptlogik ---
 
 async function loadRolesIntoDropdown(selectedRoleId = null) {
     try {
@@ -185,32 +162,34 @@ async function loadRolesIntoDropdown(selectedRoleId = null) {
             roleField.appendChild(option);
         });
     } catch (error) {
-        modalStatus.textContent = "Fehler beim Laden der Rollen: " + error.message;
+        if(modalStatus) modalStatus.textContent = "Fehler beim Laden der Rollen: " + error.message;
     }
 }
 
-// --- LIMITS LADEN ---
+// --- LIMITS LADEN (Optimiertes Layout für Grid) ---
 async function loadUserLimits(userId) {
     const container = document.getElementById('limits-container');
-    container.innerHTML = 'Lade Limits...';
+    if (!container) return;
+
+    container.innerHTML = '<div style="grid-column:1/-1; color:#bdc3c7;">Lade Limits...</div>';
 
     try {
         const limits = await apiFetch(`/api/users/${userId}/limits`);
         container.innerHTML = '';
 
         if (limits.length === 0) {
-             container.innerHTML = 'Keine Arbeitsschichten definiert.';
+             container.innerHTML = '<div style="grid-column:1/-1; color:#bdc3c7;">Keine Arbeitsschichten definiert.</div>';
              return;
         }
 
         limits.forEach(limit => {
-             const formGroup = document.createElement('div');
-             formGroup.className = 'form-group';
+             // Erstelle eine "Limit Card" für das Grid
+             const card = document.createElement('div');
+             card.className = 'limit-card'; // Style aus HTML (background, border)
 
-             // Erstelle Label und Input
-             formGroup.innerHTML = `
-                 <label for="limit-${limit.shifttype_id}">
-                    ${limit.shifttype_abbreviation} (${limit.shifttype_name}):
+             card.innerHTML = `
+                 <label for="limit-${limit.shifttype_id}" style="display:block; margin-bottom:5px; font-size:12px; color:#bdc3c7; font-weight:600;">
+                    ${limit.shifttype_abbreviation} (${limit.shifttype_name})
                  </label>
                  <input type="number"
                         id="limit-${limit.shifttype_id}"
@@ -218,17 +197,17 @@ async function loadUserLimits(userId) {
                         data-shifttype-id="${limit.shifttype_id}"
                         value="${limit.monthly_limit}"
                         min="0"
-                        title="Anzahl der erlaubten Wunsch-Anfragen pro Monat (0 = keine)">
+                        style="width:100%; padding:8px; background:rgba(0,0,0,0.3); border:1px solid #555; border-radius:4px; color:#fff;"
+                        title="Limit für Wunsch-Anfragen (0 = keine)">
              `;
-             container.appendChild(formGroup);
+             container.appendChild(card);
         });
 
     } catch (error) {
-        container.innerHTML = `<span style="color:red">Fehler beim Laden der Limits: ${error.message}</span>`;
+        container.innerHTML = `<span style="color:#e74c3c">Fehler beim Laden: ${error.message}</span>`;
     }
 }
 
-// --- LIMITS SPEICHERN ---
 async function saveUserLimits(userId) {
     const inputs = document.querySelectorAll('.limit-input');
     const payload = [];
@@ -245,8 +224,10 @@ async function saveUserLimits(userId) {
     }
 }
 
-
 async function loadUsers() {
+    // Falls das Element nicht existiert (z.B. falsche Seite oder Auth-Fehler), abbrechen
+    if (!userTableBody) return;
+
     try {
         const users = await apiFetch('/api/users');
         userTableBody.innerHTML = '';
@@ -254,13 +235,14 @@ async function loadUsers() {
             const row = document.createElement('tr');
             const roleName = u.role ? u.role.name : 'Keine Rolle';
             const userJsonString = JSON.stringify(u).replace(/'/g, "\\'");
-            const email = u.email || '---'; // E-Mail
+            const email = u.email || '---';
             const telefon = u.telefon || '---';
             const eintritt = formatDateTime(u.eintrittsdatum, 'date') || '---';
             const aktiv = formatDateTime(u.aktiv_ab_datum, 'date') || '---';
             const urlaub = u.urlaub_rest + ' / ' + u.urlaub_gesamt;
             const hund = u.diensthund || '---';
             const online = formatDateTime(u.zuletzt_online, 'datetime') || 'Nie';
+
             row.innerHTML = `
                 <td>${u.id}</td>
                 <td>${u.vorname}</td>
@@ -281,61 +263,74 @@ async function loadUsers() {
         });
         applyColumnPreferences();
     } catch (error) {
-        alert('Fehler beim Laden der Benutzer: ' + error.message);
+        // Fehler nur anzeigen, wenn es nicht am fehlenden Auth liegt (das fängt initAuthCheck ab)
+        console.error(error);
+        if(userTableBody) {
+             userTableBody.innerHTML = `<tr><td colspan="10" style="text-align:center; color: #e74c3c;">Fehler beim Laden: ${error.message}</td></tr>`;
+        }
     }
 }
 
-userTableBody.addEventListener('click', (e) => {
-    if (e.target.classList.contains('btn-edit')) {
-        const userData = JSON.parse(e.target.dataset.userjson);
-        openEditModal(userData);
-    }
-    if (e.target.classList.contains('btn-delete')) {
-        const userId = e.target.dataset.userid;
-        deleteUser(userId);
-    }
-});
+if (userTableBody) {
+    userTableBody.addEventListener('click', (e) => {
+        if (e.target.classList.contains('btn-edit')) {
+            const userData = JSON.parse(e.target.dataset.userjson);
+            openEditModal(userData);
+        }
+        if (e.target.classList.contains('btn-delete')) {
+            const userId = e.target.dataset.userid;
+            deleteUser(userId);
+        }
+    });
+}
 
-addUserBtn.onclick = async () => {
-    modalTitle.textContent = 'Neuen Benutzer erstellen';
-    modalStatus.textContent = '';
-    userIdField.value = '';
-    vornameField.value = '';
-    nameField.value = '';
-    emailField.value = ''; // E-Mail leeren
-    passwortField.value = '';
-    passwortField.placeholder = 'Passwort (erforderlich)';
-    geburtstagField.value = '';
-    telefonField.value = '';
-    eintrittsdatumField.value = '';
-    aktivAbField.value = '';
-    inaktivAbField.value = '';
-    urlaubGesamtField.value = 0;
-    urlaubRestField.value = 0;
-    diensthundField.value = '';
-    tutorialField.checked = false;
-    passGeaendertField.value = 'Wird autom. gesetzt';
-    zuletztOnlineField.value = 'Nie';
-    canSeeStatsField.checked = false;
+// "Neuer Benutzer" Button
+if (addUserBtn) {
+    addUserBtn.onclick = async () => {
+        modalTitle.textContent = 'Neuen Benutzer erstellen';
+        modalStatus.textContent = '';
 
-    const systemTabButton = document.querySelector('.modal-tabs button[data-tab="tab-system"]');
-    if (systemTabButton) systemTabButton.style.display = 'none';
+        // Felder leeren
+        userIdField.value = '';
+        vornameField.value = '';
+        nameField.value = '';
+        emailField.value = '';
+        passwortField.value = '';
+        passwortField.placeholder = 'Passwort (erforderlich)';
+        geburtstagField.value = '';
+        telefonField.value = '';
+        eintrittsdatumField.value = '';
+        aktivAbField.value = '';
+        inaktivAbField.value = '';
+        urlaubGesamtField.value = 0;
+        urlaubRestField.value = 0;
+        diensthundField.value = '';
+        tutorialField.checked = false;
+        canSeeStatsField.checked = false;
 
-    const limitsTabButton = document.getElementById('tab-link-limits');
-    if (limitsTabButton) limitsTabButton.style.display = 'none';
+        // Read-Only Infos leeren
+        passGeaendertField.value = 'Wird autom. gesetzt';
+        zuletztOnlineField.value = 'Nie';
 
-    await loadRolesIntoDropdown();
-    openModal(modal);
-    openTab(null, 'tab-stammdaten');
-};
+        // UI Anpassungen für "Neu"
+        if(limitsWrapper) limitsWrapper.style.display = 'none'; // Limits erst nach Erstellung
+        if(forcePwResetBtn) forcePwResetBtn.style.display = 'none'; // Kein Reset ohne ID
 
+        await loadRolesIntoDropdown();
+        openModal(modal);
+    };
+}
+
+// "Bearbeiten" Button Logik
 async function openEditModal(user) {
     modalTitle.textContent = 'Benutzer bearbeiten';
     modalStatus.textContent = '';
+
+    // Felder füllen
     userIdField.value = user.id;
     vornameField.value = user.vorname;
     nameField.value = user.name;
-    emailField.value = user.email || ''; // E-Mail füllen
+    emailField.value = user.email || '';
     passwortField.value = '';
     passwortField.placeholder = 'Leer lassen für "keine Änderung"';
     geburtstagField.value = formatDateTime(user.geburtstag, 'date');
@@ -347,78 +342,77 @@ async function openEditModal(user) {
     urlaubRestField.value = user.urlaub_rest || 0;
     diensthundField.value = user.diensthund || '';
     tutorialField.checked = user.tutorial_gesehen;
-    passGeaendertField.value = formatDateTime(user.password_geaendert, 'datetime') || 'Unbekannt';
-    zuletztOnlineField.value = formatDateTime(user.zuletzt_online, 'datetime') || 'Nie';
     canSeeStatsField.checked = user.can_see_statistics === true;
 
-    const systemTabButton = document.querySelector('.modal-tabs button[data-tab="tab-system"]');
-    if (systemTabButton) systemTabButton.style.display = 'block';
+    passGeaendertField.value = formatDateTime(user.password_geaendert, 'datetime') || 'Unbekannt';
+    zuletztOnlineField.value = formatDateTime(user.zuletzt_online, 'datetime') || 'Nie';
 
-    const limitsTabButton = document.getElementById('tab-link-limits');
-    if (limitsTabButton) {
-        limitsTabButton.style.display = 'block';
-        await loadUserLimits(user.id); // Limits laden
+    // UI Anpassungen für "Edit"
+    if(limitsWrapper) {
+        limitsWrapper.style.display = 'block';
+        // Wir setzen hier einen Timeout, um sicherzugehen, dass das Modal gerendert ist
+        setTimeout(() => loadUserLimits(user.id), 50);
     }
+    if(forcePwResetBtn) forcePwResetBtn.style.display = 'inline-block';
 
     await loadRolesIntoDropdown(user.role_id);
     openModal(modal);
-    openTab(null, 'tab-stammdaten');
 }
 
-saveUserBtn.onclick = async () => {
-    const id = userIdField.value;
-    const payload = {
-        vorname: vornameField.value,
-        name: nameField.value,
-        email: emailField.value || null, // E-Mail senden
-        role_id: parseInt(roleField.value),
-        passwort: passwortField.value || null,
-        geburtstag: geburtstagField.value || null,
-        telefon: telefonField.value || null,
-        eintrittsdatum: eintrittsdatumField.value || null,
-        aktiv_ab_datum: aktivAbField.value || null,
-        inaktiv_ab_datum: inaktivAbField.value || null,
-        urlaub_gesamt: parseInt(urlaubGesamtField.value) || 0,
-        urlaub_rest: parseInt(urlaubRestField.value) || 0,
-        diensthund: diensthundField.value || null,
-        tutorial_gesehen: tutorialField.checked,
-        can_see_statistics: canSeeStatsField.checked
-    };
-    if (!payload.passwort) { delete payload.passwort; }
+if (saveUserBtn) {
+    saveUserBtn.onclick = async () => {
+        const id = userIdField.value;
+        const payload = {
+            vorname: vornameField.value,
+            name: nameField.value,
+            email: emailField.value || null,
+            role_id: parseInt(roleField.value),
+            passwort: passwortField.value || null,
+            geburtstag: geburtstagField.value || null,
+            telefon: telefonField.value || null,
+            eintrittsdatum: eintrittsdatumField.value || null,
+            aktiv_ab_datum: aktivAbField.value || null,
+            inaktiv_ab_datum: inaktivAbField.value || null,
+            urlaub_gesamt: parseInt(urlaubGesamtField.value) || 0,
+            urlaub_rest: parseInt(urlaubRestField.value) || 0,
+            diensthund: diensthundField.value || null,
+            tutorial_gesehen: tutorialField.checked,
+            can_see_statistics: canSeeStatsField.checked
+        };
 
-    // Button sperren, um Doppelklicks zu vermeiden
-    saveUserBtn.disabled = true;
-    modalStatus.textContent = 'Speichere...';
+        if (!payload.passwort) delete payload.passwort;
 
-    try {
-        if (id) {
-            // 1. User speichern
-            await apiFetch(`/api/users/${id}`, 'PUT', payload);
+        saveUserBtn.disabled = true;
+        modalStatus.textContent = 'Speichere...';
 
-            // 2. Limits speichern (nur wenn wir im Edit-Modus sind)
-            const limitsTabButton = document.getElementById('tab-link-limits');
-            if (limitsTabButton && limitsTabButton.style.display !== 'none') {
-                 await saveUserLimits(id);
+        try {
+            if (id) {
+                // UPDATE
+                await apiFetch(`/api/users/${id}`, 'PUT', payload);
+
+                // Limits nur speichern, wenn sichtbar (also im Edit Mode)
+                if (limitsWrapper && limitsWrapper.style.display !== 'none') {
+                     await saveUserLimits(id);
+                }
+            } else {
+                // CREATE
+                if (!payload.passwort) {
+                    modalStatus.textContent = "Passwort ist für neue User erforderlich.";
+                    saveUserBtn.disabled = false;
+                    return;
+                }
+                await apiFetch('/api/users', 'POST', payload);
             }
 
-        } else {
-            if (!payload.passwort) {
-                modalStatus.textContent = "Passwort ist für neue User erforderlich.";
-                openTab(null, 'tab-stammdaten');
-                saveUserBtn.disabled = false;
-                return;
-            }
-            await apiFetch('/api/users', 'POST', payload);
-            // Limits können erst nach Erstellung (im Edit-Modus) gesetzt werden
+            closeModal(modal);
+            loadUsers();
+        } catch (error) {
+            modalStatus.textContent = 'Fehler: ' + error.message;
+        } finally {
+            saveUserBtn.disabled = false;
         }
-        closeModal(modal);
-        loadUsers();
-    } catch (error) {
-        modalStatus.textContent = 'Fehler: ' + error.message;
-    } finally {
-        saveUserBtn.disabled = false;
-    }
-};
+    };
+}
 
 async function deleteUser(id) {
     if (confirm('Sind Sie sicher, dass Sie diesen Benutzer löschen möchten?')) {
@@ -434,30 +428,22 @@ async function deleteUser(id) {
 if (forcePwResetBtn) {
     forcePwResetBtn.onclick = async () => {
         const id = userIdField.value;
-        if (!id) {
-            modalStatus.textContent = "Fehler: Benutzer-ID nicht gefunden.";
-            modalStatus.style.color = '#e74c3c';
-            return;
-        }
-        if (confirm('Sind Sie sicher, dass Sie diesen Benutzer zwingen möchten, sein Passwort beim nächsten Login zu ändern?')) {
-            const originalStatus = modalStatus.textContent;
-            const originalColor = modalStatus.style.color;
-            modalStatus.textContent = 'Setze Flag...';
-            modalStatus.style.color = '#bdc3c7';
+        if (!id) return;
+
+        if (confirm('Benutzer zwingen, beim nächsten Login das Passwort zu ändern?')) {
+            const originalText = forcePwResetBtn.textContent;
+            forcePwResetBtn.textContent = '...';
+            forcePwResetBtn.disabled = true;
+
             try {
-                const response = await apiFetch(`/api/users/${id}/force_password_reset`, 'POST');
-                modalStatus.textContent = response.message || 'Erfolgreich erzwungen!';
-                modalStatus.style.color = '#2ecc71';
+                await apiFetch(`/api/users/${id}/force_password_reset`, 'POST');
+                alert('Flag erfolgreich gesetzt.');
             } catch (error) {
-                modalStatus.textContent = 'Fehler: ' + error.message;
-                modalStatus.style.color = '#e74c3c';
+                alert('Fehler: ' + error.message);
+            } finally {
+                forcePwResetBtn.textContent = originalText;
+                forcePwResetBtn.disabled = false;
             }
-            setTimeout(() => {
-                if (modalStatus.textContent !== 'Speichere...') {
-                    modalStatus.textContent = originalStatus;
-                    modalStatus.style.color = originalColor;
-                }
-            }, 3000);
         }
     };
 }
@@ -465,7 +451,7 @@ if (forcePwResetBtn) {
 // --- NEU: Event Listener für den Test-Mail Button ---
 if (sendTestMailBtn) {
     sendTestMailBtn.onclick = async () => {
-        if (!confirm("Möchten Sie wirklich eine Test-E-Mail an ALLE Benutzer mit hinterlegter E-Mail-Adresse senden?")) {
+        if (!confirm("Test-E-Mail an ALLE Benutzer mit E-Mail-Adresse senden?")) {
             return;
         }
 
@@ -484,21 +470,15 @@ if (sendTestMailBtn) {
     };
 }
 
-// --- 5. Initialisierung ---
-
-if (modalTabsContainer) {
-    modalTabsContainer.addEventListener('click', (e) => {
-        if (e.target.tagName === 'BUTTON' && e.target.dataset.tab) {
-            openTab(e, e.target.dataset.tab);
-        }
-    });
-}
-
-closeModalBtn.onclick = () => closeModal(modal);
+// --- Init ---
+if (closeModalBtn) closeModalBtn.onclick = () => closeModal(modal);
 window.addEventListener('click', (event) => {
     if (event.target == modal) closeModal(modal);
     if (event.target == columnModal) closeModal(columnModal);
 });
 
-loadUsers();
-applyColumnPreferences();
+// Start (Nur wenn Admin)
+if (isAdmin) {
+    loadUsers();
+    applyColumnPreferences();
+}

@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <title>Dienstplan</title>
+    <style>
+        /* Optimiertes CSS für die Bildgenerierung auf Smartphones.
+           Wir nutzen eine feste Breite von 600px, damit die Schrift
+           im Verhältnis zum Bild groß genug ist.
+        */
+        body {
+            font-family: 'Helvetica', 'Arial', sans-serif;
+            background-color: #ffffff;
+            margin: 0;
+            padding: 0;
+            width: 600px;
+        }
+
+        .header {
+            background-color: #2c3e50;
+            color: #ffffff;
+            padding: 20px;
+            text-align: center;
+            font-size: 32px;
+            font-weight: bold;
+            text-transform: uppercase;
+        }
+
+        .sub-header {
+            text-align: center;
+            padding: 15px;
+            font-size: 22px;
+            color: #7f8c8d;
+            border-bottom: 2px solid #ecf0f1;
+            font-weight: bold;
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 10px;
+        }
+
+        /* Große Schriftarten für mobile Lesbarkeit */
+        th, td {
+            font-size: 24px;
+            padding: 12px 15px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+
+        /* Mitarbeiter-Namen */
+        tr.employee-header th {
+            background-color: #3498db;
+            color: #ffffff;
+            font-size: 28px;
+            padding-top: 25px;
+            padding-bottom: 10px;
+            text-transform: uppercase;
+        }
+
+        /* Wochenende hervorheben */
+        tr.weekend {
+            background-color: #fef9e7; /* Helles Gelb */
+        }
+
+        /* Spalten-Layout */
+        .col-day {
+            width: 30%;
+            font-weight: bold;
+            color: #34495e;
+        }
+
+        .col-time {
+            width: 35%;
+        }
+
+        .col-loc {
+            width: 35%;
+            font-weight: bold;
+            color: #e67e22; /* Orange für den Ort */
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        Dienstplan
+    </div>
+    <div class="sub-header">
+        {{ month_name }} {{ year }}
+    </div>
+
+    <table>
+        {% for employee_name, shifts in grouped_shifts.items() %}
+            <tr class="employee-header">
+                <th colspan="3">{{ employee_name }}</th>
+            </tr>
+
+            {% for shift in shifts %}
+                <tr class="{% if shift.is_weekend %}weekend{% endif %}">
+                    <td class="col-day">
+                        {{ shift.date_formatted }}
+                    </td>
+                    <td class="col-time">
+                        {{ shift.time_formatted }}
+                    </td>
+                    <td class="col-loc">
+                        {{ shift.location }}
+                    </td>
+                </tr>
+            {% endfor %}
+
+            <tr><td colspan="3" style="border:none; height:20px;"></td></tr>
+        {% endfor %}
+    </table>
+</body>
+</html>

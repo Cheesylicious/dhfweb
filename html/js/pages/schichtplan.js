@@ -50,7 +50,7 @@ const closeQueryModalBtn = document.getElementById('close-query-modal');
 const querySubmitBtn = document.getElementById('query-submit-btn');
 const queryResolveBtn = document.getElementById('query-resolve-btn');
 const queryDeleteBtn = document.getElementById('query-delete-btn');
-const replySubmitBtn = document.getElementById('reply-submit-btn');
+const replySubmitBtn = document.getElementById('reply-submit-btn'); // Button für Antwort
 const clickActionModal = document.getElementById('click-action-modal');
 
 // Varianten Elemente
@@ -132,8 +132,6 @@ async function initialize() {
 
 function injectWarningStyles() {
     const style = document.createElement('style');
-    // .warning = Gelb (Unterbesetzung / "6" fehlt)
-    // .critical = Rot (Keine Besetzung bei T/N)
     style.innerHTML = `
         .hud-day-box.warning {
             border-color: #f1c40f !important;
@@ -427,7 +425,7 @@ async function renderGrid() {
 async function loadFullSpecialDates() {
     try {
         const year = PlanState.currentYear;
-        // --- NEU: DPO laden ---
+        // DPO laden
         const [holidays, training, shooting, dpo] = await Promise.all([
             PlanApi.fetchSpecialDates(year, 'holiday'),
             PlanApi.fetchSpecialDates(year, 'training'),
@@ -437,7 +435,6 @@ async function loadFullSpecialDates() {
         training.forEach(d => { if(d.date) PlanState.currentSpecialDates[d.date] = d.type; });
         shooting.forEach(d => { if(d.date) PlanState.currentSpecialDates[d.date] = d.type; });
         holidays.forEach(d => { if(d.date) PlanState.currentSpecialDates[d.date] = 'holiday'; });
-        // DPO hinzufügen
         dpo.forEach(d => { if(d.date) PlanState.currentSpecialDates[d.date] = 'dpo'; });
     } catch (e) {}
 }
@@ -613,10 +610,16 @@ function showClickActionModal(event, user, dateStr, cell, isCellOnOwnRow) {
 
     [camAdminWunschActions, camAdminShifts, camHundefuehrerRequests, camNotizActions, camHundefuehrerDelete].forEach(el => el.style.display = 'none');
 
+    // --- KORREKTUR: FILTER ERWEITERT (INKL. ALLGEMEINE NOTIZEN) ---
+    // Damit wird eine Notiz für "Alle" (null) auch bei jedem User gefunden
     const queries = PlanState.currentShiftQueries.filter(q =>
-        (q.target_user_id === user.id && q.shift_date === dateStr && q.status === 'offen')
+        q.shift_date === dateStr &&
+        q.status === 'offen' &&
+        (q.target_user_id === user.id || q.target_user_id === null)
     );
-    const wunsch = queries.find(q => q.sender_role_name === 'Hundeführer' && q.message.startsWith("Anfrage für:"));
+    // ---------------------------------------------------------------
+
+    const wunsch = queries.find(q => q.sender_role_name === 'Hundeführer' && q.message.startswith("Anfrage für:"));
     const notiz = queries.find(q => !(q.sender_role_name === 'Hundeführer' && q.message.startsWith("Anfrage für:")));
 
     PlanState.clickModalContext.wunschQuery = wunsch;
@@ -733,6 +736,38 @@ async function populateHfButtons() {
             container.appendChild(btn);
         });
     } catch(e) { container.innerHTML = 'Fehler beim Laden.'; }
+}
+
+// --- NEUE HELPER FUNKTION: KONVERSATION LADEN ---
+async function loadAndRenderModalConversation(queryId) {
+    const repliesList = document.getElementById('query-replies-list');
+    if (!repliesList) return;
+
+    try {
+        const replies = await apiFetch(`/api/queries/${queryId}/replies`);
+        // Bestehende Replies (außer dem initialen Element) entfernen
+        const itemsToRemove = repliesList.querySelectorAll('.reply-item:not(#initial-query-item)');
+        itemsToRemove.forEach(el => el.remove());
+
+        replies.forEach(reply => {
+            const li = document.createElement('li');
+            li.className = 'reply-item';
+            const isSelf = reply.user_id === PlanState.loggedInUser.id;
+            const formattedDate = new Date(reply.created_at).toLocaleTimeString('de-DE', {day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit'});
+
+            li.innerHTML = `
+                <div class="reply-meta" style="color: ${isSelf ? '#3498db' : '#888'};">
+                    <strong>${reply.user_name}</strong> am ${formattedDate} Uhr
+                </div>
+                <div class="reply-text">
+                    ${reply.message}
+                </div>
+            `;
+            repliesList.appendChild(li);
+        });
+    } catch (e) {
+        console.error("Fehler beim Laden der Antworten:", e);
+    }
 }
 
 // --- 5. Global Listeners ---
@@ -970,16 +1005,81 @@ function attachGlobalListeners() {
 
     window.addEventListener('keydown', (e) => PlanHandlers.handleKeyboardShortcut(e));
 
+    // --- KORREKTUR BEIM KLICK AUF "Notiz ansehen" ---
     if(camLinkNotiz) camLinkNotiz.onclick = () => {
         const ctx = PlanState.clickModalContext;
-        PlanState.modalQueryContext = { userId: ctx.userId, dateStr: ctx.dateStr, userName: ctx.userName, queryId: camLinkNotiz.dataset.targetQueryId || null };
+        const queryId = camLinkNotiz.dataset.targetQueryId || null;
+
+        PlanState.modalQueryContext = { userId: ctx.userId, dateStr: ctx.dateStr, userName: ctx.userName, queryId: queryId };
+
         document.getElementById('query-modal-title').textContent = "Schicht-Notiz";
         document.getElementById('query-modal-info').textContent = `Für: ${ctx.userName}`;
+
+        // --- HIER: Text aus dem Query-Objekt holen und setzen ---
+        if (queryId) {
+            const query = PlanState.currentShiftQueries.find(q => q.id == queryId);
+            if (query) {
+                document.getElementById('query-existing-message').textContent = query.message;
+
+                // Initiale Nachricht in den Verlauf setzen (wichtig für die Optik)
+                const initItem = document.getElementById('initial-query-item');
+                if (initItem) {
+                    const queryDate = new Date(query.created_at).toLocaleString('de-DE', {day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit'});
+                    initItem.innerHTML = `
+                        <div class="reply-meta" style="color: #3498db;">
+                            <strong>${query.sender_name} (Erstanfrage)</strong> am ${queryDate} Uhr
+                        </div>
+                        <div class="reply-text" style="font-style: italic;">
+                            ${query.message}
+                        </div>
+                    `;
+                }
+                // Konversation laden
+                loadAndRenderModalConversation(queryId);
+
+                // --- NEU: Antwortformular sichtbar machen ---
+                const replyForm = document.getElementById('query-reply-form');
+                if (replyForm) replyForm.style.display = 'block';
+            }
+        } else {
+             // Verstecke Formular bei neuer Notiz (erst speichern)
+             const replyForm = document.getElementById('query-reply-form');
+             if (replyForm) replyForm.style.display = 'none';
+        }
+
         document.getElementById('query-existing-container').style.display = PlanState.modalQueryContext.queryId ? 'block' : 'none';
         document.getElementById('query-new-container').style.display = PlanState.modalQueryContext.queryId ? 'none' : 'block';
         queryModal.style.display = 'block';
         clickActionModal.style.display = 'none';
     };
+
+    // --- NEU: Antwort senden im Modal ---
+    if(replySubmitBtn) {
+        replySubmitBtn.onclick = async () => {
+            const msgInput = document.getElementById('reply-message-input');
+            const msg = msgInput.value.trim();
+            if (!msg) return;
+
+            const queryId = PlanState.modalQueryContext.queryId;
+            if (!queryId) return;
+
+            replySubmitBtn.disabled = true;
+            replySubmitBtn.textContent = "Sende...";
+
+            try {
+                await PlanApi.sendQueryReply(queryId, msg);
+                msgInput.value = '';
+                await loadAndRenderModalConversation(queryId);
+                // Optional: Notification Update trigger
+            } catch (e) {
+                alert("Fehler: " + e.message);
+            } finally {
+                replySubmitBtn.disabled = false;
+                replySubmitBtn.textContent = "Antwort senden";
+            }
+        };
+    }
+
     if(camLinkDelete) camLinkDelete.onclick = () => { PlanHandlers.deleteShiftQuery(camLinkDelete.dataset.targetQueryId, () => clickActionModal.style.display = 'none'); };
     if(camBtnApprove) camBtnApprove.onclick = () => { renderGrid(); };
     if(querySubmitBtn) querySubmitBtn.onclick = () => { const msg = document.getElementById('query-message-input').value; PlanHandlers.saveShiftQuery(msg, () => queryModal.style.display = 'none'); };

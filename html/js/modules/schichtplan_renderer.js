@@ -55,7 +55,7 @@ export const PlanRenderer = {
         const shiftType = shift ? shift.shift_type : null;
         const violationKey = `${userId}-${day}`;
 
-        // --- NEU: Check ob heute ---
+        // --- Check ob heute ---
         const today = new Date();
         const isToday = (d.getFullYear() === today.getFullYear() &&
                          d.getMonth() === today.getMonth() &&
@@ -69,19 +69,25 @@ export const PlanRenderer = {
         // Klasse hinzufügen, wenn es heute ist
         if (isToday) cellClasses += ' current-day-highlight';
 
-        // --- NEU: DPO Rahmen ---
+        // --- DPO Rahmen ---
         if (eventType === 'dpo') cellClasses += ' day-border-dpo';
-        // --- ENDE NEU ---
 
+        // Reset Cell Content - WICHTIG: Erst alles leeren
         cell.textContent = '';
         cell.style.backgroundColor = '';
         cell.style.color = '';
-        delete cell.dataset.queryId; // Reset
+        delete cell.dataset.queryId;
 
-        // Queries prüfen
+        // --- KORREKTUR START: Filter angepasst für "Thema des Tages" ---
+        // Wir suchen Anfragen, die zum Datum passen und OFFEN sind.
+        // UND: Entweder für diesen User bestimmt sind ODER für "Alle" (null) sind.
         const queriesForCell = PlanState.currentShiftQueries.filter(q =>
-            (q.target_user_id === userId && q.shift_date === dateStr && q.status === 'offen')
+            q.shift_date === dateStr &&
+            q.status === 'offen' &&
+            (q.target_user_id === userId || q.target_user_id === null)
         );
+        // --- KORREKTUR ENDE ---
+
         const wunschQuery = queriesForCell.find(q => isWunschAnfrage(q));
         const notizQuery = queriesForCell.find(q => !isWunschAnfrage(q));
 
@@ -89,31 +95,38 @@ export const PlanRenderer = {
         let showQuestionMark = false;
         let isShiftRequestCell = false;
 
-        if (PlanState.isPlanschreiber) {
+        // --- LOGIK FÜR FRAGEZEICHEN UND TEXT ---
+        if (PlanState.isAdmin) {
+            // Admin sieht Wünsche (Text) und Notizen (Fragezeichen)
+            if (wunschQuery) {
+                isShiftRequestCell = true;
+                shiftRequestText = wunschQuery.message.substring("Anfrage für:".length).trim();
+            }
             if (notizQuery) showQuestionMark = true;
+
+        } else if (PlanState.isPlanschreiber) {
+            // Planschreiber sieht Notizen (Fragezeichen)
+            if (notizQuery) showQuestionMark = true;
+
         } else if (PlanState.isHundefuehrer) {
+            // Hundeführer sieht eigene Wünsche (Text)
             if (wunschQuery) {
                 isShiftRequestCell = true;
                 shiftRequestText = wunschQuery.message.substring("Anfrage für:".length).trim();
             }
-        } else {
-            if (wunschQuery) {
-                isShiftRequestCell = true;
-                shiftRequestText = wunschQuery.message.substring("Anfrage für:".length).trim();
-            }
-            if (notizQuery) showQuestionMark = true;
+            // Optional: Soll HF auch allgemeine Tages-Notizen sehen?
+            // Wenn ja, folgende Zeile einkommentieren:
+            // if (notizQuery && notizQuery.target_user_id === null) showQuestionMark = true;
         }
 
         const dayHasSpecialBg = eventType || isWeekend;
 
-        // Render-Logik
+        // --- RENDER-LOGIK: Text & Hintergrund ---
         if (shiftType) {
             cell.textContent = shiftType.abbreviation;
             if (shiftType.prioritize_background && dayHasSpecialBg) {
-                // Bei DPO wollen wir die Farbe der Schicht behalten, aber den Rahmen hinzufügen
                 if (eventType === 'holiday') cellClasses += ` day-color-${eventType}`;
                 else if (isWeekend) cellClasses += ' weekend';
-                // DPO wird durch day-border-dpo oben abgedeckt
             } else {
                 cell.style.backgroundColor = shiftType.color;
                 cell.style.color = isColorDark(shiftType.color) ? 'white' : 'black';
@@ -127,11 +140,28 @@ export const PlanRenderer = {
              else if (isWeekend) cellClasses += ' weekend';
         }
 
-        if (showQuestionMark) {
-             cell.innerHTML += `<span class="shift-query-icon">❓</span>`;
-        }
-
+        // Klasse setzen
         cell.className = cellClasses;
+
+        // --- ICON EINFÜGEN ---
+        if (showQuestionMark) {
+             const iconSpan = document.createElement('span');
+             iconSpan.className = 'shift-query-icon';
+             iconSpan.textContent = '❓';
+
+             // Tooltip Logik: Unterscheidung zwischen Allgemein und Spezifisch
+             if (notizQuery) {
+                 if (notizQuery.target_user_id === null) {
+                     iconSpan.title = "Thema des Tages / Allgemeine Notiz";
+                     // Optional: Visuelle Unterscheidung für allgemeine Notizen (z.B. andere Farbe)
+                     // iconSpan.style.backgroundColor = "#e67e22";
+                 } else {
+                     iconSpan.title = "Persönliche Notiz";
+                 }
+             }
+
+             cell.appendChild(iconSpan);
+        }
 
         // Bulk Selection wiederherstellen
         if (PlanState.isBulkMode && wunschQuery && PlanState.selectedQueryIds.has(wunschQuery.id)) {
@@ -167,7 +197,7 @@ export const PlanRenderer = {
             if (eventType === 'dpo') {
                 headerClasses += ' day-border-dpo'; // Rahmen für Header
             }
-            // Hintergrundfarben (wie bisher)
+            // Hintergrundfarben
             if (eventType && eventType !== 'dpo') {
                 headerClasses += ` day-color-${eventType}`;
             } else if (isWeekend) {
@@ -196,13 +226,12 @@ export const PlanRenderer = {
 
             const headerCell = renderDayHeader(day, isWeekend, dateStr);
 
-            // --- NEU: DPO Label ---
+            // DPO Label
             if (PlanState.currentSpecialDates[dateStr] === 'dpo') {
                 headerCell.innerHTML = `<span class="dpo-header-label">DPO</span><span>${dayName}</span>`;
             } else {
                 headerCell.textContent = dayName;
             }
-            // --- ENDE NEU ---
 
             if (PlanState.currentYear === today.getFullYear() && (PlanState.currentMonth - 1) === today.getMonth() && day === today.getDate()) {
                 headerCell.classList.add('current-day-highlight');
@@ -290,19 +319,18 @@ export const PlanRenderer = {
                 const key = `${user.id}-${dateStr}`;
 
                 const cell = document.createElement('div');
-                cell.className = 'grid-cell'; // Initiale Klasse
+                cell.className = 'grid-cell';
                 cell.dataset.key = key;
 
-                // --- NEU: Heute markieren ---
+                // Heute markieren
                 if (PlanState.currentYear === today.getFullYear() && (PlanState.currentMonth - 1) === today.getMonth() && day === today.getDate()) {
                     cell.classList.add('current-day-highlight');
                 }
-                // --- ENDE NEU ---
 
                 // Zelle ins Grid hängen
                 grid.appendChild(cell);
 
-                // Inhalt rendern (ruft refreshSingleCell auf, da Zelle nun im DOM ist)
+                // Inhalt rendern
                 this.refreshSingleCell(user.id, dateStr);
 
                 // Event Listeners anhängen
