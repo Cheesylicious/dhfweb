@@ -214,7 +214,8 @@ class GlobalSetting(db.Model):
     """
     id = db.Column(db.Integer, primary_key=True)
     key = db.Column(db.String(100), unique=True, nullable=False)
-    value = db.Column(db.String(255), nullable=True)
+    # ÄNDERUNG: Text statt String(255), um große JSON-Konfigurationen zu speichern
+    value = db.Column(db.Text, nullable=True)
 
     def to_dict(self):
         return {

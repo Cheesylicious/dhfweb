@@ -12,6 +12,8 @@ from .generator_scoring import GeneratorScoring
 from .generator_rounds import GeneratorRounds
 from .generator_pre_planning import GeneratorPrePlanner
 from .generator_persistence import save_generation_batch_to_db
+# <<< NEU: Import des WeekendManagers
+from .weekend_manager import WeekendManager
 
 
 class ShiftPlanGenerator:
@@ -51,6 +53,7 @@ class ShiftPlanGenerator:
         self.scoring = None
         self.rounds = None
         self.pre_planner = None
+        self.weekend_manager = None  # <<< NEU
 
         # Kompatibilität für PrePlanner (erwartet self.gen.app.staffing_rules)
         self.app = self
@@ -122,6 +125,13 @@ class ShiftPlanGenerator:
             self.partner_priority_map = self.config.partner_priority_map
             self.avoid_priority_map = self.config.avoid_priority_map
             self.user_preferences = self.config.user_preferences
+
+            # --- NEU: WeekendManager initialisieren (wenn Option aktiv) ---
+            if self.config.ensure_one_weekend_free:
+                self.log("Work-Life-Balance: 'Mind. 1 Wochenende frei' aktiviert.", 13)
+                self.weekend_manager = WeekendManager(self)
+            else:
+                self.weekend_manager = None
 
             # 3. Helfer initialisieren
             self.helpers = GeneratorHelpers(self)

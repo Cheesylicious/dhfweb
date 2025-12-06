@@ -126,6 +126,13 @@ class GeneratorRounds:
                         if self.gen.wunschfrei_respect_level >= 50:
                             skip_reason = f"WF({self.gen.wunschfrei_respect_level})"
 
+                # --- NEU: Work-Life-Balance: Mind. 1 Wochenende frei ---
+                # Dies gilt als "Harte Regel" innerhalb von Runde 1, um Fairness zu garantieren.
+                if not skip_reason and self.gen.weekend_manager:
+                    if self.gen.weekend_manager.would_violate_free_weekend_rule(user_id_str, current_date_obj):
+                        skip_reason = "NoFreeWE"
+                # --- ENDE NEU ---
+
                 # Max. gleiche Schicht in Folge
                 limit = max_same_shift_override if max_same_shift_override is not None else self.gen.max_consecutive_same_shift_limit
                 if not skip_reason:
@@ -312,6 +319,15 @@ class GeneratorRounds:
                 # Wird hier als "Hard" betrachtet, außer man würde es explizit lockern wollen
                 if not skip_reason and shift_abbrev in user_pref.get('shift_exclusions', []):
                     skip_reason = "Excl"
+
+                # --- NEU: Work-Life-Balance auch in Fill-Runden beachten ---
+                # Wenn wir die Regel verletzen würden, überspringen wir auch hier.
+                # Ausnahme: In der allerletzten "Notfall"-Runde (z.B. > 3) könnte man es droppen,
+                # aber "mindestens ein Wochenende frei" klingt wie ein Hard Constraint für die Mitarbeiterzufriedenheit.
+                if not skip_reason and self.gen.weekend_manager:
+                    if self.gen.weekend_manager.would_violate_free_weekend_rule(user_id_str, current_date_obj):
+                        skip_reason = "NoFreeWE"
+                # --- ENDE NEU ---
 
                 # Max. Tage in Folge
                 # In Fill-Runden nutzen wir das HARD Limit, wenn konfiguriert

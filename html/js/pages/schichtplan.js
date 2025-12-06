@@ -857,6 +857,8 @@ function attachGlobalListeners() {
 
     if (startGeneratorBtn) {
         startGeneratorBtn.onclick = async () => {
+            console.log("Start-Button geklickt. Sende Anfrage an Backend..."); // DEBUG
+
             startGeneratorBtn.disabled = true;
             startGeneratorBtn.textContent = "LÄUFT...";
 
@@ -873,7 +875,10 @@ function attachGlobalListeners() {
 
             const logContainer = document.getElementById('generator-log-container');
             logContainer.innerHTML = '';
-            visualQueue.push('<div class="hud-log-line highlight">> Startsequenz initiiert...</div>');
+            visualQueue.push({
+                type: 'log',
+                content: '<div class="hud-log-line highlight">> Startsequenz initiiert...</div>'
+            });
 
             const statusText = document.getElementById('gen-status-text');
             if(statusText) {
@@ -885,13 +890,30 @@ function attachGlobalListeners() {
             visualInterval = setInterval(processVisualQueue, 40);
 
             try {
-                await PlanApi.startGenerator(PlanState.currentYear, PlanState.currentMonth, PlanState.currentVariantId);
+                // WICHTIG: Sicherstellen, dass variantId null ist, wenn undefined
+                const variantIdToSend = PlanState.currentVariantId !== undefined ? PlanState.currentVariantId : null;
+                console.log(`Starte Generator für: ${PlanState.currentMonth}/${PlanState.currentYear}, Variante: ${variantIdToSend}`);
+
+                await PlanApi.startGenerator(PlanState.currentYear, PlanState.currentMonth, variantIdToSend);
+
+                // Polling starten
                 if (generatorInterval) clearInterval(generatorInterval);
                 generatorInterval = setInterval(pollGeneratorStatus, 1000);
+
             } catch (error) {
-                visualQueue.push(`<div class="hud-log-line error">[FEHLER] ${error.message}</div>`);
+                console.error("Fehler beim Starten:", error);
+                visualQueue.push({
+                    type: 'log',
+                    content: `<div class="hud-log-line error">[FEHLER] ${error.message}</div>`
+                });
                 startGeneratorBtn.disabled = false;
                 startGeneratorBtn.textContent = "RETRY";
+
+                // Status zurücksetzen bei Fehler
+                if(statusText) {
+                    statusText.textContent = "FEHLER";
+                    statusText.style.color = "#e74c3c";
+                }
             }
         };
     }
@@ -915,6 +937,13 @@ function attachGlobalListeners() {
                 if(document.getElementById('gen-max-hours')) document.getElementById('gen-max-hours').value = config.max_monthly_hours || 170;
                 if(document.getElementById('gen-fairness-threshold')) document.getElementById('gen-fairness-threshold').value = config.fairness_threshold_hours || 10;
                 if(document.getElementById('gen-min-hours-bonus')) document.getElementById('gen-min-hours-bonus').value = config.min_hours_score_multiplier || 5;
+
+                // --- NEU: Checkbox für Work-Life-Balance laden ---
+                if(document.getElementById('gen-ensure-weekend')) {
+                    document.getElementById('gen-ensure-weekend').checked = config.ensure_one_weekend_free === true;
+                }
+                // -------------------------------------------------
+
                 const container = document.getElementById('gen-shifts-container');
                 if (container) {
                     container.innerHTML = '';
@@ -957,6 +986,9 @@ function attachGlobalListeners() {
                 fairness_threshold_hours: parseFloat(document.getElementById('gen-fairness-threshold').value),
                 min_hours_score_multiplier: parseFloat(document.getElementById('gen-min-hours-bonus').value),
                 max_monthly_hours: parseFloat(document.getElementById('gen-max-hours').value),
+                // --- NEU: Checkbox für Work-Life-Balance speichern ---
+                ensure_one_weekend_free: document.getElementById('gen-ensure-weekend') ? document.getElementById('gen-ensure-weekend').checked : false,
+                // ----------------------------------------------------
                 shifts_to_plan: selectedShifts
             };
             try {

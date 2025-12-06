@@ -60,6 +60,10 @@ export const PlanHandlers = {
         const cell = PlanRenderer.findCellByKey(key);
         if (cell) cell.textContent = '...'; // Visuelles Feedback
 
+        // --- MERKEN DES ALTEN ZUSTANDS FÜR STAFFING-UPDATE ---
+        const oldShiftEntry = PlanState.currentShifts[key];
+        const oldShiftAbbrev = (oldShiftEntry && oldShiftEntry.shift_type) ? oldShiftEntry.shift_type.abbreviation : null;
+
         try {
             // Payload mit variant_id
             const payload = {
@@ -98,8 +102,20 @@ export const PlanHandlers = {
                 savedData.violations.forEach(v => PlanState.currentViolations.add(`${v[0]}-${v[1]}`));
             }
 
-            // 3. Besetzung (Staffing) aktualisieren
-            PlanState.currentStaffingActual = savedData.staffing_actual || {};
+            // 3. Besetzung (Staffing) INTELLIGENT aktualisieren
+            // Anstatt alles zu überschreiben, rechnen wir die Differenz.
+
+            // A) Alte Schicht abziehen (falls vorhanden)
+            if (oldShiftAbbrev) {
+                StaffingModule.updateLocalStaffing(oldShiftAbbrev, dateStr, -1);
+            }
+
+            // B) Neue Schicht hinzufügen (falls vorhanden und nicht gelöscht)
+            if (!shiftWasDeleted && shiftType) {
+                StaffingModule.updateLocalStaffing(shiftType.abbreviation, dateStr, 1);
+            }
+
+            // C) Tabelle neu rendern (nur die Zahlen im DOM, kein Fetch)
             StaffingModule.refreshStaffingGrid();
 
             // 4. Stunden aktualisieren
@@ -115,7 +131,8 @@ export const PlanHandlers = {
             PlanRenderer.refreshSingleCell(userId, dateStr);
 
         } catch (error) {
-            if (cell) cell.textContent = 'Err';
+            // Bei Fehler Zustand zurücksetzen (visuell)
+            PlanRenderer.refreshSingleCell(userId, dateStr);
             alert(`Fehler beim Speichern: ${error.message}`);
         }
     },

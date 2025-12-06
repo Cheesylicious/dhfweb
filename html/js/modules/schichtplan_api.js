@@ -111,11 +111,12 @@ export const PlanApi = {
         return await apiFetch('/api/generator/config', 'PUT', configPayload);
     },
 
-    // <<< HIER WAR DER FEHLER: variantId fehlte >>>
     async startGenerator(year, month, variantId = null) {
         const payload = { year: year, month: month };
-        if (variantId !== null) payload.variant_id = variantId;
-
+        // Wichtig: variant_id nur senden, wenn es nicht null ist
+        if (variantId !== null) {
+            payload.variant_id = variantId;
+        }
         return await apiFetch('/api/generator/start', 'POST', payload);
     },
 

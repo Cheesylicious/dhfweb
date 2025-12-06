@@ -13,7 +13,7 @@ DEFAULT_GENERATOR_FILL_ROUNDS = 3
 DEFAULT_MANDATORY_REST_DAYS = 2
 DEFAULT_MAX_CONSECUTIVE_SAME_SHIFT = 4
 DEFAULT_MAX_MONTHLY_HOURS = 170.0
-DEFAULT_SHIFTS_TO_PLAN = ["6", "T.", "N."]  # <<< NEU: Standard-Schichten
+DEFAULT_SHIFTS_TO_PLAN = ["6", "T.", "N."]
 AVOID_PARTNER_PENALTY_SCORE = 10000
 
 
@@ -66,7 +66,12 @@ class GeneratorConfig:
             'max_monthly_hours', DEFAULT_MAX_MONTHLY_HOURS
         )
 
-        # --- NEU: Liste der aktiven Schichten ---
+        # --- NEU: Work-Life-Balance Schalter ---
+        self.ensure_one_weekend_free = self.generator_config.get(
+            'ensure_one_weekend_free', False
+        )
+
+        # --- Liste der aktiven Schichten ---
         self.shifts_to_plan = self.generator_config.get(
             'shifts_to_plan', DEFAULT_SHIFTS_TO_PLAN
         )
