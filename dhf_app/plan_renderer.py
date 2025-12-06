@@ -3,6 +3,7 @@ from flask import render_template, current_app
 import locale
 import os
 import uuid
+import shutil
 
 # Versuchen, deutsche Datumsformate zu setzen
 try:
@@ -11,56 +12,64 @@ except locale.Error:
     pass
 
 
-def generate_roster_image_bytes(grouped_shifts, year, month):
+def generate_roster_image_bytes(render_data, year, month):
     """
-    Generiert ein für Smartphones optimiertes Bild des Dienstplans.
-    Nutzt JPG-Kompression, um die Dateigröße drastisch zu reduzieren.
+    Generiert ein für Smartphones optimiertes Bild des Dienstplans (MATRIX-ANSICHT).
     """
 
-    # 1. Pfad-Fix für Systemd
+    # 1. Pfad-Fix für Systemd / Umgebung
     os.environ['PATH'] = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:" + os.environ.get('PATH', '')
 
-    # 2. Temporärer Dateiname (jetzt als JPG)
+    # 2. Temporärer Dateiname (JPG)
     temp_filename = f"roster_{uuid.uuid4()}.jpg"
     temp_path = os.path.join('/tmp', temp_filename)
 
     try:
         # Monat als Name
-        month_name = locale.nl_langinfo(locale.MON_1 + month - 1) if hasattr(locale, 'nl_langinfo') else f"{month:02d}"
-    except:
-        month_name = f"{month:02d}"
+        if 'month_name' not in render_data:
+            try:
+                render_data['month_name'] = locale.nl_langinfo(locale.MON_1 + month - 1) if hasattr(locale,
+                                                                                                    'nl_langinfo') else f"{month:02d}"
+            except:
+                render_data['month_name'] = f"{month:02d}"
 
-    try:
         # 3. HTML rendern
         html_content = render_template(
             'email_plan_mobile.html',
-            grouped_shifts=grouped_shifts,
-            year=year,
-            month_name=month_name
+            data=render_data
         )
 
-        # 4. imgkit Konfiguration (Auf JPG umgestellt)
+        # 4. imgkit Konfiguration
+        wkhtml_path = shutil.which('wkhtmltoimage')
+
+        # Fallbacks
+        if not wkhtml_path:
+            potential_paths = ['/usr/local/bin/wkhtmltoimage-xvfb', '/usr/bin/wkhtmltoimage',
+                               '/usr/local/bin/wkhtmltoimage']
+            for p in potential_paths:
+                if os.path.exists(p):
+                    wkhtml_path = p
+                    break
+
+        if not wkhtml_path:
+            current_app.logger.error("[PlanRenderer] CRITICAL: 'wkhtmltoimage' nicht gefunden!")
+            return None
+
+        config = imgkit.config(wkhtmltoimage=wkhtml_path)
+
+        # WICHTIG: Breite massiv erhöht, damit Tag 31 nicht abgeschnitten wird
         options = {
-            'format': 'jpg',  # WICHTIG: JPG statt PNG spart 95% Speicherplatz
-            'quality': '70',  # Gute Lesbarkeit, kleine Datei
+            'format': 'jpg',
+            'quality': '85',
             'encoding': "UTF-8",
-            'width': '600',
+            'width': '2800',  # Erhöht auf 2800px für Sicherheit bei 31 Tagen
             'disable-smart-width': '',
+            'zoom': '1.5',  # Zoom erhöht für bessere Lesbarkeit auf Mobile
             'quiet': '',
             'enable-local-file-access': ''
         }
 
-        # Wrapper-Skript Pfad
-        wkhtml_path = '/usr/local/bin/wkhtmltoimage-xvfb'
-        if not os.path.exists(wkhtml_path):
-            current_app.logger.warning(f"[PlanRenderer] Wrapper {wkhtml_path} fehlt! Nutze Standard.")
-            wkhtml_path = '/usr/bin/wkhtmltoimage'
-
-        config = imgkit.config(wkhtmltoimage=wkhtml_path)
-
-        current_app.logger.info(f"[PlanRenderer] Generiere JPG nach: {temp_path}")
-
-        # 5. Bild generieren (in Datei speichern)
+        # 5. Bild generieren
         imgkit.from_string(html_content, temp_path, options=options, config=config)
 
         # 6. Datei einlesen
@@ -68,20 +77,12 @@ def generate_roster_image_bytes(grouped_shifts, year, month):
             image_bytes = f.read()
 
         file_size = len(image_bytes)
-        current_app.logger.info(f"[PlanRenderer] Bild erfolgreich geladen ({file_size} bytes).")
-
-        # Sicherheitscheck (Limit auf 15MB erhöht, aber JPG sollte < 1MB sein)
-        if file_size > 15 * 1024 * 1024:
-            current_app.logger.error(
-                f"[PlanRenderer] ALARM: Bild ist immer noch riesig ({file_size} bytes). Wird nicht gesendet.")
-            return None
+        current_app.logger.info(f"[PlanRenderer] Bild generiert ({file_size} bytes).")
 
         return image_bytes
 
     except Exception as e:
-        current_app.logger.error(f"[PlanRenderer] FEHLER: {str(e)}")
-        if "127" in str(e):
-            current_app.logger.error("[PlanRenderer] HINWEIS: Wrapper-Skript wurde nicht gefunden.")
+        current_app.logger.error(f"[PlanRenderer] FEHLER bei Bildgenerierung: {str(e)}")
         return None
 
     finally:

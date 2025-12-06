@@ -1,9 +1,9 @@
 from flask import Blueprint, request, jsonify, current_app
-from .models import Shift, ShiftType, User, ShiftPlanStatus, UpdateLog, ShiftQuery
+from .models import Shift, ShiftType, User, ShiftPlanStatus, UpdateLog, ShiftQuery, SpecialDate
 from .extensions import db
 from .utils import admin_required
 from flask_login import login_required, current_user
-from sqlalchemy import extract, func
+from sqlalchemy import extract, func, or_, and_
 from sqlalchemy.orm import joinedload
 from datetime import datetime, timedelta, date, time
 from .violation_manager import ViolationManager
@@ -192,7 +192,7 @@ def get_shifts():
 
     users_query = User.query.filter(
         User.shift_plan_visible == True,
-        db.or_(User.aktiv_ab_datum.is_(None), User.aktiv_ab_datum <= current_month_end_date)
+        or_(User.aktiv_ab_datum.is_(None), User.aktiv_ab_datum <= current_month_end_date)
     )
     all_users_pre_filter = users_query.order_by(User.shift_plan_sort_order, User.name).all()
 
@@ -431,27 +431,11 @@ def update_plan_status():
         return jsonify({"message": str(e)}), 500
 
 
-# --- HELPERS FÜR RUNDMAIL ---
-def format_date_helper(d):
-    """Sicheres Formatieren von Datum (auch wenn es ein String ist)"""
-    if not d: return ""
-    if isinstance(d, str):
-        try:
-            d_obj = datetime.strptime(d, '%Y-%m-%d')
-            return d_obj.strftime('%a, %d.%m.')
-        except:
-            return d
-    return d.strftime('%a, %d.%m.')
-
-
-def format_time_helper(t):
-    """Sicheres Formatieren von Zeit (auch wenn es ein String ist)"""
-    if not t: return ""
-    if isinstance(t, str):
-        if t.count(':') == 2:
-            return t[:5]
-        return t
-    return t.strftime('%H:%M')
+# --- HILFSFUNKTIONEN FÜR RUNDMAIL ---
+def get_short_weekday(year, month, day):
+    d = date(year, month, day)
+    days = ['Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa', 'So']
+    return days[d.weekday()]
 
 
 @shifts_bp.route('/shifts/send_completion_notification', methods=['POST'])
@@ -459,7 +443,8 @@ def format_time_helper(t):
 def send_completion_notification():
     """
     Sendet eine Rundmail an alle User.
-    Generiert ein kompaktes JPG-Bild des Dienstplans.
+    Generiert ein MATRIX-Bild des Dienstplans (genau wie im Web),
+    filtert inaktive User und zeigt Feiertage/Wochenenden korrekt an.
     """
     data = request.get_json() or {}
     try:
@@ -472,63 +457,122 @@ def send_completion_notification():
     if not status_obj:
         return jsonify({"message": "Planstatus nicht gefunden."}), 404
 
-    if status_obj.status != "Fertiggestellt" or not status_obj.is_locked:
-        return jsonify({"message": "Plan muss 'Fertiggestellt' und 'Gesperrt' sein."}), 400
+    # Optional: Prüfen ob Plan "fertig" ist (deaktiviert für Testzwecke)
+    # if status_obj.status != "Fertiggestellt" or not status_obj.is_locked:
+    #    return jsonify({"message": "Plan muss 'Fertiggestellt' und 'Gesperrt' sein."}), 400
 
     try:
-        users = User.query.filter(User.email != None, User.email != "").all()
-        if not users:
+        users_with_email = User.query.filter(User.email != None, User.email != "").all()
+        if not users_with_email:
             return jsonify({"message": "Keine Benutzer mit E-Mail-Adresse gefunden."}), 404
 
-        print(f"Generiere Mobile-optimiertes Bild für {month}/{year}...")
+        print(f"Generiere Matrix-Bild für {month}/{year}...")
 
-        # --- DATEN VORBEREITEN ---
-        shifts_db = Shift.query.join(User).options(
-            joinedload(Shift.user),
-            joinedload(Shift.shift_type)
-        ).filter(
+        # --- DATEN VORBEREITEN (MATRIX STRUKTUR) ---
+
+        days_in_month = calendar.monthrange(year, month)[1]
+        days_header = []
+
+        # 1. Feiertage & Sondertermine laden
+        special_dates = SpecialDate.query.filter(
+            extract('year', SpecialDate.date) == year,
+            extract('month', SpecialDate.date) == month
+        ).all()
+        # Map: Day -> Event Type (holiday, training, shooting, dpo)
+        special_dates_map = {sd.date.day: sd.type for sd in special_dates}
+
+        # Header aufbauen
+        for day in range(1, days_in_month + 1):
+            is_weekend = date(year, month, day).weekday() >= 5
+            evt_type = special_dates_map.get(day)
+
+            days_header.append({
+                'day_num': day,
+                'weekday': get_short_weekday(year, month, day),
+                'is_weekend': is_weekend,
+                'event_type': evt_type
+            })
+
+        # 2. Filter für aktive Benutzer (genau wie im Web-Frontend)
+        # Sichtbar == True UND (Aktiv ab <= Monatsende ODER None) UND (Inaktiv ab > Monatsanfang ODER None)
+        current_month_end_date = date(year, month, days_in_month)
+        prev_month_end_date = date(year, month, 1) - timedelta(days=1)
+
+        users_query = User.query.filter(
+            User.shift_plan_visible == True,
+            or_(User.aktiv_ab_datum.is_(None), User.aktiv_ab_datum <= current_month_end_date)
+        ).order_by(User.shift_plan_sort_order, User.name)
+
+        all_visible_users = []
+        for u in users_query.all():
+            # Inaktivitäts-Prüfung
+            # Zeige User an, wenn er NICHT inaktiv ist, ODER erst nach dem Vormonatsende inaktiv wird
+            if u.inaktiv_ab_datum is None or u.inaktiv_ab_datum > prev_month_end_date:
+                all_visible_users.append(u)
+
+        # 3. Schichten laden
+        shifts_db = Shift.query.options(joinedload(Shift.shift_type)).filter(
             extract('year', Shift.date) == year,
             extract('month', Shift.date) == month,
-            Shift.variant_id == None,
-            User.shift_plan_visible == True
-        ).order_by(User.shift_plan_sort_order, Shift.date).all()
+            Shift.variant_id == None
+        ).all()
 
-        grouped_data = defaultdict(list)
-
+        # Map: (user_id, day) -> Shift Info
+        shift_map = {}
         for s in shifts_db:
-            if s.user and s.shift_type:
-                name_key = f"{s.user.vorname} {s.user.name}"
-
-                is_weekend = False
-                if isinstance(s.date, (date, datetime)):
-                    if s.date.weekday() >= 5: is_weekend = True
-
-                shift_dict = {
-                    'date_formatted': format_date_helper(s.date),
-                    'time_formatted': f"{format_time_helper(s.shift_type.start_time)}-{format_time_helper(s.shift_type.end_time)}",
-                    'location': s.shift_type.abbreviation,
-                    'is_weekend': is_weekend
+            if s.shift_type:
+                day = s.date.day
+                shift_map[(s.user_id, day)] = {
+                    'abbr': s.shift_type.abbreviation,
+                    'color': s.shift_type.color,
+                    'is_dark': False,  # Textfarbe
+                    'bg_priority': s.shift_type.prioritize_background
                 }
-                grouped_data[name_key].append(shift_dict)
 
-        # 3. Bild generieren (JPG Bytes)
-        image_bytes = generate_roster_image_bytes(grouped_data, year, month)
+        # 4. Matrix Rows bauen
+        matrix_rows = []
+        for u in all_visible_users:
+            row_data = {
+                'name': f"{u.vorname} {u.name}",
+                'dog': u.diensthund or '',
+                'cells': []
+            }
+
+            for day in range(1, days_in_month + 1):
+                cell_data = shift_map.get((u.id, day))
+                if cell_data:
+                    row_data['cells'].append(cell_data)
+                else:
+                    # Leere Zelle (wird im Template dann eingefärbt)
+                    row_data['cells'].append({'abbr': '', 'color': 'transparent'})
+
+            matrix_rows.append(row_data)
+
+        # Daten-Paket für Renderer
+        render_data = {
+            'year': year,
+            'month_name': date(year, month, 1).strftime('%B'),
+            'days_header': days_header,
+            'rows': matrix_rows
+        }
+
+        # 5. Bild generieren (JPG)
+        image_bytes = generate_roster_image_bytes(render_data, year, month)
 
         # --- E-MAIL VERSAND ---
         attachments = []
         if image_bytes:
             attachments.append({
-                # WICHTIG: Dateiendung und MIME-Type auf JPG angepasst
                 'filename': f"Dienstplan_{year}_{month:02d}.jpg",
                 'content_type': 'image/jpeg',
                 'data': image_bytes
             })
             print("Bild erfolgreich generiert und angehängt.")
         else:
-            print("Warnung: Bildgenerierung fehlgeschlagen oder Bild zu groß.")
+            print("Warnung: Bildgenerierung fehlgeschlagen.")
 
         count = 0
-        for user in users:
+        for user in users_with_email:
             context = {
                 "vorname": user.vorname,
                 "name": user.name,

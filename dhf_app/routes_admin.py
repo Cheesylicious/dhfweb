@@ -1,6 +1,6 @@
 # dhf_app/routes_admin.py
 
-from flask import Blueprint, request, jsonify, current_app
+from flask import Blueprint, request, jsonify, current_app, Response
 from .models import User, Role, ShiftType, Shift, GlobalSetting, UpdateLog, UserShiftLimit, GlobalAnnouncement, \
     UserAnnouncementAck, ActivityLog
 from .extensions import db, bcrypt
@@ -10,6 +10,8 @@ from datetime import datetime
 from sqlalchemy import desc, or_
 # --- NEU: Import für E-Mail Service ---
 from .email_service import send_email
+# --- NEU: Import für Bild-Test ---
+from .plan_renderer import generate_roster_image_bytes
 
 # Erstellt einen Blueprint. Alle Routen hier beginnen mit /api
 admin_bp = Blueprint('admin', __name__, url_prefix='/api')
@@ -123,6 +125,40 @@ def send_test_broadcast():
     except Exception as e:
         current_app.logger.error(f"Fehler beim Broadcast: {e}")
         return jsonify({"message": f"Fehler: {str(e)}"}), 500
+
+
+# --- NEU: TEST-ROUTE FÜR BILDGENERIERUNG (DIAGNOSE) ---
+@admin_bp.route('/admin/test_roster_image', methods=['GET'])
+@admin_required
+def test_roster_image():
+    """
+    Generiert ein Test-Bild mit Dummy-Daten und gibt es direkt zurück.
+    Hilft beim Debuggen von wkhtmltoimage Problemen.
+    """
+    try:
+        # Dummy Daten
+        grouped_data = {
+            "Max Mustermann": [
+                {'date_formatted': 'Mo, 01.01.', 'time_formatted': '06:00-14:00', 'location': 'T.',
+                 'is_weekend': False},
+                {'date_formatted': 'Di, 02.01.', 'time_formatted': '14:00-22:00', 'location': 'N.', 'is_weekend': False}
+            ],
+            "Erika Musterfrau": [
+                {'date_formatted': 'Mo, 01.01.', 'time_formatted': '---', 'location': 'FREI', 'is_weekend': False},
+                {'date_formatted': 'Di, 02.01.', 'time_formatted': '06:00-14:00', 'location': 'T.', 'is_weekend': False}
+            ]
+        }
+
+        image_bytes = generate_roster_image_bytes(grouped_data, 2025, 1)
+
+        if image_bytes:
+            return Response(image_bytes, mimetype='image/jpeg')
+        else:
+            return jsonify(
+                {"message": "Bildgenerierung fehlgeschlagen. Bitte Server-Logs prüfen (wkhtmltoimage fehlt?)."}), 500
+
+    except Exception as e:
+        return jsonify({"message": f"Exception: {str(e)}"}), 500
 
 
 # --- ENDE NEU ---

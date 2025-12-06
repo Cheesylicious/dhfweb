@@ -4,114 +4,154 @@
     <meta charset="UTF-8">
     <title>Dienstplan</title>
     <style>
-        /* Optimiertes CSS für die Bildgenerierung auf Smartphones.
-           Wir nutzen eine feste Breite von 600px, damit die Schrift
-           im Verhältnis zum Bild groß genug ist.
-        */
+        /* Modernes Design für die Bildgenerierung */
         body {
             font-family: 'Helvetica', 'Arial', sans-serif;
-            background-color: #ffffff;
+            background-color: #1a1a1a;
+            color: #ffffff;
             margin: 0;
-            padding: 0;
-            width: 600px;
+            padding: 20px;
+            /* Breite wird im Renderer gesteuert, aber hier als Fallback */
+            width: 100%;
         }
 
         .header {
-            background-color: #2c3e50;
-            color: #ffffff;
-            padding: 20px;
             text-align: center;
-            font-size: 32px;
-            font-weight: bold;
-            text-transform: uppercase;
+            margin-bottom: 25px;
+            padding: 15px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 8px;
+            border: 1px solid #333;
         }
 
-        .sub-header {
-            text-align: center;
-            padding: 15px;
-            font-size: 22px;
-            color: #7f8c8d;
-            border-bottom: 2px solid #ecf0f1;
-            font-weight: bold;
-        }
+        h1 { margin: 0; font-size: 42px; color: #ffffff; text-transform: uppercase; letter-spacing: 2px; }
+        h2 { margin: 10px 0 0 0; font-size: 28px; color: #bdc3c7; }
 
         table {
             width: 100%;
-            border-collapse: collapse;
-            margin-top: 10px;
+            border-collapse: separate; /* Wichtig für saubere Ränder */
+            border-spacing: 0;
+            font-size: 16px;
+            background-color: #fff;
+            color: #333;
+            border: 1px solid #999;
         }
 
-        /* Große Schriftarten für mobile Lesbarkeit */
         th, td {
-            font-size: 24px;
-            padding: 12px 15px;
+            border-right: 1px solid #ccc;
+            border-bottom: 1px solid #ccc;
+            text-align: center;
+            padding: 6px 2px;
+            height: 35px;
+        }
+
+        /* HEADER ROW (Tage) */
+        thead th {
+            background-color: #fcfcfc;
+            color: #333;
+            font-weight: bold;
+            font-size: 14px;
+        }
+
+        /* Hintergrundfarben (Exakt wie im Screenshot angepasst) */
+        .bg-weekend { background-color: #ffd6d6 !important; color: #333; } /* Satteres Hellrot für WE */
+        .bg-holiday { background-color: #ffddaa !important; color: #333; } /* Orange für Feiertag */
+
+        /* Event Farben (Basierend auf Screenshot) */
+        .bg-training { background-color: #ff00ff !important; color: #fff !important; font-weight:bold; } /* QA = Magenta */
+        .bg-shooting { background-color: #e2e600 !important; color: #000 !important; font-weight:bold; } /* S = Gelb */
+
+        .dpo-border {
+            box-shadow: inset 0 0 0 3px #ff0000;
+        }
+
+        /* User Spalte */
+        td.user-name {
             text-align: left;
-            border-bottom: 1px solid #ddd;
-        }
-
-        /* Mitarbeiter-Namen */
-        tr.employee-header th {
-            background-color: #3498db;
-            color: #ffffff;
-            font-size: 28px;
-            padding-top: 25px;
-            padding-bottom: 10px;
-            text-transform: uppercase;
-        }
-
-        /* Wochenende hervorheben */
-        tr.weekend {
-            background-color: #fef9e7; /* Helles Gelb */
-        }
-
-        /* Spalten-Layout */
-        .col-day {
-            width: 30%;
+            padding-left: 15px;
             font-weight: bold;
-            color: #34495e;
+            background-color: #f0f0f0;
+            width: 220px;
+            white-space: nowrap;
+            border-right: 2px solid #999; /* Trennlinie verstärken */
         }
 
-        .col-time {
-            width: 35%;
+        /* Diensthund Spalte */
+        td.user-dog {
+            width: 100px;
+            background-color: #fcfcfc;
+            color: #555;
+            font-size: 13px;
+            border-right: 2px solid #999;
         }
 
-        .col-loc {
-            width: 35%;
+        /* Zellen */
+        td.cell {
+            width: 45px;
             font-weight: bold;
-            color: #e67e22; /* Orange für den Ort */
+            font-size: 15px;
         }
+
+        /* Spezielle Schicht-Farben Overrides falls nötig */
+        .text-white { color: #fff !important; }
+
     </style>
 </head>
 <body>
     <div class="header">
-        Dienstplan
-    </div>
-    <div class="sub-header">
-        {{ month_name }} {{ year }}
+        <h1>DHF-Planer</h1>
+        <h2>{{ data.month_name }} {{ data.year }}</h2>
     </div>
 
     <table>
-        {% for employee_name, shifts in grouped_shifts.items() %}
-            <tr class="employee-header">
-                <th colspan="3">{{ employee_name }}</th>
+        <thead>
+            <tr>
+                <th style="background:#e0e0e0; border-right: 2px solid #999;">Mitarbeiter</th>
+                <th style="background:#e0e0e0; border-right: 2px solid #999;">Hund</th>
+                {% for day in data.days_header %}
+                    <th class="{% if day.event_type == 'holiday' %}bg-holiday{% elif day.is_weekend %}bg-weekend{% endif %}">
+                        {{ day.weekday }}
+                    </th>
+                {% endfor %}
             </tr>
+            <tr>
+                <th style="background:#e0e0e0; border-right: 2px solid #999;"></th>
+                <th style="background:#e0e0e0; border-right: 2px solid #999;"></th>
+                {% for day in data.days_header %}
+                    <th class="{% if day.event_type == 'holiday' %}bg-holiday{% elif day.is_weekend %}bg-weekend{% endif %}">
+                        {{ day.day_num }}
+                    </th>
+                {% endfor %}
+            </tr>
+        </thead>
+        <tbody>
+            {% for row in data.rows %}
+            <tr>
+                <td class="user-name">{{ row.name }}</td>
+                <td class="user-dog">{{ row.dog }}</td>
 
-            {% for shift in shifts %}
-                <tr class="{% if shift.is_weekend %}weekend{% endif %}">
-                    <td class="col-day">
-                        {{ shift.date_formatted }}
+                {% for cell in row.cells %}
+                    {% set day_idx = loop.index0 %}
+                    {% set day_info = data.days_header[day_idx] %}
+
+                    <td class="cell
+                        {% if day_info.event_type == 'holiday' %}bg-holiday
+                        {% elif day_info.event_type == 'training' %}bg-training
+                        {% elif day_info.event_type == 'shooting' %}bg-shooting
+                        {% elif day_info.is_weekend %}bg-weekend
+                        {% endif %}
+
+                        {% if day_info.event_type == 'dpo' %}dpo-border{% endif %}"
+
+                        /* Inline Style überschreibt CSS Klasse, wenn Schicht vorhanden ist */
+                        style="{% if cell.abbr and not (cell.bg_priority and (day_info.event_type or day_info.is_weekend)) %}background-color: {{ cell.color }};{% endif %}">
+
+                        {{ cell.abbr }}
                     </td>
-                    <td class="col-time">
-                        {{ shift.time_formatted }}
-                    </td>
-                    <td class="col-loc">
-                        {{ shift.location }}
-                    </td>
-                </tr>
+                {% endfor %}
+            </tr>
             {% endfor %}
-
-            <tr><td colspan="3" style="border:none; height:20px;"></td></tr>
-        {% endfor %}
+        </tbody>
     </table>
 </body>
 </html>
