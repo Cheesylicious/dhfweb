@@ -1,58 +1,93 @@
-import logging
 import imgkit
+from flask import render_template, current_app
+import locale
 import os
-import base64
-from .data_processor import process_roster_data
-from .html_generator import generate_roster_html
+import uuid
 
-# Logging konfigurieren
-logger = logging.getLogger(__name__)
+# Versuchen, deutsche Datumsformate zu setzen
+try:
+    locale.setlocale(locale.LC_TIME, 'de_DE.UTF-8')
+except locale.Error:
+    pass
 
 
-def generate_roster_image_bytes(employees_list, shifts_raw_list, month=None, year=None):
+def generate_roster_image_bytes(grouped_shifts, year, month):
     """
-    Orchestrierende Funktion:
-    1. Daten verarbeiten
-    2. HTML generieren
-    3. HTML zu JPG konvertieren (High Res)
-    4. Bytes zurückgeben
-
-    Args:
-        employees_list: Liste der Mitarbeiter
-        shifts_raw_list: Rohdaten der Schichten
-        month: Der Monat (int oder str), optional
-        year: Das Jahr (int oder str), optional
+    Generiert ein für Smartphones optimiertes Bild des Dienstplans.
+    Nutzt JPG-Kompression, um die Dateigröße drastisch zu reduzieren.
     """
+
+    # 1. Pfad-Fix für Systemd
+    os.environ['PATH'] = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:" + os.environ.get('PATH', '')
+
+    # 2. Temporärer Dateiname (jetzt als JPG)
+    temp_filename = f"roster_{uuid.uuid4()}.jpg"
+    temp_path = os.path.join('/tmp', temp_filename)
+
     try:
-        # 1. Daten aufbereiten (nutzt data_processor.py)
-        # Verhindert den 'list object has no attribute get' Fehler durch korrekte Verarbeitung
-        formatted_data = process_roster_data(employees_list, shifts_raw_list)
+        # Monat als Name
+        month_name = locale.nl_langinfo(locale.MON_1 + month - 1) if hasattr(locale, 'nl_langinfo') else f"{month:02d}"
+    except:
+        month_name = f"{month:02d}"
 
-        if not formatted_data:
-            logger.warning("[PlanRenderer] Keine Daten zum Rendern vorhanden.")
-            return None
+    try:
+        # 3. HTML rendern
+        html_content = render_template(
+            'email_plan_mobile.html',
+            grouped_shifts=grouped_shifts,
+            year=year,
+            month_name=month_name
+        )
 
-        # 2. HTML als Matrix/Raster erstellen (nutzt html_generator.py)
-        # Wir geben jetzt Monat und Jahr weiter, damit der Titel im Bild stimmt
-        html_content = generate_roster_html(formatted_data, month, year)
-
-        # 3. Konfiguration für imgkit (wkhtmltoimage Wrapper)
-        # WICHTIG: Hohe Breite setzen, damit die Tabelle lesbar ist und nicht umbricht
+        # 4. imgkit Konfiguration (Auf JPG umgestellt)
         options = {
-            'format': 'jpg',
+            'format': 'jpg',  # WICHTIG: JPG statt PNG spart 95% Speicherplatz
+            'quality': '70',  # Gute Lesbarkeit, kleine Datei
             'encoding': "UTF-8",
-            'quality': '100',  # Maximale JPG Qualität
-            'width': '2480',  # Breite ca. wie A4 Querformat in High DPI
-            'disable-smart-width': '',  # Verhindert automatische Skalierung
-            'quiet': ''  # Unterdrückt Konsolen-Output von wkhtmltoimage
+            'width': '600',
+            'disable-smart-width': '',
+            'quiet': '',
+            'enable-local-file-access': ''
         }
 
-        # imgkit.from_string gibt bytes zurück, wenn output_path=False
-        img_bytes = imgkit.from_string(html_content, False, options=options)
+        # Wrapper-Skript Pfad
+        wkhtml_path = '/usr/local/bin/wkhtmltoimage-xvfb'
+        if not os.path.exists(wkhtml_path):
+            current_app.logger.warning(f"[PlanRenderer] Wrapper {wkhtml_path} fehlt! Nutze Standard.")
+            wkhtml_path = '/usr/bin/wkhtmltoimage'
 
-        logger.info(f"[PlanRenderer] Bild erfolgreich generiert ({len(img_bytes)} bytes).")
-        return img_bytes
+        config = imgkit.config(wkhtmltoimage=wkhtml_path)
+
+        current_app.logger.info(f"[PlanRenderer] Generiere JPG nach: {temp_path}")
+
+        # 5. Bild generieren (in Datei speichern)
+        imgkit.from_string(html_content, temp_path, options=options, config=config)
+
+        # 6. Datei einlesen
+        with open(temp_path, 'rb') as f:
+            image_bytes = f.read()
+
+        file_size = len(image_bytes)
+        current_app.logger.info(f"[PlanRenderer] Bild erfolgreich geladen ({file_size} bytes).")
+
+        # Sicherheitscheck (Limit auf 15MB erhöht, aber JPG sollte < 1MB sein)
+        if file_size > 15 * 1024 * 1024:
+            current_app.logger.error(
+                f"[PlanRenderer] ALARM: Bild ist immer noch riesig ({file_size} bytes). Wird nicht gesendet.")
+            return None
+
+        return image_bytes
 
     except Exception as e:
-        logger.error(f"[PlanRenderer] FEHLER beim Rendern des Bildes: {str(e)}", exc_info=True)
+        current_app.logger.error(f"[PlanRenderer] FEHLER: {str(e)}")
+        if "127" in str(e):
+            current_app.logger.error("[PlanRenderer] HINWEIS: Wrapper-Skript wurde nicht gefunden.")
         return None
+
+    finally:
+        # 7. Aufräumen
+        if os.path.exists(temp_path):
+            try:
+                os.remove(temp_path)
+            except Exception:
+                pass

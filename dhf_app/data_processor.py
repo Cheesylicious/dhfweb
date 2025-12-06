@@ -1,94 +1,69 @@
-import logging
-from datetime import datetime, date
+import datetime
 
-# Logging konfigurieren
-logger = logging.getLogger(__name__)
+# Mapping für deutsche Wochentage (schneller als locale-Setzung, da kein Systemaufruf nötig)
+GERMAN_WEEKDAYS = {
+    0: 'Mo', 1: 'Di', 2: 'Mi', 3: 'Do', 4: 'Fr', 5: 'Sa', 6: 'So'
+}
 
 
-def process_roster_data(employees, shifts_data):
+def filter_active_employees(employees_list):
     """
-    Verarbeitet Mitarbeiter- und Schichtdaten für den Render-Prozess.
-    Wandelt eine flache Liste von Schichten effizient in eine gruppierte Struktur um.
-
-    Args:
-        employees (list): Liste der Mitarbeiter-Objekte oder Dictionaries.
-        shifts_data (list or dict): Rohdaten der Schichten.
-
-    Returns:
-        list: Strukturierte Daten für den Renderer.
+    Filtert die Mitarbeiterliste und entfernt inaktive Einträge.
+    Dies verhindert unnötige Iterationen in der Darstellungsschicht.
     """
-    try:
-        # 1. Performance-Optimierung: Schichtdaten in Dictionary umwandeln
-        # Wir gruppieren Schichten nach employee_id, um O(1) Zugriffe zu ermöglichen
-        shifts_by_employee = {}
+    # Innovative List Comprehension für maximale Geschwindigkeit
+    active_employees = [
+        emp for emp in employees_list
+        if emp.get('is_active', True)  # Fallback auf True, falls Key fehlt, um Fehler zu vermeiden
+    ]
 
-        if isinstance(shifts_data, list):
-            # Wenn es eine Liste ist (z.B. SQLAlchemy Result), gruppieren wir manuell
-            for shift in shifts_data:
-                # Robustheit: Zugriff auf employee_id sowohl für Dicts als auch Objekte
-                e_id = None
-                if isinstance(shift, dict):
-                    e_id = shift.get('employee_id')
-                elif hasattr(shift, 'employee_id'):
-                    e_id = shift.employee_id
+    if not active_employees:
+        print("WARNUNG: Keine aktiven Mitarbeiter gefunden.")
 
-                if e_id is not None:
-                    if e_id not in shifts_by_employee:
-                        shifts_by_employee[e_id] = []
-                    shifts_by_employee[e_id].append(shift)
+    return active_employees
 
-        elif isinstance(shifts_data, dict):
-            # Wenn es bereits ein Dictionary ist, übernehmen wir es
-            shifts_by_employee = shifts_data
-        else:
-            logger.warning(f"[DataProcessor] Unerwartetes Format für shifts_data: {type(shifts_data)}")
-            shifts_by_employee = {}
 
-        formatted_result = []
+def format_date_with_weekday(date_obj):
+    """
+    Formatiert ein Datumsobjekt zu 'Mo, 05.12.'
+    """
+    if isinstance(date_obj, str):
+        # Falls String übergeben wird, versuchen zu parsen (Sicherheitsnetz)
+        try:
+            date_obj = datetime.datetime.strptime(date_obj, "%Y-%m-%d")
+        except ValueError:
+            return date_obj  # Rückgabe des Originals bei Fehler
 
-        # 2. Daten zusammenführen
-        for staff in employees:
-            # ID des Mitarbeiters extrahieren (robust für Dict oder Objekt)
-            staff_id = staff.get('id') if isinstance(staff, dict) else getattr(staff, 'id', None)
+    weekday = GERMAN_WEEKDAYS[date_obj.weekday()]
+    date_str = date_obj.strftime("%d.%m.")
 
-            if staff_id is None:
-                continue
+    return f"{weekday}, {date_str}"
 
-            # Hier trat der Fehler auf: Jetzt greifen wir auf das vorbereitete Dictionary zu
-            staff_shifts = shifts_by_employee.get(staff_id, [])
 
-            # Schichten sortieren (optional, aber gut für die Darstellung)
-            # Wir nehmen an, dass Schichten ein 'date' oder 'start' Attribut haben
-            try:
-                staff_shifts.sort(key=lambda s: s.get('date') if isinstance(s, dict) else getattr(s, 'date', getattr(s,
-                                                                                                                     'start_time',
-                                                                                                                     '')))
-            except Exception:
-                pass  # Sortierung überspringen, falls Daten unvollständig
+def process_roster_data(employees, shift_data):
+    """
+    Verbindet Mitarbeiter und Schichten und bereitet die Daten für den Export vor.
+    """
+    active_staff = filter_active_employees(employees)
+    processed_data = []
 
-            # Eintrag erstellen
-            formatted_result.append({
-                'employee': staff,
-                'shifts': staff_shifts,
-                'shift_count': len(staff_shifts)
+    for staff in active_staff:
+        staff_shifts = shift_data.get(staff['id'], [])
+
+        # Hier könnten weitere Optimierungen stattfinden, z.B. Leere Zeilen filtern
+        row = {
+            'name': staff['name'],
+            'shifts': []
+        }
+
+        for shift in staff_shifts:
+            formatted_date = format_date_with_weekday(shift['date'])
+            row['shifts'].append({
+                'formatted_date': formatted_date,
+                'time': shift['time'],
+                'location': shift.get('location', '')
             })
 
-        logger.info(f"[DataProcessor] {len(formatted_result)} Mitarbeiter mit Schichten verarbeitet.")
-        return formatted_result
+        processed_data.append(row)
 
-    except Exception as e:
-        logger.error(f"[DataProcessor] Kritischer Fehler bei der Datenverarbeitung: {str(e)}", exc_info=True)
-        # Im Fehlerfall leere Liste zurückgeben, damit der Server nicht crasht
-        return []
-
-
-def format_date_german(date_obj):
-    """Hilfsfunktion: Formatiert Datum in deutsches Format."""
-    if not date_obj:
-        return ""
-    if isinstance(date_obj, str):
-        try:
-            date_obj = datetime.strptime(date_obj, '%Y-%m-%d').date()
-        except ValueError:
-            return date_obj
-    return date_obj.strftime('%d.%m.%Y')
+    return processed_data

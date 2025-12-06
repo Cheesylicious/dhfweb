@@ -431,12 +431,35 @@ def update_plan_status():
         return jsonify({"message": str(e)}), 500
 
 
+# --- HELPERS FÜR RUNDMAIL ---
+def format_date_helper(d):
+    """Sicheres Formatieren von Datum (auch wenn es ein String ist)"""
+    if not d: return ""
+    if isinstance(d, str):
+        try:
+            d_obj = datetime.strptime(d, '%Y-%m-%d')
+            return d_obj.strftime('%a, %d.%m.')
+        except:
+            return d
+    return d.strftime('%a, %d.%m.')
+
+
+def format_time_helper(t):
+    """Sicheres Formatieren von Zeit (auch wenn es ein String ist)"""
+    if not t: return ""
+    if isinstance(t, str):
+        if t.count(':') == 2:
+            return t[:5]
+        return t
+    return t.strftime('%H:%M')
+
+
 @shifts_bp.route('/shifts/send_completion_notification', methods=['POST'])
 @admin_required
 def send_completion_notification():
     """
     Sendet eine Rundmail an alle User.
-    Generiert einen Screenshot des Dienstplans im Original-Web-Layout.
+    Generiert ein kompaktes JPG-Bild des Dienstplans.
     """
     data = request.get_json() or {}
     try:
@@ -457,54 +480,45 @@ def send_completion_notification():
         if not users:
             return jsonify({"message": "Keine Benutzer mit E-Mail-Adresse gefunden."}), 404
 
-        print(f"Generiere Desktop-Screenshot für {month}/{year}...")
+        print(f"Generiere Mobile-optimiertes Bild für {month}/{year}...")
 
-        # --- DATEN VORBEREITEN (Für das Web-Template) ---
-
-        # 1. Mitarbeiterliste laden
-        visible_users = User.query.filter(User.shift_plan_visible == True).order_by(User.shift_plan_sort_order).all()
-        employees_list = []
-        for u in visible_users:
-            is_active = True
-            if u.inaktiv_ab_datum and u.inaktiv_ab_datum <= date(year, month, 1):
-                is_active = False
-            employees_list.append({'id': u.id, 'name': f"{u.vorname} {u.name}", 'is_active': is_active})
-
-        # 2. Schichten laden (Rohdaten für den Prozessor)
-        shifts_db = Shift.query.options(joinedload(Shift.shift_type)).filter(
+        # --- DATEN VORBEREITEN ---
+        shifts_db = Shift.query.join(User).options(
+            joinedload(Shift.user),
+            joinedload(Shift.shift_type)
+        ).filter(
             extract('year', Shift.date) == year,
             extract('month', Shift.date) == month,
-            Shift.variant_id == None
-        ).all()
+            Shift.variant_id == None,
+            User.shift_plan_visible == True
+        ).order_by(User.shift_plan_sort_order, Shift.date).all()
 
-        shifts_raw_list = []
+        grouped_data = defaultdict(list)
+
         for s in shifts_db:
-            if s.shift_type:
-                # --- SICHERHEITS-CHECK ---
-                # Manche Schichten (z.B. Urlaub 'U', Krank 'K') haben keine Start-/Endzeit.
-                # Wir dürfen .strftime() nur aufrufen, wenn Zeitobjekte da sind.
-                time_str = ""
-                if s.shift_type.start_time and s.shift_type.end_time:
-                    try:
-                        time_str = f"{s.shift_type.start_time.strftime('%H:%M')}-{s.shift_type.end_time.strftime('%H:%M')}"
-                    except:
-                        pass  # Fallback: Leerer String bei Formatierungsfehler
+            if s.user and s.shift_type:
+                name_key = f"{s.user.vorname} {s.user.name}"
 
-                shifts_raw_list.append({
-                    'user_id': s.user_id,
-                    'date': s.date,
-                    'time': time_str,  # Jetzt ist es sicher (kein NoneType Absturz mehr)
-                    'location': s.shift_type.abbreviation
-                })
+                is_weekend = False
+                if isinstance(s.date, (date, datetime)):
+                    if s.date.weekday() >= 5: is_weekend = True
 
-        # 3. Bild generieren (Wir übergeben die Rohdaten an den neuen Renderer)
-        # Hinweis: Der neue Plan-Renderer ruft nun intern Ihre existierende html_generator.py auf.
-        image_bytes = generate_roster_image_bytes(year, month, employees_list, shifts_raw_list)
+                shift_dict = {
+                    'date_formatted': format_date_helper(s.date),
+                    'time_formatted': f"{format_time_helper(s.shift_type.start_time)}-{format_time_helper(s.shift_type.end_time)}",
+                    'location': s.shift_type.abbreviation,
+                    'is_weekend': is_weekend
+                }
+                grouped_data[name_key].append(shift_dict)
+
+        # 3. Bild generieren (JPG Bytes)
+        image_bytes = generate_roster_image_bytes(grouped_data, year, month)
 
         # --- E-MAIL VERSAND ---
         attachments = []
         if image_bytes:
             attachments.append({
+                # WICHTIG: Dateiendung und MIME-Type auf JPG angepasst
                 'filename': f"Dienstplan_{year}_{month:02d}.jpg",
                 'content_type': 'image/jpeg',
                 'data': image_bytes
