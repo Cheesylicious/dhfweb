@@ -1,3 +1,5 @@
+# dhf_app/routes_shifts.py
+
 from flask import Blueprint, request, jsonify, current_app
 from .models import Shift, ShiftType, User, ShiftPlanStatus, UpdateLog, ShiftQuery, SpecialDate
 from .extensions import db
@@ -402,6 +404,54 @@ def save_shift():
 
         response_data['new_total_hours'] = _calculate_user_total_hours(user_id, shift_date.year, shift_date.month,
                                                                        variant_id=variant_id)
+
+        # --- NEU: VIOLATIONS NEU BERECHNEN FÜR SOFORTIGES FEEDBACK ---
+        # Daten für ViolationManager laden
+        year = shift_date.year
+        month = shift_date.month
+
+        # Datumsberechnung (Monat + Vormonat)
+        current_month_start = date(year, month, 1)
+        prev_month_end = current_month_start - timedelta(days=1)
+        days_in_month = calendar.monthrange(year, month)[1]
+        current_month_end = date(year, month, days_in_month)
+
+        # 1. Schichten laden
+        shifts_current = Shift.query.options(joinedload(Shift.shift_type)).filter(
+            extract('year', Shift.date) == year,
+            extract('month', Shift.date) == month,
+            Shift.variant_id == variant_id
+        ).all()
+
+        shifts_prev = Shift.query.options(joinedload(Shift.shift_type)).filter(
+            Shift.date == prev_month_end,
+            Shift.variant_id == None  # Vormonat ist immer Hauptplan
+        ).all()
+
+        all_shifts_data = [s.to_dict() for s in shifts_current] + [s.to_dict() for s in shifts_prev]
+
+        # 2. User laden (nur sichtbare, analog zu get_shifts)
+        users_check = User.query.filter(
+            User.shift_plan_visible == True,
+            or_(User.aktiv_ab_datum.is_(None), User.aktiv_ab_datum <= current_month_end)
+        ).all()
+        # Inaktivitäts-Filter (analog get_shifts)
+        users_data = []
+        for u in users_check:
+            if u.inaktiv_ab_datum is None or u.inaktiv_ab_datum > prev_month_end:
+                users_data.append(u.to_dict())
+
+        # 3. ShiftTypes laden
+        all_types = ShiftType.query.all()
+        types_data = [st.to_dict() for st in all_types]
+
+        # 4. Berechnung
+        vm = ViolationManager(types_data)
+        violations_set = vm.calculate_all_violations(year, month, all_shifts_data, users_data)
+
+        # 5. Ergebnis anhängen
+        response_data['violations'] = list(violations_set)
+        # -------------------------------------------------------------
 
         return jsonify(response_data), 200 if saved_shift_id else 200
 

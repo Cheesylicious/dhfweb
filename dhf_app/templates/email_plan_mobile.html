@@ -11,7 +11,6 @@
             color: #ffffff;
             margin: 0;
             padding: 20px;
-            /* Breite wird im Renderer gesteuert, aber hier als Fallback */
             width: 100%;
         }
 
@@ -29,7 +28,7 @@
 
         table {
             width: 100%;
-            border-collapse: separate; /* Wichtig für saubere Ränder */
+            border-collapse: separate;
             border-spacing: 0;
             font-size: 16px;
             background-color: #fff;
@@ -53,16 +52,18 @@
             font-size: 14px;
         }
 
-        /* Hintergrundfarben (Exakt wie im Screenshot angepasst) */
-        .bg-weekend { background-color: #ffd6d6 !important; color: #333; } /* Satteres Hellrot für WE */
-        .bg-holiday { background-color: #ffddaa !important; color: #333; } /* Orange für Feiertag */
+        /* --- DYNAMISCHE FARBEN (Ohne !important, damit Shift-Farben gewinnen können) --- */
 
-        /* Event Farben (Basierend auf Screenshot) */
-        .bg-training { background-color: #ff00ff !important; color: #fff !important; font-weight:bold; } /* QA = Magenta */
-        .bg-shooting { background-color: #e2e600 !important; color: #000 !important; font-weight:bold; } /* S = Gelb */
+        .bg-weekend { background-color: {{ data.config.img_weekend_bg }}; color: #333; }
+        .bg-holiday { background-color: {{ data.config.img_holiday_bg }}; color: #333; }
 
+        /* Event Farben (Für Header und explizite Schichten) */
+        .bg-training { background-color: {{ data.config.img_training_bg }}; color: #fff; font-weight:bold; }
+        .bg-shooting { background-color: {{ data.config.img_shooting_bg }}; color: #000; font-weight:bold; }
+
+        /* DPO Rahmen */
         .dpo-border {
-            box-shadow: inset 0 0 0 3px #ff0000;
+            box-shadow: inset 0 0 0 3px {{ data.config.img_dpo_border }};
         }
 
         /* User Spalte */
@@ -70,10 +71,10 @@
             text-align: left;
             padding-left: 15px;
             font-weight: bold;
-            background-color: #f0f0f0;
+            background-color: {{ data.config.img_user_row_bg }};
             width: 220px;
             white-space: nowrap;
-            border-right: 2px solid #999; /* Trennlinie verstärken */
+            border-right: 2px solid #999;
         }
 
         /* Diensthund Spalte */
@@ -85,15 +86,18 @@
             border-right: 2px solid #999;
         }
 
+        /* Tabellen Header Basis */
+        .th-main-bg {
+            background-color: {{ data.config.img_header_bg }};
+            border-right: 2px solid #999;
+        }
+
         /* Zellen */
         td.cell {
             width: 45px;
             font-weight: bold;
             font-size: 15px;
         }
-
-        /* Spezielle Schicht-Farben Overrides falls nötig */
-        .text-white { color: #fff !important; }
 
     </style>
 </head>
@@ -106,19 +110,29 @@
     <table>
         <thead>
             <tr>
-                <th style="background:#e0e0e0; border-right: 2px solid #999;">Mitarbeiter</th>
-                <th style="background:#e0e0e0; border-right: 2px solid #999;">Hund</th>
+                <th class="th-main-bg">Mitarbeiter</th>
+                <th class="th-main-bg">Hund</th>
                 {% for day in data.days_header %}
-                    <th class="{% if day.event_type == 'holiday' %}bg-holiday{% elif day.is_weekend %}bg-weekend{% endif %}">
+                    <th class="
+                        {% if day.event_type == 'holiday' %}bg-holiday
+                        {% elif day.event_type == 'training' %}bg-training
+                        {% elif day.event_type == 'shooting' %}bg-shooting
+                        {% elif day.is_weekend %}bg-weekend
+                        {% endif %}">
                         {{ day.weekday }}
                     </th>
                 {% endfor %}
             </tr>
             <tr>
-                <th style="background:#e0e0e0; border-right: 2px solid #999;"></th>
-                <th style="background:#e0e0e0; border-right: 2px solid #999;"></th>
+                <th class="th-main-bg"></th>
+                <th class="th-main-bg"></th>
                 {% for day in data.days_header %}
-                    <th class="{% if day.event_type == 'holiday' %}bg-holiday{% elif day.is_weekend %}bg-weekend{% endif %}">
+                    <th class="
+                        {% if day.event_type == 'holiday' %}bg-holiday
+                        {% elif day.event_type == 'training' %}bg-training
+                        {% elif day.event_type == 'shooting' %}bg-shooting
+                        {% elif day.is_weekend %}bg-weekend
+                        {% endif %}">
                         {{ day.day_num }}
                     </th>
                 {% endfor %}
@@ -134,17 +148,27 @@
                     {% set day_idx = loop.index0 %}
                     {% set day_info = data.days_header[day_idx] %}
 
+                    {% set apply_color = False %}
+                    {% if cell.abbr %}
+                        {# Wenn cell.bg_priority FALSE ist (z.B. X, EU, K, T, N), gewinnt die Schicht IMMER #}
+                        {% if not cell.bg_priority %}
+                            {% set apply_color = True %}
+                        {# Wenn Priority TRUE ist (z.B. leeres Frei), gewinnt der Hintergrund (WE/Feiertag) #}
+                        {% else %}
+                            {# Nur färben, wenn KEIN Wochenende und KEIN Feiertag #}
+                            {% if not day_info.is_weekend and day_info.event_type != 'holiday' %}
+                                {% set apply_color = True %}
+                            {% endif %}
+                        {% endif %}
+                    {% endif %}
+
                     <td class="cell
                         {% if day_info.event_type == 'holiday' %}bg-holiday
-                        {% elif day_info.event_type == 'training' %}bg-training
-                        {% elif day_info.event_type == 'shooting' %}bg-shooting
                         {% elif day_info.is_weekend %}bg-weekend
                         {% endif %}
-
                         {% if day_info.event_type == 'dpo' %}dpo-border{% endif %}"
 
-                        /* Inline Style überschreibt CSS Klasse, wenn Schicht vorhanden ist */
-                        style="{% if cell.abbr and not (cell.bg_priority and (day_info.event_type or day_info.is_weekend)) %}background-color: {{ cell.color }};{% endif %}">
+                        style="{% if apply_color %}background-color: {{ cell.color }}; color: #000;{% endif %}">
 
                         {{ cell.abbr }}
                     </td>

@@ -93,17 +93,46 @@ export const PlanHandlers = {
 
             // OPTIMIZED UPDATE (Regel 2: Keine Wartezeit / Reload)
 
-            // 1. Zelle neu zeichnen
+            // 1. Zelle neu zeichnen (um den neuen Schichttyp anzuzeigen)
             PlanRenderer.refreshSingleCell(userId, dateStr);
 
-            // 2. Violations aktualisieren
+            // 2. Violations aktualisieren und betroffene Zellen refreshen
+
+            // A) Alte Violations merken (um zu wissen, was bereinigt werden muss)
+            const oldViolations = new Set(PlanState.currentViolations);
+
+            // B) Neue Violations setzen
             PlanState.currentViolations.clear();
             if (savedData.violations) {
+                // savedData.violations ist jetzt ein Array von [user_id, day_of_month]
                 savedData.violations.forEach(v => PlanState.currentViolations.add(`${v[0]}-${v[1]}`));
             }
 
+            // C) Vereinigung bilden aus alten und neuen Violations
+            // (Zellen, die rot sind ODER rot waren, müssen neu gezeichnet werden,
+            // da sich der Status (rot/grün) geändert hat)
+            const affectedCells = new Set([...oldViolations, ...PlanState.currentViolations]);
+
+            // D) Alle betroffenen Zellen neu zeichnen
+            affectedCells.forEach(violationKey => {
+                // key format ist "userId-dayOfMonth" (z.B. "5-12")
+                const parts = violationKey.split('-');
+                if(parts.length === 2) {
+                    const vUserId = parseInt(parts[0]);
+                    const vDay = parseInt(parts[1]);
+
+                    // Datum String rekonstruieren: YYYY-MM-DD
+                    const year = PlanState.currentYear;
+                    const month = String(PlanState.currentMonth).padStart(2, '0');
+                    const day = String(vDay).padStart(2, '0');
+                    const vDateStr = `${year}-${month}-${day}`;
+
+                    // Zeichne die Zelle
+                    PlanRenderer.refreshSingleCell(vUserId, vDateStr);
+                }
+            });
+
             // 3. Besetzung (Staffing) INTELLIGENT aktualisieren
-            // Anstatt alles zu überschreiben, rechnen wir die Differenz.
 
             // A) Alte Schicht abziehen (falls vorhanden)
             if (oldShiftAbbrev) {
@@ -128,6 +157,7 @@ export const PlanHandlers = {
             // Anfragen neu laden (Status könnte sich geändert haben)
             const queries = await PlanApi.fetchOpenQueries(PlanState.currentYear, PlanState.currentMonth);
             PlanState.currentShiftQueries = queries;
+            // Letzter Refresh, falls die Zelle Anfragen betrifft
             PlanRenderer.refreshSingleCell(userId, dateStr);
 
         } catch (error) {

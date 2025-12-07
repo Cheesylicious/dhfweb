@@ -2,9 +2,10 @@
 <html lang="de">
 <head>
     <meta charset="UTF-8">
-    <title>E-Mail Einstellungen - DHF-Planer</title>
+    <title>Bild-Einstellungen - DHF-Planer</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <style>
+        /* Import einer modernen Schriftart */
         @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap');
 
         body {
@@ -36,17 +37,19 @@
             background-color: rgba(255, 255, 255, 0.1); color: #ffffff;
         }
         #user-info { display: flex; align-items: center; gap: 15px; color: #bdc3c7; }
-        #logout-btn {
+        #logout-btn, .report-btn {
             background: #e74c3c; color: white; padding: 10px 15px; border: none;
             border-radius: 5px; cursor: pointer; font-size: 15px; transition: background-color 0.3s;
         }
         #logout-btn:hover { background: #c0392b; }
+        .report-btn { background: #3498db; margin-right: 15px; }
+        .report-btn:hover { background: #2980b9; }
         .nav-badge {
             background: #e74c3c; color: white; font-size: 10px; font-weight: 600;
             padding: 2px 5px; border-radius: 5px; margin-left: 8px; display: none;
         }
 
-        /* --- NEU: Sub-Nav Styles (Konsistent mit anderen Seiten) --- */
+        /* --- NEU: Sub-Nav Styles --- */
         .sub-nav {
             background: rgba(255, 255, 255, 0.05);
             border-bottom: 1px solid rgba(255, 255, 255, 0.1);
@@ -64,98 +67,65 @@
         }
         /* --- ENDE NEU --- */
 
-        main { padding: 30px; max-width: 1400px; margin: auto; }
+        main { padding: 30px; max-width: 1200px; margin: auto; display: grid; grid-template-columns: 1fr 1fr; gap: 30px; }
 
-        /* Grid Layout für Editor */
-        .editor-grid {
-            display: grid;
-            grid-template-columns: 300px 1fr;
-            gap: 30px;
-            align-items: start;
+        @media (max-width: 900px) {
+            main { grid-template-columns: 1fr; }
         }
 
-        /* Linke Spalte: Liste */
-        .template-list-card {
+        .card {
             background: rgba(255, 255, 255, 0.05);
             border: 1px solid rgba(255, 255, 255, 0.1);
             backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+            box-shadow: 0 4px 30px rgba(0, 0, 0, 0.2);
             border-radius: 10px; overflow: hidden;
         }
-        .template-list-header {
-            padding: 15px 20px;
+
+        .card-header {
+            padding: 20px 25px;
             border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-            font-weight: 600; color: #ffffff;
         }
-        .template-list {
-            list-style: none; padding: 0; margin: 0;
-        }
-        .template-item {
-            padding: 15px 20px;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
-            cursor: pointer;
-            transition: background 0.3s;
-            color: #bdc3c7;
-        }
-        .template-item:hover { background: rgba(255, 255, 255, 0.05); color: #fff; }
-        .template-item.active {
-            background: rgba(52, 152, 219, 0.2);
-            color: #3498db; font-weight: 600;
-            border-left: 3px solid #3498db;
-        }
-
-        /* Rechte Spalte: Editor */
-        .editor-card {
-            background: rgba(255, 255, 255, 0.05);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
-            border-radius: 10px; overflow: hidden;
-            padding: 25px;
-            min-height: 500px;
-        }
-        .editor-header {
-            display: flex; justify-content: space-between; align-items: center;
-            margin-bottom: 20px; border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-            padding-bottom: 15px;
-        }
-        .editor-header h2 { margin: 0; color: #ffffff; }
+        .card-header h2 { margin: 0; color: #ffffff; font-weight: 600; }
+        .card-body { padding: 25px; }
 
         .form-group { margin-bottom: 20px; }
-        .form-group label { display: block; margin-bottom: 8px; color: #bdc3c7; font-weight: 300; }
-        .form-group input, .form-group textarea {
-            width: 100%; padding: 12px; box-sizing: border-box;
+        .form-group label {
+            display: block; margin-bottom: 8px; font-weight: 500; color: #bdc3c7; font-size: 14px;
+        }
+        .form-group input[type="number"] {
+            width: 100%; padding: 10px; box-sizing: border-box;
             background: rgba(0, 0, 0, 0.2); border: 1px solid #3498db;
-            border-radius: 5px; color: #ffffff;
-            font-family: 'Poppins', sans-serif; font-size: 14px;
+            border-radius: 5px; color: #ffffff; font-family: 'Poppins', sans-serif; font-size: 14px;
         }
-        .form-group textarea { min-height: 250px; resize: vertical; line-height: 1.5; }
 
-        .info-box {
-            background: rgba(52, 152, 219, 0.1);
-            border: 1px solid #3498db;
-            border-radius: 5px;
-            padding: 15px;
-            margin-bottom: 20px;
-            color: #bdc3c7; font-size: 13px;
+        /* Color Picker Style */
+        .color-group {
+            display: flex; align-items: center; justify-content: space-between;
+            background: rgba(0,0,0,0.2); padding: 10px 15px; border-radius: 8px; margin-bottom: 10px;
+            border: 1px solid rgba(255,255,255,0.05);
         }
-        .info-box strong { color: #fff; }
+        .color-group label { margin: 0; font-size: 14px; color: #ddd; }
+        .color-group input[type="color"] {
+            border: none; width: 40px; height: 30px; cursor: pointer; background: none; padding: 0;
+        }
+
+        .info-text { font-size: 12px; color: #7f8c8d; margin-top: 5px; }
 
         .btn-primary {
-            background: #2ecc71; color: white; padding: 10px 20px; border: none;
-            border-radius: 5px; cursor: pointer; font-size: 15px; font-weight: 600;
-            transition: opacity 0.3s;
+            background: #3498db; color: white; padding: 12px 25px; border: none;
+            border-radius: 5px; cursor: pointer; font-size: 15px; transition: background-color 0.3s;
+            display: block; width: 100%; margin-top: 20px; font-weight: 600;
         }
-        .btn-secondary {
-            background: #3498db; color: white; padding: 10px 20px; border: none;
-            border-radius: 5px; cursor: pointer; font-size: 15px; margin-right: 10px;
-        }
-        .btn-primary:hover, .btn-secondary:hover { opacity: 0.8; }
+        .btn-primary:hover { background: #2980b9; }
 
-        #status-message { margin-left: 15px; font-weight: 500; }
+        #status-message {
+            margin-top: 15px; text-align: center; font-weight: 600; height: 20px;
+        }
 
         #content-wrapper.restricted-view {
-             max-width: 600px; margin: 50px auto; padding: 30px;
-             text-align: center; background: rgba(255, 255, 255, 0.05);
-             border-radius: 10px; border: 1px solid rgba(255, 255, 255, 0.1);
+             max-width: 600px; margin: 50px auto; padding: 30px; text-align: center;
+             background: rgba(255, 255, 255, 0.05); border-radius: 10px;
+             border: 1px solid rgba(255, 255, 255, 0.1);
         }
         #content-wrapper.restricted-view h2 { color: #e74c3c; }
     </style>
@@ -169,65 +139,96 @@
         <nav id="main-nav">
             <a href="dashboard.html" id="nav-dashboard">Dashboard</a>
             <a href="users.html" id="nav-users">Benutzerverwaltung</a>
-            <a href="emails.html" class="active" id="nav-emails">E-Mails</a>
-
+            <a href="emails.html" class="active" id="nav-emails" style="display: none;">E-Mails</a>
             <a href="logs.html" id="nav-logs" style="display: none;">Logs</a>
-
             <a href="feedback.html" id="nav-feedback" style="display: none;">
                 Meldungen <span id="feedback-badge" class="nav-badge">0</span>
             </a>
             <a href="statistik.html" id="nav-statistik" style="display: none;">Statistik</a>
-            <a href="schichtplan.html">Schichtplan</a>
+            <a href="schichtplan.html" id="nav-shiftplan">Schichtplan</a>
         </nav>
         <div id="user-info">
             <span id="welcome-user"></span>
+            <button class="report-btn" id="global-report-btn">🐞 Problem melden</button>
             <button id="logout-btn">Abmelden</button>
         </div>
     </header>
 
     <div class="sub-nav">
-        <a href="emails.html" class="active">Vorlagen</a>
-        <a href="image_settings.html">Rundmail Bild-Einstellungen</a>
+        <a href="emails.html">Vorlagen</a>
+        <a href="image_settings.html" class="active">Rundmail Bild-Einstellungen</a>
     </div>
 
     <main id="content-wrapper">
-        <div class="editor-grid">
-            <div class="template-list-card">
-                <div class="template-list-header">Vorlagen auswählen</div>
-                <ul class="template-list" id="template-list">
-                    <li style="padding:15px;">Lade...</li>
-                </ul>
+        <div class="card">
+            <div class="card-header">
+                <h2>Größe & Auflösung</h2>
             </div>
+            <div class="card-body">
+                <p style="margin-bottom: 20px; color: #bdc3c7; font-size: 13px;">
+                    Konfigurieren Sie hier die technischen Parameter des Bildes.
+                </p>
 
-            <div class="editor-card">
-                <div class="editor-header">
-                    <h2 id="editor-title">Bitte Vorlage wählen</h2>
+                <div class="form-group">
+                    <label for="img-width">Bildbreite (Pixel):</label>
+                    <input type="number" id="img-width" placeholder="2800" min="500">
+                    <div class="info-text">Standard: 2800. Höhere Breite verhindert Abschneiden bei 31 Tagen.</div>
                 </div>
 
-                <div id="editor-form" style="display:none;">
-                    <input type="hidden" id="template-id">
-
-                    <div class="info-box">
-                        <p id="template-description" style="margin-top:0;"></p>
-                        <strong>Verfügbare Platzhalter:</strong> <span id="template-placeholders"></span>
-                    </div>
-
-                    <div class="form-group">
-                        <label for="email-subject">Betreffzeile:</label>
-                        <input type="text" id="email-subject">
-                    </div>
-
-                    <div class="form-group">
-                        <label for="email-body">Nachrichtentext:</label>
-                        <textarea id="email-body"></textarea>
-                    </div>
-
-                    <div style="display: flex; align-items: center;">
-                        <button class="btn-secondary" id="send-test-btn">Test-Mail an mich senden</button>
-                        <button class="btn-primary" id="save-template-btn">Speichern</button>
-                        <span id="status-message"></span>
-                    </div>
+                <div class="form-group">
+                    <label for="img-zoom">Zoom-Faktor:</label>
+                    <input type="number" id="img-zoom" placeholder="1.5" step="0.1" min="0.5" max="5.0">
+                    <div class="info-text">Standard: 1.5. Höhere Werte vergrößern Text (gut für Handys).</div>
                 </div>
+
+                <div class="form-group">
+                    <label for="img-quality">Qualität (1-100):</label>
+                    <input type="number" id="img-quality" placeholder="85" min="1" max="100">
+                    <div class="info-text">Standard: 85.</div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card">
+            <div class="card-header">
+                <h2>Farbgestaltung (Bild)</h2>
+            </div>
+            <div class="card-body">
+                <p style="margin-bottom: 20px; color: #bdc3c7; font-size: 13px;">
+                    Passen Sie die Farben speziell für das generierte Bild an. Diese sind unabhängig von der Web-Ansicht.
+                </p>
+
+                <div class="color-group">
+                    <label for="img-header-bg">Kopfzeile (Hintergrund):</label>
+                    <input type="color" id="img-header-bg">
+                </div>
+                <div class="color-group">
+                    <label for="img-user-row-bg">Mitarbeiter Spalte (Hintergrund):</label>
+                    <input type="color" id="img-user-row-bg">
+                </div>
+                <div class="color-group">
+                    <label for="img-weekend-bg">Wochenende:</label>
+                    <input type="color" id="img-weekend-bg">
+                </div>
+                <div class="color-group">
+                    <label for="img-holiday-bg">Feiertag:</label>
+                    <input type="color" id="img-holiday-bg">
+                </div>
+                <div class="color-group">
+                    <label for="img-training-bg">Ausbildung:</label>
+                    <input type="color" id="img-training-bg">
+                </div>
+                <div class="color-group">
+                    <label for="img-shooting-bg">Schießen:</label>
+                    <input type="color" id="img-shooting-bg">
+                </div>
+                <div class="color-group">
+                    <label for="img-dpo-border">DPO (Rahmenfarbe):</label>
+                    <input type="color" id="img-dpo-border">
+                </div>
+
+                <button class="btn-primary" id="save-image-settings-btn">Alle Einstellungen speichern</button>
+                <div id="status-message"></div>
             </div>
         </div>
     </main>
@@ -249,7 +250,8 @@
         init(); animate();
     </script>
 
-    <script type="module" src="emails.js"></script>
+    <script type="module" src="image_settings.js"></script>
+    <script type="module" src="shared_feedback.js"></script>
     <script type="module" src="shared_notifications.js"></script>
 </body>
 </html>
