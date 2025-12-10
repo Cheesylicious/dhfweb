@@ -58,7 +58,6 @@ def create_app(config_name='default'):
     app.register_blueprint(statistics_bp)
 
     # --- NEU: Feiertage & Sondertermine Blueprint ---
-    # Dies verbindet die neue Logik mit der App
     from .routes_special_dates import special_dates_bp
     app.register_blueprint(special_dates_bp)
 
@@ -70,13 +69,18 @@ def create_app(config_name='default'):
     from .routes_variants import variants_bp
     app.register_blueprint(variants_bp)
 
+    # --- NEU: Schicht-Änderungsanträge (Krankmeldungen im gesperrten Plan) ---
+    from .routes_shift_change import shift_change_bp
+    app.register_blueprint(shift_change_bp)
+
+
+
     # 5. Startup-Logik
     with app.app_context():
         db.create_all()
         create_default_roles(db)
         # create_default_holidays(db) -> Das kann optional bleiben oder entfernt werden,
         # da wir jetzt den "Zauberstab"-Button im Frontend haben.
-        # Ich lasse es drin, damit nichts kaputt geht (Regel-Konformität).
         create_default_holidays(db)
         create_default_settings(db)
         create_default_email_templates(db)

@@ -610,16 +610,14 @@ function showClickActionModal(event, user, dateStr, cell, isCellOnOwnRow) {
 
     [camAdminWunschActions, camAdminShifts, camHundefuehrerRequests, camNotizActions, camHundefuehrerDelete].forEach(el => el.style.display = 'none');
 
-    // --- KORREKTUR: FILTER ERWEITERT (INKL. ALLGEMEINE NOTIZEN) ---
-    // Damit wird eine Notiz für "Alle" (null) auch bei jedem User gefunden
+    // Filter
     const queries = PlanState.currentShiftQueries.filter(q =>
         q.shift_date === dateStr &&
         q.status === 'offen' &&
         (q.target_user_id === user.id || q.target_user_id === null)
     );
-    // ---------------------------------------------------------------
 
-    const wunsch = queries.find(q => q.sender_role_name === 'Hundeführer' && q.message.startswith("Anfrage für:"));
+    const wunsch = queries.find(q => q.sender_role_name === 'Hundeführer' && q.message.startsWith("Anfrage für:"));
     const notiz = queries.find(q => !(q.sender_role_name === 'Hundeführer' && q.message.startsWith("Anfrage für:")));
 
     PlanState.clickModalContext.wunschQuery = wunsch;
@@ -627,7 +625,43 @@ function showClickActionModal(event, user, dateStr, cell, isCellOnOwnRow) {
 
     let hasContent = false;
 
-    if (PlanState.isAdmin) {
+    // --- NEU: Spezialfall für Planschreiber/Admin bei gesperrtem Plan ---
+    if ((PlanState.isPlanschreiber || PlanState.isAdmin) && PlanState.clickModalContext.isPlanGesperrt) {
+        // Wir nutzen den "Schicht zuweisen" Container, leeren ihn aber
+        camAdminShifts.style.display = 'block';
+        camAdminShifts.innerHTML = '';
+
+        const header = document.createElement('div');
+        header.className = 'cam-section-title';
+        header.textContent = 'Aktionen (Plan gesperrt)';
+        header.style.color = '#e74c3c';
+        camAdminShifts.appendChild(header);
+
+        // Button für Krankmeldung
+        const btn = document.createElement('button');
+        btn.className = 'cam-button reject'; // Rot
+        btn.style.width = '100%';
+        btn.textContent = '⚠️ Krankmeldung / Ersatz beantragen';
+        btn.onclick = () => {
+            clickActionModal.style.display = 'none';
+            // Wir rufen den Handler auf, der das ChangeRequest Modal öffnet
+            if (PlanHandlers.handleLockedClick) {
+                PlanHandlers.handleLockedClick(user.id, dateStr, userName);
+            } else {
+                alert("Bitte Seite neu laden (Handler nicht aktualisiert).");
+            }
+        };
+        camAdminShifts.appendChild(btn);
+        hasContent = true;
+
+        // Notizen trotzdem anzeigen
+        camNotizActions.style.display = 'block';
+        camLinkNotiz.textContent = notiz ? '❓ Text-Notiz ansehen...' : '❓ Text-Notiz erstellen...';
+        camLinkNotiz.dataset.targetQueryId = notiz ? notiz.id : "";
+        hasContent = true;
+
+    } else if (PlanState.isAdmin) {
+        // --- NORMALER ADMIN FLOW (Plan offen) ---
         if (wunsch && !PlanState.clickModalContext.isPlanGesperrt) {
             camAdminWunschActions.style.display = 'grid';
             document.getElementById('cam-btn-approve').textContent = `Genehmigen (${wunsch.message.replace('Anfrage für:', '').trim()})`;
@@ -644,12 +678,23 @@ function showClickActionModal(event, user, dateStr, cell, isCellOnOwnRow) {
         hasContent = true;
 
     } else if (PlanState.isPlanschreiber) {
+        // --- NORMALER PLANSCHREIBER FLOW (Plan offen) ---
+        // Der Planschreiber darf auch im offenen Plan Schichten ändern (dafür reuse Admin Buttons?)
+        // Annahme: Planschreiber nutzt Admin-Flow wenn offen, sonst nur Notizen
+        // Hier: Wenn offen -> Darf schreiben
+        if (!PlanState.clickModalContext.isPlanGesperrt) {
+             camAdminShifts.style.display = 'grid';
+             populateAdminShiftButtons();
+             hasContent = true;
+        }
+
         camNotizActions.style.display = 'block';
         camLinkNotiz.textContent = notiz ? '❓ Text-Notiz ansehen...' : '❓ Text-Notiz erstellen...';
         camLinkNotiz.dataset.targetQueryId = notiz ? notiz.id : "";
         hasContent = true;
 
     } else if (PlanState.isHundefuehrer && isCellOnOwnRow) {
+        // --- HUNDEFÜHRER FLOW ---
         if (wunsch && wunsch.sender_user_id === PlanState.loggedInUser.id && !PlanState.clickModalContext.isPlanGesperrt) {
             camHundefuehrerDelete.style.display = 'block';
             camLinkDelete.textContent = 'Wunsch-Anfrage zurückziehen';

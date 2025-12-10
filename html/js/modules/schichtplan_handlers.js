@@ -4,6 +4,7 @@ import { PlanState } from './schichtplan_state.js';
 import { PlanApi } from './schichtplan_api.js';
 import { PlanRenderer } from './schichtplan_renderer.js';
 import { StaffingModule } from './schichtplan_staffing.js';
+import { ChangeRequestModule } from './schichtplan_change_request.js'; // [NEU] Modul für Änderungsanträge
 import { triggerNotificationUpdate, isWunschAnfrage } from '../utils/helpers.js';
 
 /**
@@ -17,6 +18,10 @@ export const PlanHandlers = {
 
     init(reloadCallback) {
         this.reloadGridCallback = reloadCallback;
+        // [NEU] Initialisiere das Modal für Änderungsanträge
+        if (ChangeRequestModule && ChangeRequestModule.initModal) {
+            ChangeRequestModule.initModal();
+        }
     },
 
     // --- NAVIGATION ---
@@ -43,6 +48,45 @@ export const PlanHandlers = {
         PlanState.currentMonth = month;
         PlanState.currentVariantId = null; // Reset Variante
         if (this.reloadGridCallback) this.reloadGridCallback();
+    },
+
+    // --- LOCKED PLAN INTERACTION (NEU) ---
+
+    /**
+     * Versucht, einen Klick auf eine Zelle in einem gesperrten Plan zu behandeln.
+     * Wird von der Haupt-Klick-Logik aufgerufen, wenn is_locked true ist.
+     * @returns {boolean} true, wenn der Klick behandelt wurde (Modal geöffnet oder Alert), false wenn nicht.
+     */
+    handleLockedClick(userId, dateStr, userName) {
+        // Prüfung: Ist der Plan wirklich gesperrt? (Nur Hauptplan)
+        if (PlanState.currentVariantId === null && PlanState.currentPlanStatus.is_locked) {
+
+            // Prüfen ob User berechtigt ist, Änderungen zu beantragen (Admin oder Planschreiber)
+            const canRequestChange = PlanState.isAdmin || PlanState.isPlanschreiber;
+
+            if (canRequestChange) {
+                // Shift Daten holen
+                const key = `${userId}-${dateStr}`;
+                const shiftData = PlanState.currentShifts[key];
+
+                if (shiftData && shiftData.id) {
+                    // Bestehende Schicht -> Krankmeldung/Änderung beantragen
+                    // FIX: userId wird übergeben, damit der Mitarbeiter nicht als sein eigener Ersatz vorgeschlagen wird
+                    ChangeRequestModule.openRequestModal(shiftData.id, userName, dateStr, userId);
+                    return true;
+                } else {
+                    // Leere Zelle -> (Optional: Hier könnte man Logik für "Nachträgliches Einspringen" einbauen)
+                    // Aktuell: Standard Blockade-Meldung für leere Zellen
+                    alert("Plan ist gesperrt. (Krankmeldungen können nur für bestehende Dienste erstellt werden)");
+                    return true;
+                }
+            } else {
+                // Keine Berechtigung (normaler User)
+                alert(`Aktion blockiert: Der Schichtplan für ${PlanState.currentMonth}/${PlanState.currentYear} ist gesperrt.`);
+                return true;
+            }
+        }
+        return false; // Plan ist nicht gesperrt, normaler Flow geht weiter
     },
 
     // --- SCHICHTEN SPEICHERN (ADMIN) ---
