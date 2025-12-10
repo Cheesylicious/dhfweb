@@ -4,7 +4,6 @@
     <meta charset="UTF-8">
     <title>Dienstplan</title>
     <style>
-        /* Modernes Design für die Bildgenerierung */
         body {
             font-family: 'Helvetica', 'Arial', sans-serif;
             background-color: #1a1a1a;
@@ -44,7 +43,6 @@
             height: 35px;
         }
 
-        /* HEADER ROW (Tage) */
         thead th {
             background-color: #fcfcfc;
             color: #333;
@@ -52,21 +50,13 @@
             font-size: 14px;
         }
 
-        /* --- DYNAMISCHE FARBEN (Ohne !important, damit Shift-Farben gewinnen können) --- */
-
         .bg-weekend { background-color: {{ data.config.img_weekend_bg }}; color: #333; }
         .bg-holiday { background-color: {{ data.config.img_holiday_bg }}; color: #333; }
-
-        /* Event Farben (Für Header und explizite Schichten) */
         .bg-training { background-color: {{ data.config.img_training_bg }}; color: #fff; font-weight:bold; }
         .bg-shooting { background-color: {{ data.config.img_shooting_bg }}; color: #000; font-weight:bold; }
 
-        /* DPO Rahmen */
-        .dpo-border {
-            box-shadow: inset 0 0 0 3px {{ data.config.img_dpo_border }};
-        }
+        .dpo-border { box-shadow: inset 0 0 0 3px {{ data.config.img_dpo_border }}; }
 
-        /* User Spalte */
         td.user-name {
             text-align: left;
             padding-left: 15px;
@@ -77,7 +67,6 @@
             border-right: 2px solid #999;
         }
 
-        /* Diensthund Spalte */
         td.user-dog {
             width: 100px;
             background-color: #fcfcfc;
@@ -86,17 +75,33 @@
             border-right: 2px solid #999;
         }
 
-        /* Tabellen Header Basis */
         .th-main-bg {
             background-color: {{ data.config.img_header_bg }};
             border-right: 2px solid #999;
         }
 
-        /* Zellen */
-        td.cell {
-            width: 45px;
+        td.cell { width: 45px; font-weight: bold; font-size: 15px; }
+
+        .staffing-label {
+            text-align: left;
+            padding-left: 15px;
             font-weight: bold;
-            font-size: 15px;
+            background-color: #fcfcfc;
+            border-right: 2px solid #999;
+        }
+        .staffing-cell { font-weight: bold; font-size: 14px; }
+
+        /* --- NEU: EIGENE ZEILE STYLING --- */
+        tr.highlight-row td {
+            background-color: {{ data.config.img_self_row_bg }} !important;
+            border-top: 2px solid #3498db !important;
+            border-bottom: 2px solid #3498db !important;
+        }
+        tr.highlight-row td.user-name {
+             border-left: 3px solid #3498db !important;
+        }
+        tr.highlight-row td:last-child {
+             border-right: 2px solid #3498db !important;
         }
 
     </style>
@@ -140,7 +145,7 @@
         </thead>
         <tbody>
             {% for row in data.rows %}
-            <tr>
+            <tr class="{% if data.highlight_user_name == row.name %}highlight-row{% endif %}">
                 <td class="user-name">{{ row.name }}</td>
                 <td class="user-dog">{{ row.dog }}</td>
 
@@ -150,12 +155,9 @@
 
                     {% set apply_color = False %}
                     {% if cell.abbr %}
-                        {# Wenn cell.bg_priority FALSE ist (z.B. X, EU, K, T, N), gewinnt die Schicht IMMER #}
                         {% if not cell.bg_priority %}
                             {% set apply_color = True %}
-                        {# Wenn Priority TRUE ist (z.B. leeres Frei), gewinnt der Hintergrund (WE/Feiertag) #}
                         {% else %}
-                            {# Nur färben, wenn KEIN Wochenende und KEIN Feiertag #}
                             {% if not day_info.is_weekend and day_info.event_type != 'holiday' %}
                                 {% set apply_color = True %}
                             {% endif %}
@@ -168,7 +170,7 @@
                         {% endif %}
                         {% if day_info.event_type == 'dpo' %}dpo-border{% endif %}"
 
-                        style="{% if apply_color %}background-color: {{ cell.color }}; color: #000;{% endif %}">
+                        style="{% if apply_color %}background-color: {{ cell.color }} !important; color: #000;{% endif %}">
 
                         {{ cell.abbr }}
                     </td>
@@ -176,6 +178,39 @@
             </tr>
             {% endfor %}
         </tbody>
+
+        {% if data.staffing_rows %}
+        <tfoot>
+            <tr><td colspan="{{ data.days_header|length + 2 }}" style="height: 10px; background: #999;"></td></tr>
+
+            {% for s_row in data.staffing_rows %}
+            <tr>
+                <td colspan="2" class="staffing-label">{{ s_row.name }}</td>
+
+                {% for s_cell in s_row.cells %}
+                    {% set day_idx = loop.index0 %}
+                    {% set day_info = data.days_header[day_idx] %}
+
+                    <td class="staffing-cell
+                        {% if day_info.is_weekend %}bg-weekend{% endif %}"
+
+                        style="
+                        {% if not s_cell.is_empty %}
+                            {% if s_cell.status == 'ok' %}background-color: {{ data.config.img_staffing_ok }}; color: #155724;
+                            {% elif s_cell.status == 'warn' %}background-color: {{ data.config.img_staffing_warn }}; color: #856404;
+                            {% elif s_cell.status == 'err' %}background-color: {{ data.config.img_staffing_err }}; color: #c00000;
+                            {% endif %}
+                        {% else %}
+                            background-color: #f8f9fa; color: #bbb;
+                        {% endif %}
+                        ">
+                        {{ s_cell.count }}
+                    </td>
+                {% endfor %}
+            </tr>
+            {% endfor %}
+        </tfoot>
+        {% endif %}
     </table>
 </body>
 </html>

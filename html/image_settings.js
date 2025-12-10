@@ -6,18 +6,22 @@ import { initAuthCheck, logout } from './js/utils/auth.js';
 let user;
 let isAdmin = false;
 
-// Defaults (müssen mit Python übereinstimmen)
+// Defaults (Jetzt auf High Quality eingestellt)
 const DEFAULTS = {
-    'img_width': 2800,
-    'img_zoom': 1.5,
-    'img_quality': 85,
+    'img_width': 3800,
+    'img_zoom': 3.0,
+    'img_quality': 100,
     'img_header_bg': '#e0e0e0',
     'img_user_row_bg': '#f0f0f0',
     'img_weekend_bg': '#ffd6d6',
     'img_holiday_bg': '#ffddaa',
     'img_training_bg': '#ff00ff',
     'img_shooting_bg': '#e2e600',
-    'img_dpo_border': '#ff0000'
+    'img_dpo_border': '#ff0000',
+    'img_staffing_ok': '#d4edda',
+    'img_staffing_warn': '#fff3cd',
+    'img_staffing_err': '#ffcccc',
+    'img_self_row_bg': '#eaf2ff'
 };
 
 document.addEventListener('DOMContentLoaded', async () => {
@@ -34,14 +38,15 @@ document.addEventListener('DOMContentLoaded', async () => {
                     <p>Nur Administratoren haben Zugriff auf diese Einstellungen.</p>
                 </div>
             `;
-            return;
+            throw new Error("Keine Admin-Rechte.");
         }
 
-        // Menü sichtbar machen
+        // Navigation
         const navUsers = document.getElementById('nav-users');
         const navFeedback = document.getElementById('nav-feedback');
         const navEmails = document.getElementById('nav-emails');
         const navLogs = document.getElementById('nav-logs');
+
         if(isAdmin) {
             if(navUsers) navUsers.style.display = 'block';
             if(navFeedback) navFeedback.style.display = 'inline-flex';
@@ -50,7 +55,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         }
 
     } catch (e) {
-        console.error(e);
+        console.error("Auth Error:", e);
         return;
     }
 
@@ -65,7 +70,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         'img_holiday_bg': document.getElementById('img-holiday-bg'),
         'img_training_bg': document.getElementById('img-training-bg'),
         'img_shooting_bg': document.getElementById('img-shooting-bg'),
-        'img_dpo_border': document.getElementById('img-dpo-border')
+        'img_dpo_border': document.getElementById('img-dpo-border'),
+        'img_staffing_ok': document.getElementById('img-staffing-ok'),
+        'img_staffing_warn': document.getElementById('img-staffing-warn'),
+        'img_staffing_err': document.getElementById('img-staffing-err'),
+        'img_self_row_bg': document.getElementById('img-self-row-bg')
     };
 
     const saveBtn = document.getElementById('save-image-settings-btn');
