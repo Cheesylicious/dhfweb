@@ -22,8 +22,6 @@ def create_app(config_name='default'):
     mail.init_app(app)
 
     # 3. CORS initialisieren
-    # Hinweis: Die routes_special_dates.py behandelt ihre eigenen CORS-Header zusätzlich,
-    # aber diese globale Einstellung ist für den Rest der App wichtig.
     CORS(app, supports_credentials=True, origins=["http://46.224.63.203", "http://ihre-domain.de", "*"])
 
     from . import models
@@ -69,18 +67,17 @@ def create_app(config_name='default'):
     from .routes_variants import variants_bp
     app.register_blueprint(variants_bp)
 
-    # --- NEU: Schicht-Änderungsanträge (Krankmeldungen im gesperrten Plan) ---
-    from .routes_shift_change import shift_change_bp
-    app.register_blueprint(shift_change_bp)
-
+    # --- KORREKTUR: Schicht-Änderungsanträge ---
+    # Wir importieren aus dem Unterordner "routes"
+    from .routes.shift_change_routes import shift_change_bp
+    # HIER WAR DAS PROBLEM: Der url_prefix fehlte!
+    app.register_blueprint(shift_change_bp, url_prefix='/api/shift-change')
 
 
     # 5. Startup-Logik
     with app.app_context():
         db.create_all()
         create_default_roles(db)
-        # create_default_holidays(db) -> Das kann optional bleiben oder entfernt werden,
-        # da wir jetzt den "Zauberstab"-Button im Frontend haben.
         create_default_holidays(db)
         create_default_settings(db)
         create_default_email_templates(db)
@@ -117,11 +114,8 @@ def create_default_holidays(db_instance):
                    "Erster Weihnachtsfeiertag", "Zweiter Weihnachtsfeiertag"]
     try:
         for holiday_name in mv_holidays:
-            # Wir prüfen hier nur grob auf den Namen, da das Datum NULL sein kann bei alten Einträgen
             existing = SpecialDate.query.filter_by(type='holiday', name=holiday_name).first()
             if not existing:
-                # Hier wird kein Datum gesetzt, da es nur Platzhalter sind.
-                # Die neue API im Frontend macht das besser (mit echtem Datum).
                 new_holiday = SpecialDate(name=holiday_name, date=None, type='holiday')
                 db_instance.session.add(new_holiday)
         db_instance.session.commit()
@@ -131,12 +125,11 @@ def create_default_holidays(db_instance):
 
 def create_default_settings(db_instance):
     from .models import GlobalSetting
-    # --- UPDATE: DPO Farbe hinzugefügt ---
     default_settings = {
         'weekend_bg_color': '#fff8f8', 'weekend_text_color': '#333333',
         'holiday_bg_color': '#ffddaa', 'training_bg_color': '#daffdb',
         'shooting_bg_color': '#ffb0b0',
-        'dpo_border_color': '#ff0000' # Standard: Rot für DPO Rahmen
+        'dpo_border_color': '#ff0000'
     }
     try:
         for key, default_value in default_settings.items():
@@ -149,7 +142,6 @@ def create_default_settings(db_instance):
         db_instance.session.rollback()
 
 
-# --- NEU: Standard E-Mail Vorlagen ---
 def create_default_email_templates(db_instance):
     from .models import EmailTemplate
 
@@ -190,7 +182,6 @@ def create_default_email_templates(db_instance):
             "key": "plan_completed",
             "name": "Schichtplan Fertiggestellt (Rundmail)",
             "subject": "DHF-Planer: Schichtplan {monat}/{jahr} ist fertig",
-            # --- UPDATE: Platzhalter {plan_preview} hinzugefügt ---
             "body": "Hallo {vorname},\n\nder Schichtplan für {monat}/{jahr} wurde fertiggestellt und ist nun einsehbar.\n\nBitte prüfe deine Dienste.\n\n{plan_preview}\n\nViele Grüße,\nDein Admin",
             "description": "Wird gesendet, wenn der Admin den Button 'E-Mail an alle' im Schichtplan klickt.",
             "placeholders": "{vorname}, {name}, {monat}, {jahr}, {plan_preview}"

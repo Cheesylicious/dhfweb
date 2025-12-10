@@ -1384,5 +1384,14 @@ async function pollGeneratorStatus() {
     } catch (e) { console.error("Poll Error:", e); }
 }
 
+// --- NEU: BroadcastChannel für Auto-Reload ---
+const planUpdateChannel = new BroadcastChannel('dhf_plan_update');
+planUpdateChannel.onmessage = (event) => {
+    if (event.data && event.data.type === 'PLAN_UPDATED') {
+        console.log("Plan-Update signal received. Reloading grid...");
+        renderGrid();
+    }
+};
+
 // Start
 initialize();

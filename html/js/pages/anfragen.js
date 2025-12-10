@@ -14,6 +14,9 @@ let isHundefuehrer = false;
 // Fallback, falls Konstante nicht importiert werden kann
 const LOCAL_HIGHLIGHT_KEY = 'dhf_highlight_goto';
 
+// Kanal für Updates an andere Tabs (z.B. Schichtplan)
+const planUpdateChannel = new BroadcastChannel('dhf_plan_update');
+
 // --- 1. Authentifizierung & Zugriffsschutz ---
 try {
     const authData = initAuthCheck();
@@ -46,6 +49,13 @@ try {
         if (subNavFeedback) subNavFeedback.style.display = 'none';
     }
 
+    // User Info setzen
+    const infoEl = document.getElementById('user-info');
+    if (infoEl) {
+        const welcomeUser = document.getElementById('welcome-user');
+        if (welcomeUser) welcomeUser.textContent = `Angemeldet als: ${user.vorname} ${user.name} (${user.role})`;
+    }
+
 } catch (e) {
     console.error("Initialisierung Anfragen gestoppt:", e.message);
 }
@@ -74,7 +84,7 @@ const bulkBarWunsch = document.getElementById('bulk-bar-wunsch');
 const selectAllWunsch = document.getElementById('select-all-wunsch');
 const btnBulkApproveWunsch = document.getElementById('btn-bulk-approve-wunsch');
 const btnBulkRejectWunsch = document.getElementById('btn-bulk-reject-wunsch');
-const btnBulkDeletePureWunsch = document.getElementById('btn-bulk-delete-pure-wunsch'); // NEU
+const btnBulkDeletePureWunsch = document.getElementById('btn-bulk-delete-pure-wunsch');
 
 let currentFilterAnfragen = "offen";
 let currentFilterWunsch = "offen";
@@ -94,6 +104,116 @@ async function loadAllShiftTypes() {
         console.error("Fehler beim Laden der Schichtarten:", e);
     }
 }
+
+// =========================================================
+// TEIL A: SCHICHT-ÄNDERUNGSANTRÄGE (NEU & LIVE)
+// =========================================================
+
+async function loadShiftChangeRequests() {
+    const section = document.getElementById('shift-requests-section');
+    const tableBody = document.getElementById('shift-requests-table-body');
+
+    // Nur Admin und Planschreiber dürfen diese sehen
+    if (!section || !tableBody || (!isAdmin && !isScheduler)) return;
+
+    try {
+        const response = await apiFetch('/api/shift-change/list');
+        // Wenn keine Anträge da sind, verstecke den Bereich
+        if (!response || response.length === 0) {
+            section.style.display = 'none';
+            return;
+        }
+
+        // Bereich anzeigen
+        section.style.display = 'block';
+
+        // Tabelle befüllen
+        const rows = response.map(req => {
+            let dateStr = "Datum unbekannt";
+            if (req.shift_date) {
+                dateStr = new Date(req.shift_date).toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric' });
+            }
+
+            let typeBadge = '';
+            if (req.reason_type === 'sickness') typeBadge = '<span style="background:#e74c3c; color:white; padding:2px 6px; border-radius:4px; font-size:0.8rem;">Krank</span>';
+            else typeBadge = '<span style="background:#3498db; color:white; padding:2px 6px; border-radius:4px; font-size:0.8rem;">Tausch</span>';
+
+            const replacementText = req.replacement_name !== 'Kein Ersatz'
+                ? `<span style="color:#2ecc71"><i class="fas fa-arrow-right"></i> ${req.replacement_name}</span>`
+                : '<span style="color:#e74c3c"><em>Schicht wird frei (K)</em></span>';
+
+            const noteText = req.note ? req.note : '-';
+
+            return `
+                <tr id="shift-req-${req.id}">
+                    <td><strong>${dateStr}</strong></td>
+                    <td>${req.original_user_name}</td>
+                    <td>${typeBadge}</td>
+                    <td>
+                        <small style="display:block; color:#aaa; margin-bottom:4px;">Notiz: ${noteText}</small>
+                        <div>${replacementText}</div>
+                    </td>
+                    <td>
+                        <button class="btn-mini approve" onclick="window.handleShiftAction(${req.id}, 'approve')" title="Bestätigen & Archivieren">✓ OK</button>
+                        <button class="btn-mini reject" onclick="window.handleShiftAction(${req.id}, 'reject')" title="Rückgängig machen (Undo)">↺ Undo</button>
+                    </td>
+                </tr>
+            `;
+        }).join('');
+
+        tableBody.innerHTML = rows;
+
+    } catch (e) {
+        console.error("Fehler beim Laden der Schichtanträge:", e);
+        section.style.display = 'none';
+    }
+}
+
+// Funktionen global verfügbar machen für onclick-Handler im HTML
+window.handleShiftAction = async function(id, action) {
+    const endpoint = action === 'approve' ? 'approve' : 'reject';
+
+    // --- TEXTE ANGEPASST FÜR SOFORT-AUSFÜHRUNG ---
+    const confirmMsg = action === 'approve'
+        ? "Änderung bestätigen? (Ist bereits im Plan, wird hiermit archiviert)"
+        : "ACHTUNG: Änderung rückgängig machen? (Der Mitarbeiter wird wieder eingeteilt)";
+
+    if (!confirm(confirmMsg)) return;
+
+    try {
+        // HIER IST DER FIX: String 'POST' statt Objekt
+        const response = await apiFetch(`/api/shift-change/${id}/${endpoint}`, 'POST');
+
+        if (response && response.status === 'success') {
+            alert(response.message);
+
+            // --- NEU: FUNKSPRUCH SENDEN ---
+            // Sagt allen anderen Tabs: "Hey, ladet den Plan neu!"
+            planUpdateChannel.postMessage({ type: 'PLAN_UPDATED' });
+            // ------------------------------
+
+            // Zeile entfernen
+            const row = document.getElementById(`shift-req-${id}`);
+            if (row) row.remove();
+
+            // Wenn Tabelle leer, Bereich ausblenden
+            const tableBody = document.getElementById('shift-requests-table-body');
+            if (tableBody && tableBody.children.length === 0) {
+                document.getElementById('shift-requests-section').style.display = 'none';
+            }
+        } else {
+            alert("Fehler: " + (response.message || response.error || 'Unbekannter Fehler'));
+        }
+    } catch (e) {
+        alert("Serverfehler beim Verarbeiten: " + e.message);
+        console.error(e);
+    }
+};
+
+
+// =========================================================
+// TEIL B: BESTEHENDE LOGIK (ALLGEMEINE ANFRAGEN)
+// =========================================================
 
 async function loadQueries() {
     const currentList = (currentView === 'anfragen') ? queryListAnfragen : queryListWunsch;
@@ -119,7 +239,7 @@ function resetBulkSelection() {
     if(selectAllWunsch) selectAllWunsch.checked = false;
 }
 
-// --- Konversations-Logik (unverändert) ---
+// --- Konversations-Logik ---
 function renderReplies(queryId, originalQuery, replies) {
     const repliesContainer = document.getElementById(`replies-${queryId}`);
     if (!repliesContainer) return;
@@ -219,7 +339,7 @@ function handleGoToDate(queryId) {
 
 const isWunschAnfrage = (q) => q.sender_role_name === 'Hundeführer' && q.message.startsWith("Anfrage für:");
 
-// --- (ANGEPASST) Render Element mit Checkbox ---
+// --- Render Element mit Checkbox ---
 function createQueryElement(query) {
     const li = document.createElement('li');
     li.className = 'query-item';
@@ -271,15 +391,12 @@ function createQueryElement(query) {
         </div>
     `;
 
-    // --- NEU: Checkbox ---
+    // --- Checkbox ---
     let checkboxHtml = '';
-    // Admin und Scheduler dürfen immer, HF nur wenns eigene sind (aber HF hat kein Bulk Delete im UI Design oben)
-    // Wir beschränken Bulk auf Admin/Scheduler für jetzt
+    // Admin und Scheduler dürfen immer, HF nur wenns eigene sind
     const canBulk = isAdmin || (isScheduler && !isWunsch);
 
-    // WICHTIGE ÄNDERUNG: Checkbox immer anzeigen, wenn User berechtigt ist
     if (canBulk) {
-        // Checkbox IMMER rendern, damit sie Platz einnimmt und Layout nicht springt
         checkboxHtml = `<div onclick="event.stopPropagation()" style="display:flex; align-items:center; padding-right: 10px;">
                             <input type="checkbox" class="item-chk" value="${query.id}" style="width: 18px; height: 18px; cursor: pointer;">
                         </div>`;
@@ -292,8 +409,8 @@ function createQueryElement(query) {
             ${checkboxHtml}
             <span>Von: <strong>${query.sender_name}</strong></span>
             <span>Für: <strong>${query.target_name}</strong></span>
-            <span>Anfrage für Datum: <strong>${shiftDate}</strong></span>
-            <span>Gesendet am: <strong>${queryDate} Uhr</strong></span>
+            <span>Datum: <strong>${shiftDate}</strong></span>
+            <span>Gesendet: <strong>${queryDate}</strong></span>
             <span class="item-status" data-status="${query.status}">${query.status}</span>
         </div>
         <div class="item-body" data-loaded="false" data-query-id="${query.id}">
@@ -364,7 +481,6 @@ function updateBulkBarVisibility() {
         const selected = queryListWunsch.querySelectorAll('.item-chk:checked');
         if (selected.length > 0) {
             bulkBarWunsch.classList.add('visible');
-            // Button Texts anpassen
             if(btnBulkRejectWunsch) btnBulkRejectWunsch.textContent = `Markierte Ablehnen`;
             if(btnBulkDeletePureWunsch) btnBulkDeletePureWunsch.textContent = `Markierte Löschen (${selected.length})`;
         } else {
@@ -409,13 +525,12 @@ async function performBulkAction(endpoint, containerId) {
     }
 }
 
-// Buttons binden
 if (btnBulkDoneAnfragen) btnBulkDoneAnfragen.onclick = () => performBulkAction('/api/queries/bulk_approve', 'query-list-anfragen');
 if (btnBulkDeleteAnfragen) btnBulkDeleteAnfragen.onclick = () => performBulkAction('/api/queries/bulk_delete', 'query-list-anfragen');
 
 if (btnBulkApproveWunsch) btnBulkApproveWunsch.onclick = () => performBulkAction('/api/queries/bulk_approve', 'query-list-wunsch');
 if (btnBulkRejectWunsch) btnBulkRejectWunsch.onclick = () => performBulkAction('/api/queries/bulk_delete', 'query-list-wunsch');
-if (btnBulkDeletePureWunsch) btnBulkDeletePureWunsch.onclick = () => performBulkAction('/api/queries/bulk_delete', 'query-list-wunsch'); // Auch Löschen nutzt bulk_delete, aber Backend filtert die Mails
+if (btnBulkDeletePureWunsch) btnBulkDeletePureWunsch.onclick = () => performBulkAction('/api/queries/bulk_delete', 'query-list-wunsch');
 
 
 // --- Einzel-Aktionen ---
@@ -464,17 +579,13 @@ async function handleApprove(queryId) {
 }
 
 async function handleReject(queryId) {
-    // WICHTIG: Dies ist die "Ablehnen" Logik, die Sie angesprochen haben.
-    // Sie leert die Schicht UND löscht die Anfrage.
     if (!confirm("Anfrage ablehnen (Schicht leeren und Anfrage löschen)?")) return;
     try {
-        // Zuerst Schicht leeren (falls schon was drin war)
         await apiFetch('/api/shifts', 'POST', {
             user_id: allQueriesCache.find(q=>q.id==queryId).target_user_id,
             date: allQueriesCache.find(q=>q.id==queryId).shift_date,
             shifttype_id: null
         });
-        // Dann löschen (löst Mail aus)
         await apiFetch(`/api/queries/${queryId}`, 'DELETE');
         await loadQueries();
         triggerNotificationUpdate();
@@ -492,6 +603,10 @@ function escapeHTML(str) {
 // --- Init ---
 
 async function initializePage() {
+    if (isAdmin || isScheduler) {
+        loadShiftChangeRequests();
+    }
+
     if (isAdmin || isHundefuehrer) {
         if(tabWunsch) tabWunsch.style.display = 'inline-block';
         if(tabContentWunsch) tabContentWunsch.style.display = 'none';
@@ -564,9 +679,7 @@ async function initializePage() {
 
     if(contentWrapper) {
         contentWrapper.addEventListener('click', (e) => {
-            // Checkbox Click abfangen, damit das Accordion nicht aufklappt
             if (e.target.classList.contains('item-chk') || e.target.closest('.item-chk')) {
-                // Kein e.stopPropagation() hier, da der Listener direkt an der Checkbox das schon macht
                 updateBulkBarVisibility();
                 return;
             }
