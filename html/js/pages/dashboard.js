@@ -3,6 +3,8 @@
 import { API_URL } from '../utils/constants.js';
 import { apiFetch } from '../utils/api.js';
 import { initAuthCheck, logout } from '../utils/auth.js';
+// NEU: Theme Manager importieren
+import { applyTheme, startThemePreview } from '../utils/theme_manager.js';
 
 let user;
 let isAdmin = false;
@@ -40,6 +42,10 @@ const gamificationLogList = document.getElementById('gamification-log-list');
 // --- Balance Elemente (Admin Dashboard) ---
 const balanceCard = document.getElementById('balance-card');
 
+// --- NEU: Elemente für animierten Begleiter ---
+const activePetContainer = document.getElementById('active-pet-container');
+// --- ENDE NEU ---
+
 
 // --- NEUE HELFER FUNKTION ---
 // Escape-Funktion, um HTML-Sonderzeichen zu verhindern (z.B. bei 'Grund' Text)
@@ -55,6 +61,67 @@ const escapeHtml = (unsafe) => {
 // --- ENDE NEUE HELFER FUNKTION ---
 
 
+// --- NEU: HELPER FUNKTIONEN FÜR LOTTIE-ANIMATIONEN ---
+
+/**
+ * Initialisiert und rendert die aktive Lottie-Figur im Header.
+ * @param {string | null} assetKey - Der Pfad zur Lottie JSON Datei.
+ */
+function renderPetAnimation(assetKey) {
+    if (!activePetContainer) return;
+
+    // Nur fortfahren, wenn Lottie global verfügbar ist (aus dashboard.html geladen)
+    if (assetKey && typeof lottie !== 'undefined') {
+        // Zuerst eine eventuell vorhandene Animation zerstören
+        if (activePetContainer.lottieAnimation) {
+            activePetContainer.lottieAnimation.destroy();
+        }
+
+        activePetContainer.style.display = 'block';
+
+        // Lottie Animation initialisieren und speichern
+        activePetContainer.lottieAnimation = lottie.loadAnimation({
+            container: activePetContainer,
+            renderer: 'svg',
+            loop: true,
+            autoplay: true,
+            path: assetKey // Der Pfad zum Lottie JSON Asset
+        });
+    } else {
+        // Keine Figur ausgewählt oder Lottie nicht geladen, Container ausblenden
+        if (activePetContainer.lottieAnimation) {
+            activePetContainer.lottieAnimation.destroy();
+        }
+        activePetContainer.style.display = 'none';
+    }
+}
+
+/**
+ * Globaler Helfer, um Lottie Preview in Shop-Karten zu rendern.
+ * @param {string} containerId - Die ID des DOM-Containers.
+ * @param {string} assetKey - Der Pfad zur Lottie JSON Datei.
+ */
+window.renderPetPreview = function(containerId, assetKey) {
+    const container = document.getElementById(containerId);
+    if (!container || !assetKey || typeof lottie === 'undefined') return;
+
+    // Animation initialisieren
+    lottie.loadAnimation({
+        container: container,
+        renderer: 'svg',
+        loop: true,
+        autoplay: true,
+        path: assetKey
+    });
+}
+// --- ENDE LOTTIE HELPER ---
+
+// --- NEU: Globaler Helfer für Theme Preview (wird vom Button im Shop aufgerufen) ---
+window.previewTheme = function(themeKey) {
+    startThemePreview(themeKey);
+};
+
+
 // --- 1. Authentifizierung & Init ---
 try {
     const authData = initAuthCheck();
@@ -66,9 +133,16 @@ try {
         throw new Error("Besucher dürfen das Dashboard nicht sehen.");
     }
 
+    // --- NEU: Theme anwenden (Priorität: Preview > User-Einstellung > Default) ---
+    applyTheme(user);
+
     const welcomeMsg = document.getElementById('welcome-message');
     if (welcomeMsg) welcomeMsg.textContent = `Willkommen, ${user.vorname}!`;
 
+    // NEU: Aktive Figur beim Laden anzeigen
+    if (user.active_pet_asset) {
+        renderPetAnimation(user.active_pet_asset);
+    }
     // --- Admin UI (Obere Karte & Buttons) ---
     if (isAdmin) {
         if(manualLogBtn) manualLogBtn.classList.remove('hidden');
@@ -247,13 +321,13 @@ async function loadShopData() {
     if (!grid) return;
 
     try {
-        // Wir laden Items vom neuen Endpunkt (auth via Cookie/Token)
         const response = await apiFetch('/api/shop/items');
-        // Response Struktur: { items: [], active_effects: [], is_admin: bool }
 
         const items = response.items;
         const activeEffects = response.active_effects;
-        const userIsAdmin = response.is_admin; // Server Source of Truth
+        const userIsAdmin = response.is_admin;
+
+        const lottieInitQueue = []; // NEU: Queue für Lottie Initialisierungen
 
         // 1. Aktive Effekte rendern
         if(activeContainer) {
@@ -262,11 +336,12 @@ async function loadShopData() {
                 activeEffects.forEach(eff => {
                     const badge = document.createElement('div');
                     badge.className = 'active-effect-badge';
+                    const multiplier = eff.multiplier ? eff.multiplier.toFixed(1) : '1.0';
                     badge.innerHTML = `
                         <i class="fas fa-bolt" style="font-size:1.5em;"></i>
                         <div>
                             <strong>${eff.name} aktiv!</strong><br>
-                            <span style="font-size:0.9em;">Noch ${eff.days_left} Tage gültig (Boost: x${eff.multiplier})</span>
+                            <span style="font-size:0.9em;">Noch ${eff.days_left} Tage gültig (Boost: x${multiplier})</span>
                         </div>
                     `;
                     activeContainer.appendChild(badge);
@@ -281,8 +356,6 @@ async function loadShopData() {
             return;
         }
 
-        // Wir brauchen das aktuelle Guthaben für die "Kaufen" Button Logik
-        // Hole das Profil, um sicher den aktuellen XP-Stand zu erhalten (Failsafe)
         const prof = await apiFetch('/api/user/profile');
         const currentXp = prof.experience_points || 0;
 
@@ -291,35 +364,45 @@ async function loadShopData() {
             card.className = 'shop-item-card';
 
             const canAfford = currentXp >= item.cost_xp;
-
-            // NEUE LOGIK FÜR INAKTIVIERTE ITEMS
             const isDisabledByAdmin = !item.is_active;
-
-            // FIX: btnClass war nicht definiert. Hinzufügen:
             const btnClass = 'buy-btn';
-
-            // Wähle Farbe basierend auf Status
             const itemColor = isDisabledByAdmin ? '#e74c3c' : '#3498db';
+
+
+            // NEUE LOGIK FÜR VISUALISIERUNG
+            let itemVisualHtml = '';
+
+            if (item.item_type === 'cosmetic_pet' && item.asset_key) {
+                const petPreviewId = `pet-preview-${item.id}`;
+                itemVisualHtml = `
+                    <div id="${petPreviewId}" style="width: 100px; height: 100px; margin: 0 auto 15px;"></div>
+                `;
+                // Füge zur Initialisierungs-Queue hinzu
+                lottieInitQueue.push({ containerId: petPreviewId, assetKey: item.asset_key });
+            } else {
+                // Standard Icon für alle anderen Item-Typen
+                itemVisualHtml = `<div class="shop-icon" style="color:${itemColor};"><i class="${item.icon_class}"></i></div>`;
+            }
+            // ENDE NEUE LOGIK
 
             const priceStatus = isDisabledByAdmin
                 ? `<span style="color:#e74c3c; font-weight:bold;">NICHT VERFÜGBAR</span>`
-                : `<span style="color:#FFD700;">${item.cost_xp} <i class="fas fa-star"></i> XP</span>`;
+                : (item.cost_xp === 0 ? `<span style="color:#2ecc71;">KOSTENLOS</span>` : `<span style="color:#FFD700;">${item.cost_xp} <i class="fas fa-star"></i> XP</span>`);
 
             const btnText = isDisabledByAdmin
                 ? 'Deaktiviert'
-                : (canAfford ? `Kaufen für ${item.cost_xp} XP` : `Benötigt ${item.cost_xp} XP`);
+                : (item.cost_xp === 0 ? 'Aktivieren' : (canAfford ? `Kaufen (${item.cost_xp} XP)` : `Benötigt ${item.cost_xp} XP`));
 
-            const disabledAttr = isDisabledByAdmin || !canAfford ? 'disabled' : '';
+            const disabledAttr = isDisabledByAdmin || (!canAfford && item.cost_xp > 0) ? 'disabled' : '';
             const bgStyle = isDisabledByAdmin ? 'background:#333; cursor:not-allowed; border: 1px dashed #e74c3c;' : '';
 
-            // Admin Edit Inputs & Toggle Button
             let adminHtml = '';
             let deactMessageHtml = '';
 
-            // --- KRITISCHE KORREKTUR DER ANZEIGE ---
+            // --- KRITISCHE KORREKTUR DER ANZEIGE (Bestehende Logik) ---
             if (isDisabledByAdmin) {
                 const messageText = item.deactivation_message || 'Aktuell nicht verfügbar.';
-                const escapedMessage = escapeHtml(messageText); // NEUE HELFER FUNKTION
+                const escapedMessage = escapeHtml(messageText);
 
                 deactMessageHtml = `
                     <div style="background:rgba(231, 76, 60, 0.2); border-radius:5px; padding:10px; margin-bottom:10px; font-size:12px; color:#e74c3c; text-align:left;">
@@ -327,7 +410,6 @@ async function loadShopData() {
                     </div>
                 `;
             }
-            // --- ENDE KRITISCHE KORREKTUR ---
 
             if (userIsAdmin) {
                 // Admin Button Logik
@@ -353,42 +435,142 @@ async function loadShopData() {
                     </div>
                 `;
             }
+            // --- ENDE KRITISCHE KORREKTUR ---
+
+            // --- NEU: Preview Button Logic für Themes ---
+            let previewBtnHtml = '';
+            if (item.item_type === 'theme' && item.asset_key !== 'theme-default' && !isDisabledByAdmin) {
+                previewBtnHtml = `
+                    <button class="btn-secondary" style="margin-top: 5px; width: 100%; background: #95a5a6; border: none; padding: 6px; border-radius: 4px; cursor: pointer; color: white;"
+                            onclick="window.previewTheme('${item.asset_key}')">
+                        <i class="fas fa-eye"></i> 5 Min. Testen
+                    </button>
+                `;
+            }
+            // ---------------------------------------------
 
             card.innerHTML = `
                 <div>
-                    <div class="shop-icon" style="color:${itemColor};"><i class="${item.icon_class}"></i></div>
+                    ${itemVisualHtml}
                     <div class="shop-title">${item.name}</div>
                     ${deactMessageHtml}
                     <div class="shop-desc">${item.description}</div>
                 </div>
                 <div>
                     <div class="shop-price">${priceStatus}</div>
-                    <button class="${btnClass}" style="${bgStyle}" ${disabledAttr} onclick="window.buyShopItem(${item.id})">
+                    <button class="${btnClass}" style="${bgStyle}" ${disabledAttr} onclick="window.buyShopItem(${item.id}, '${item.item_type}', ${item.cost_xp})">
                         ${btnText}
                     </button>
+                    ${previewBtnHtml}
                     ${adminHtml}
                 </div>
             `;
             grid.appendChild(card);
         });
 
+        // Initialisiere nun alle Lottie-Vorschauen, nachdem die Elemente im DOM sind
+        lottieInitQueue.forEach(initData => {
+            window.renderPetPreview(initData.containerId, initData.assetKey);
+        });
+
+
     } catch (e) {
         grid.innerHTML = `<p style="color:#e74c3c">Laden fehlgeschlagen: ${e.message}</p>`;
     }
 }
 
-// Globale Funktion für den Kaufen-Button
-window.buyShopItem = async function(itemId) {
-    if(!confirm("Möchtest du dieses Item wirklich kaufen? Deine XP werden abgezogen.")) return;
+
+// Globale Funktion für den Kaufen-Button (Angepasst für Orakel-Loop & Dynamischen Preis)
+window.buyShopItem = async function(itemId, itemType, itemCost) {
+    // Wenn das Orakel-Modal NICHT offen ist (oder ein anderes Item gekauft wird), fragen wir nach Bestätigung.
+    // Wenn es bereits offen ist (Loop-Kauf), überspringen wir die Bestätigung für besseren Flow.
+    const oracleModal = document.getElementById('oracle-modal');
+    const isOracleLoop = (itemType === 'oracle' && oracleModal && oracleModal.style.display === 'block');
+
+    if(!isOracleLoop) {
+        // Nur fragen, wenn es etwas kostet. Bei 0 XP (Standard Theme) einfach machen.
+        if (itemCost > 0) {
+            if(!confirm("Möchtest du dieses Item wirklich kaufen? Deine XP werden abgezogen.")) return;
+        }
+    }
 
     try {
         const result = await apiFetch('/api/shop/buy', 'POST', { item_id: itemId });
 
         if (result.success) {
-            alert(result.message);
-            // Reload Shop & Gamification Data um neue XP anzuzeigen
+
+            // SPEZIALBEHANDLUNG FÜR ORAKEL
+            if (itemType === 'oracle') {
+                const modal = document.getElementById('oracle-modal');
+                const textEl = document.getElementById('oracle-result-text');
+                const againBtn = document.getElementById('oracle-buy-again-btn');
+
+                // Wir entfernen das Präfix, da wir eine Überschrift im Modal haben
+                // und entfernen Anführungszeichen für eine schönere Optik
+                let cleanMsg = result.message.replace('🔮 Das Orakel spricht:\n\n', '').replace(/"/g, '');
+
+                if(textEl) {
+                    // Kleiner Fade-Effekt für den Text
+                    textEl.style.opacity = '0';
+                    textEl.style.transition = 'opacity 0.2s';
+                    setTimeout(() => {
+                        textEl.textContent = cleanMsg;
+                        textEl.style.opacity = '1';
+                    }, 200);
+                }
+
+                // WICHTIG: Dem "Noch eins"-Button die Funktion für DIESES Item geben und den Preis anzeigen
+                if (againBtn) {
+                    // Falls itemCost übergeben wurde, nutzen wir es, sonst Fallback
+                    const costText = itemCost ? itemCost : '??';
+                    againBtn.textContent = `Noch eins (${costText} XP)`;
+
+                    againBtn.onclick = function() {
+                        window.buyShopItem(itemId, itemType, itemCost);
+                    };
+                }
+
+                if(modal) modal.style.display = 'block';
+            }
+            // SPEZIALBEHANDLUNG FÜR COSMETIC PET
+            else if (itemType === 'cosmetic_pet') {
+                 // Hier reicht ein kleiner Alert
+                 alert(result.message);
+            }
+            // SPEZIALBEHANDLUNG FÜR THEMES
+            else if (itemType === 'theme') {
+                 alert(result.message);
+                 // Testphase beenden (falls aktiv)
+                 localStorage.removeItem('dhf_theme_preview');
+
+                 // User neu laden und Theme sofort anwenden
+                 const updatedProfile = await apiFetch('/api/user/profile');
+                 if (updatedProfile) {
+                     localStorage.setItem('dhf_user', JSON.stringify(updatedProfile));
+                     user = updatedProfile;
+                     applyTheme(user);
+                 }
+            }
+            else {
+                // Standard Alert für Booster etc.
+                alert(result.message);
+            }
+
+            // 1. Reload Shop & Gamification Data um neue XP anzuzeigen
             await loadShopData();
-            await loadGamificationData(); // Aktualisiert XP Balken oben
+            await loadGamificationData();
+
+            // 2. Benutzerprofil neu laden (für Pets & Themes wichtig)
+            const updatedProfile = await apiFetch('/api/user/profile');
+            if (updatedProfile) {
+                localStorage.setItem('dhf_user', JSON.stringify(updatedProfile));
+                user = updatedProfile;
+                // Pet updaten
+                if (typeof renderPetAnimation === 'function') {
+                    renderPetAnimation(user.active_pet_asset);
+                }
+            }
+
         } else {
             alert("Fehler: " + result.message);
         }

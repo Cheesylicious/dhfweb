@@ -47,6 +47,13 @@ class User(db.Model, UserMixin):
     # --- Statistik-Berechtigung ---
     can_see_statistics = db.Column(db.Boolean, default=False, nullable=False)
 
+    # --- Kosmetische Items ---
+    active_pet_asset = db.Column(db.String(100), nullable=True)  # Animierte Figur
+
+    # NEU: Aktives Theme (Design)
+    active_theme = db.Column(db.String(50), default='theme-default', nullable=True)
+    # ---------------------------------------------
+
     # HINWEIS: Die Beziehung (relationship) zu den Stats wird durch den backref
     # in models_gamification.py automatisch erstellt (Name: self.gamification_stats)
 
@@ -87,7 +94,10 @@ class User(db.Model, UserMixin):
             # --- KRITISCHE ERGÄNZUNG FÜR DEN SHOP & DASHBOARD ---
             "experience_points": current_xp,  # Das Feld, das das Frontend sucht
             "current_level": current_level,
-            "current_rank": current_rank
+            "current_rank": current_rank,
+            "active_pet_asset": self.active_pet_asset,
+            # NEU: Aktives Theme übergeben
+            "active_theme": self.active_theme
             # ------------------------------------
         }
 

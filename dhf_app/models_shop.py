@@ -17,6 +17,9 @@ class ShopItem(db.Model):
     multiplier_value = db.Column(db.Float, default=1.0)  # z.B. 1.5 für +50%
     duration_days = db.Column(db.Integer, default=0)  # Wie lange hält es?
 
+    # NEU: Feld für den Asset Key kosmetischer Items (z.B. Lottie JSON Pfad)
+    asset_key = db.Column(db.String(100), nullable=True)
+
     is_active = db.Column(db.Boolean, default=True)  # Kann vom Admin deaktiviert werden
     # NEU: Nachricht, die angezeigt wird, wenn das Item deaktiviert ist
     deactivation_message = db.Column(db.String(255), nullable=True)
@@ -31,6 +34,7 @@ class ShopItem(db.Model):
             'item_type': self.item_type,
             'multiplier_value': self.multiplier_value,
             'duration_days': self.duration_days,
+            'asset_key': self.asset_key,  # Hinzugefügt
             'is_active': self.is_active,
             # NEU: Nachricht hinzufügen
             'deactivation_message': self.deactivation_message

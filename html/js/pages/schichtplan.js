@@ -5,6 +5,9 @@ import { initAuthCheck } from '../utils/auth.js';
 import { isColorDark } from '../utils/helpers.js';
 import { apiFetch } from '../utils/api.js';
 
+// NEU: Import aus dem Renderer Modul für die Figur
+import { initPetDisplay } from '../utils/pet_renderer.js';
+
 // Module importieren
 import { PlanState } from '../modules/schichtplan_state.js';
 import { PlanApi } from '../modules/schichtplan_api.js';
@@ -87,6 +90,9 @@ async function initialize() {
         PlanState.isVisitor = authData.isVisitor;
         PlanState.isPlanschreiber = authData.isPlanschreiber;
         PlanState.isHundefuehrer = authData.isHundefuehrer;
+
+        // NEU: Animierte Figur im Header initialisieren
+        initPetDisplay(PlanState.loggedInUser);
 
         // State für Varianten
         PlanState.currentVariantId = null;

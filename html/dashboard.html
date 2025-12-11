@@ -5,6 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 
+    <link rel="stylesheet" href="css/themes.css">
+
     <script>
         // Prüft sofort, ob der Benutzer ein "Besucher" ist und leitet direkt um.
         try {
@@ -23,9 +25,11 @@
         body {
             font-family: 'Poppins', sans-serif;
             margin: 0;
-            background: #1a1a1a;
-            color: #ffffff;
+            /* HIER VARIABLE NUTZEN */
+            background: var(--bg-body);
+            color: var(--text-main);
             overflow-x: hidden;
+            transition: background 0.5s ease, color 0.5s ease; /* Weicher Übergang */
         }
 
         #particle-canvas {
@@ -35,32 +39,36 @@
         }
 
         header {
-            background: rgba(255, 255, 255, 0.05);
-            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            /* HIER VARIABLE NUTZEN */
+            background: var(--bg-card);
+            border-bottom: 1px solid var(--border-color);
             backdrop-filter: blur(10px);
             -webkit-backdrop-filter: blur(10px);
             padding: 15px 30px;
             display: flex; justify-content: space-between; align-items: center;
         }
 
-        header h1 { margin: 0; color: #ffffff; font-size: 24px; }
+        header h1 { margin: 0; color: var(--text-main); font-size: 24px; }
 
         header nav { display: flex; gap: 20px; align-items: center; }
 
         header nav a {
-            text-decoration: none; color: #bdc3c7; font-weight: 500; font-size: 16px;
+            text-decoration: none;
+            color: var(--text-muted); /* VARIABLE */
+            font-weight: 500; font-size: 16px;
             padding: 10px; border-radius: 5px;
             transition: background-color 0.3s, color 0.3s;
             display: inline-flex; align-items: center;
         }
 
         header nav a.active, header nav a:hover {
-            background-color: rgba(255, 255, 255, 0.1); color: #ffffff;
+            background-color: rgba(255, 255, 255, 0.1);
+            color: var(--text-main); /* VARIABLE */
         }
 
         body.nav-locked header nav a { pointer-events: none; opacity: 0.5; filter: grayscale(1); }
 
-        #user-info { display: flex; align-items: center; gap: 15px; color: #bdc3c7; }
+        #user-info { display: flex; align-items: center; gap: 15px; color: var(--text-muted); }
 
         #logout-btn {
             background: #e74c3c; color: white; padding: 10px 15px; border: none;
@@ -83,8 +91,8 @@
         main { padding: 30px; max-width: 1200px; margin: auto; }
 
         .card {
-            background: rgba(255, 255, 255, 0.05);
-            border: 1px solid rgba(255, 255, 255, 0.1);
+            background: var(--bg-card); /* VARIABLE */
+            border: 1px solid var(--border-color); /* VARIABLE */
             backdrop-filter: blur(10px);
             -webkit-backdrop-filter: blur(10px);
             box-shadow: 0 4px 30px rgba(0, 0, 0, 0.2);
@@ -106,7 +114,7 @@
         #news-container.unread { border: 2px solid #e74c3c; box-shadow: 0 0 15px rgba(231, 76, 60, 0.3); }
 
         #news-text {
-            white-space: pre-wrap; color: #ecf0f1; font-size: 15px; line-height: 1.6; margin-bottom: 20px;
+            white-space: pre-wrap; color: var(--text-main); font-size: 15px; line-height: 1.6; margin-bottom: 20px;
         }
 
         .news-footer {
@@ -116,7 +124,7 @@
 
         .ack-wrapper { display: flex; align-items: center; gap: 10px; }
         .ack-wrapper input[type="checkbox"] { width: 20px; height: 20px; cursor: pointer; accent-color: #2ecc71; }
-        .ack-label { color: #bdc3c7; font-size: 14px; cursor: pointer; }
+        .ack-label { color: var(--text-muted); font-size: 14px; cursor: pointer; }
 
         #news-admin-btn {
             font-size: 12px; padding: 5px 10px; background: rgba(255,255,255,0.1);
@@ -139,7 +147,7 @@
 
         .log-item {
             padding: 10px 0; border-bottom: 1px dashed rgba(255, 255, 255, 0.1);
-            color: #bdc3c7; display: flex; justify-content: space-between; align-items: center;
+            color: var(--text-muted); display: flex; justify-content: space-between; align-items: center;
         }
         .log-item:last-child { border-bottom: none; }
 
@@ -153,10 +161,10 @@
         }
         .delete-log-btn:hover { opacity: 1.0; transform: scale(1.1); }
 
-        .balance-table { width: 100%; border-collapse: collapse; margin-top: 15px; color: #ecf0f1; }
+        .balance-table { width: 100%; border-collapse: collapse; margin-top: 15px; color: var(--text-main); }
         .balance-table th {
             text-align: left; padding: 10px; border-bottom: 2px solid rgba(255,255,255,0.1);
-            font-weight: 600; color: #bdc3c7; font-size: 14px;
+            font-weight: 600; color: var(--text-muted); font-size: 14px;
         }
         .balance-table td {
             padding: 12px 10px; border-bottom: 1px solid rgba(255,255,255,0.05);
@@ -193,23 +201,23 @@
             overflow: auto; background-color: rgba(0,0,0,0.6);
         }
         .modal-content {
-            background: rgba(30, 30, 30, 0.8); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+            background: var(--modal-bg, rgba(30, 30, 30, 0.8)); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
             border: 1px solid rgba(255, 255, 255, 0.1); margin: 15% auto; padding: 25px;
-            width: 80%; max-width: 500px; border-radius: 8px; box-shadow: 0 4px 30px rgba(0,0,0,0.4); color: #ffffff;
+            width: 80%; max-width: 500px; border-radius: 8px; box-shadow: 0 4px 30px rgba(0,0,0,0.4); color: var(--text-main);
         }
         .modal-header {
             display: flex; justify-content: space-between; align-items: center;
             margin-bottom: 20px; padding-bottom: 15px; border-bottom: 1px solid rgba(255, 255, 255, 0.1);
         }
-        .modal-header h2 { margin: 0; color: #ffffff; font-weight: 600; }
-        .close { color: #bdc3c7; font-size: 28px; font-weight: bold; cursor: pointer; transition: color 0.3s; }
-        .close:hover { color: #ffffff; }
+        .modal-header h2 { margin: 0; color: var(--text-main); font-weight: 600; }
+        .close { color: var(--text-muted); font-size: 28px; font-weight: bold; cursor: pointer; transition: color 0.3s; }
+        .close:hover { color: var(--text-main); }
 
         .form-group { margin-bottom: 15px; }
-        .form-group label { display: block; margin-bottom: 8px; color: #bdc3c7; font-weight: 300; }
+        .form-group label { display: block; margin-bottom: 8px; color: var(--text-muted); font-weight: 300; }
         .form-group input, .form-group textarea {
-            width: 98%; padding: 10px; box-sizing: border-box; background: rgba(0, 0, 0, 0.2);
-            border: 1px solid #3498db; border-radius: 5px; color: #ffffff; font-family: 'Poppins', sans-serif; font-size: 14px;
+            width: 98%; padding: 10px; box-sizing: border-box; background: var(--bg-input, rgba(0, 0, 0, 0.2));
+            border: 1px solid #3498db; border-radius: 5px; color: var(--text-main); font-family: 'Poppins', sans-serif; font-size: 14px;
         }
         .form-group textarea { resize: vertical; min-height: 80px; }
 
@@ -220,9 +228,9 @@
         .btn-primary:hover { opacity: 0.8; }
         #modal-status { margin-top: 10px; color: #e74c3c; font-weight: 500;}
 
-        .card h2 { color: #ffffff; font-weight: 600; margin-top: 0; }
-        .card h3 { color: #ffffff; font-weight: 500; margin-top: 0; margin-bottom: 10px; }
-        .card p { color: #bdc3c7; font-weight: 300; }
+        .card h2 { color: var(--text-main); font-weight: 600; margin-top: 0; }
+        .card h3 { color: var(--text-main); font-weight: 500; margin-top: 0; margin-bottom: 10px; }
+        .card p { color: var(--text-muted); font-weight: 300; }
 
         /* --- GAMIFICATION STYLES --- */
         .gamification-header {
@@ -245,7 +253,7 @@
         .gamification-toggle button {
             background: transparent;
             border: none;
-            color: #bdc3c7;
+            color: var(--text-muted);
             padding: 6px 15px;
             border-radius: 15px;
             cursor: pointer;
@@ -253,7 +261,7 @@
             transition: all 0.3s;
             display: flex; align-items: center; gap: 6px;
         }
-        .gamification-toggle button:hover { color: #fff; }
+        .gamification-toggle button:hover { color: var(--text-main); }
         .gamification-toggle button.active {
             background: #FFD700;
             color: #000;
@@ -273,7 +281,7 @@
         .xp-container {
             background: rgba(0,0,0,0.2); padding: 15px; border-radius: 8px; margin-bottom: 20px;
         }
-        .xp-label { display: flex; justify-content: space-between; font-size: 13px; color: #bdc3c7; margin-bottom: 5px; }
+        .xp-label { display: flex; justify-content: space-between; font-size: 13px; color: var(--text-muted); margin-bottom: 5px; }
         .progress-bar-bg {
             width: 100%; height: 10px; background: rgba(255,255,255,0.1); border-radius: 5px; overflow: hidden;
         }
@@ -332,11 +340,62 @@
             display: flex; align-items: center; gap: 10px; border: 1px solid #c0392b;
         }
 
+        /* NEUER STYLE: Lottie Container */
+        #active-pet-container {
+            width: 160px;
+            height: 160px;
+            cursor: pointer;
+            margin-right: -5px;
+            /* NEU: Vertikale Ausrichtung optimieren, falls der Header wächst */
+            margin-bottom: -10px;
+        }
+
+
         .admin-price-input {
             width: 60px; padding: 3px; background: #333; border: 1px solid #555; color: #fff; border-radius: 3px; margin-right: 5px;
         }
         .admin-price-save {
             font-size: 0.8rem; background: #666; border: none; color: white; padding: 3px 6px; cursor: pointer; border-radius: 3px;
+        }
+
+        /* --- ORAKEL MODAL STYLES --- */
+        .oracle-modal-content {
+            background: linear-gradient(135deg, #1a1a1d 0%, #2c3e50 100%);
+            border: 2px solid #9b59b6; /* Lila Rand */
+            box-shadow: 0 0 30px rgba(155, 89, 182, 0.6); /* Lila Leuchten */
+            text-align: center;
+            color: #fff;
+            max-width: 400px;
+            animation: oraclePopUp 0.6s cubic-bezier(0.68, -0.55, 0.265, 1.55) forwards;
+            transform: scale(0); /* Startet klein */
+        }
+
+        .oracle-icon-large {
+            font-size: 60px;
+            margin-bottom: 20px;
+            color: #9b59b6;
+            text-shadow: 0 0 15px #9b59b6;
+            animation: float 3s ease-in-out infinite;
+        }
+
+        .oracle-text {
+            font-size: 18px;
+            font-style: italic;
+            line-height: 1.6;
+            margin-bottom: 25px;
+            color: #ecf0f1;
+            font-family: 'Georgia', serif; /* Wirkt etwas mystischer */
+        }
+
+        @keyframes oraclePopUp {
+            0% { transform: scale(0); opacity: 0; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+
+        @keyframes float {
+            0% { transform: translateY(0px); }
+            50% { transform: translateY(-10px); }
+            100% { transform: translateY(0px); }
         }
 
         @media (max-width: 768px) {
@@ -362,6 +421,7 @@
             <a href="schichtplan.html">Schichtplan</a>
         </nav>
         <div id="user-info">
+            <div id="active-pet-container" style="display: none;"></div>
             <span id="welcome-user"></span>
             <button class="report-btn" id="global-report-btn">🐞 Problem melden</button>
             <button id="logout-btn">Abmelden</button>
@@ -621,6 +681,30 @@
             </div>
         </div>
     </div>
+
+    <div id="oracle-modal" class="modal">
+        <div class="modal-content oracle-modal-content">
+            <div class="modal-header" style="border-bottom: none; justify-content: flex-end;">
+                <span class="close" onclick="document.getElementById('oracle-modal').style.display='none'">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div class="oracle-icon-large"><i class="fas fa-hat-wizard"></i></div>
+                <h3 style="color: #9b59b6; margin-top: 0;">Das Orakel hat gesprochen!</h3>
+                <p id="oracle-result-text" class="oracle-text"></p>
+
+                <div style="display: flex; gap: 10px; margin-top: 20px;">
+                    <button id="oracle-buy-again-btn" class="btn-primary" style="background: #27ae60; border: none; flex: 1;">
+                        Noch eins (50 XP)
+                    </button>
+                    <button class="btn-primary" onclick="document.getElementById('oracle-modal').style.display='none'" style="background: #8e44ad; border: none; flex: 1;">
+                        Schließen
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/lottie-web/5.12.2/lottie.min.js"></script>
 
     <script>
         // --- START: PARTIKEL-ANIMATION (Unverändert) ---

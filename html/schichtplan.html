@@ -1402,6 +1402,18 @@
         }
         /* --- ENDE NEU --- */
 
+        /* NEUER STYLE: Lottie Container Style (MIT USER-WERTEN) */
+        #active-pet-container {
+            width: 160px; /* Vom User gefunden */
+            height: 160px; /* Vom User gefunden */
+            cursor: pointer;
+            margin-right: -5px;
+            /* Vertikale Ausrichtung optimieren (Hack des Users) */
+            margin-bottom: -80px;
+            /* Sicherstellen, dass es standardmäßig ausgeblendet ist, bis JS es aktiviert */
+            display: none;
+        }
+
     </style>
 </head>
 <body>
@@ -1424,6 +1436,7 @@
 
             <a href="schichtplan.html" class="active" id="nav-shiftplan">Schichtplan</a> </nav>
         <div id="user-info">
+            <div id="active-pet-container"></div>
             <span id="welcome-user"></span>
             <button class="report-btn" id="global-report-btn">🐞 Problem melden</button>
             <button id="logout-btn">Abmelden</button>
@@ -1793,6 +1806,7 @@
         init(); animate();
     </script>
 
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/lottie-web/5.12.2/lottie.min.js"></script>
     <script type="module" src="js/pages/schichtplan.js" defer></script>
     <script type="module" src="shared_feedback.js" defer></script>
     <script type="module" src="shared_notifications.js" defer></script>
