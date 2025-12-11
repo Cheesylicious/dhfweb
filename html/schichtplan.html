@@ -5,8 +5,11 @@
     <title>Schichtplan - DHF-Planer</title>
     <meta name="viewport" content="width=1200">
 
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.5/socket.io.min.js"></script>
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#1a1a1a">
+    <link rel="apple-touch-icon" href="static/icons/icon-192.png">
 
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/socket.io/4.7.5/socket.io.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.0/Sortable.min.js"></script>
 
     <script type="module" src="js/modules/prediction_ui.js"></script>
@@ -646,25 +649,6 @@
             font-weight: 600;
             font-style: italic;
             box-shadow: inset 0 0 0 1px rgba(0,0,0,0.2) !important;
-        }
-
-        /* --- KORREKTUR: Z-INDEX ERHÖHT, DAMIT DAS ICON IMMER SICHTBAR IST --- */
-        .shift-query-icon {
-            position: absolute;
-            top: 2px;
-            right: 2px;
-            font-size: 10px;
-            background: #f1c40f;
-            color: #333;
-            border-radius: 50%;
-            width: 14px;
-            height: 14px;
-            line-height: 14px;
-            text-align: center;
-            box-shadow: 0 0 3px rgba(0,0,0,0.5);
-            font-weight: 600;
-            z-index: 100 !important; /* WICHTIG */
-            /* pointer-events: none; <-- ENTFERNT, DAMIT TITLE (TOOLTIP) GEHT */
         }
 
         /* --- NEU: Bulk Selection Styles --- */
@@ -1815,5 +1799,18 @@
     <script type="module" src="js/pages/schichtplan.js" defer></script>
     <script type="module" src="shared_feedback.js" defer></script>
     <script type="module" src="shared_notifications.js" defer></script>
+
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('./sw.js')
+                    .then(registration => {
+                        console.log('ServiceWorker registration successful with scope: ', registration.scope);
+                    }, err => {
+                        console.log('ServiceWorker registration failed: ', err);
+                    });
+            });
+        }
+    </script>
     </body>
 </html>

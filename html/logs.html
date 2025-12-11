@@ -2,8 +2,13 @@
 <html lang="de">
 <head>
     <meta charset="UTF-8">
-    <title>System-Logs - DHF-Planer</title>
+    <title>Audit Logs - DHF-Planer</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+    <link rel="manifest" href="manifest.json">
+    <meta name="theme-color" content="#1a1a1a">
+    <link rel="apple-touch-icon" href="static/icons/icon-192.png">
+
     <style>
         /* Import einer modernen Schriftart */
         @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap');
@@ -190,6 +195,16 @@
         .log-type-profile { color: #3498db; }
         .log-type-error { color: #e74c3c; font-weight: 600; }
 
+        /* NEU: Audit Log Badges */
+        .badge { padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: bold; text-transform: uppercase; display: inline-block; }
+        .badge-create { background-color: rgba(46, 204, 113, 0.2); color: #2ecc71; border: 1px solid #2ecc71; }
+        .badge-update { background-color: rgba(243, 156, 18, 0.2); color: #f39c12; border: 1px solid #f39c12; }
+        .badge-delete { background-color: rgba(231, 76, 60, 0.2); color: #e74c3c; border: 1px solid #e74c3c; }
+
+        .diff-old { text-decoration: line-through; color: #7f8c8d; margin-right: 5px; opacity: 0.7; }
+        .diff-new { font-weight: bold; color: #ecf0f1; }
+        .detail-text { font-family: monospace; font-size: 12px; color: #bdc3c7; }
+
         /* Pagination */
         .pagination {
             padding: 15px 25px;
@@ -256,14 +271,16 @@
     <main id="content-wrapper">
         <div class="card">
             <div class="card-header">
-                <h2>System-Aktivitäten</h2>
+                <h2>🕵️‍♂️ Audit-Protokoll & System-Logs</h2>
                 <div class="filter-bar">
                     <select id="filter-action">
                         <option value="">Alle Aktionen</option>
+                        <option value="SHIFT_UPDATE">Schicht geändert</option>
+                        <option value="SHIFT_CREATE">Schicht erstellt</option>
+                        <option value="SHIFT_DELETE">Schicht gelöscht</option>
+                        <option value="PLAN_CLEAR">Plan geleert</option>
                         <option value="LOGIN">Login</option>
                         <option value="LOGOUT">Logout</option>
-                        <option value="PASSWORD_CHANGE">Passwort geändert</option>
-                        <option value="PROFILE_UPDATE">Profil bearbeitet</option>
                     </select>
                     <input type="text" id="filter-user" placeholder="Benutzer suchen...">
                     <button class="btn-primary" id="refresh-logs-btn">Aktualisieren</button>
@@ -274,15 +291,16 @@
                 <table>
                     <thead>
                         <tr>
-                            <th>Zeitstempel</th>
-                            <th>Benutzer</th>
+                            <th>Zeitpunkt</th>
+                            <th>Akteur</th>
                             <th>Aktion</th>
-                            <th>Details</th>
+                            <th>Betrifft</th>
+                            <th>Details (Änderung)</th>
                             <th>IP-Adresse</th>
                         </tr>
                     </thead>
                     <tbody id="logs-table-body">
-                        <tr><td colspan="5" style="text-align: center;">Lade Daten...</td></tr>
+                        <tr><td colspan="6" style="text-align: center;">Lade Daten...</td></tr>
                     </tbody>
                 </table>
             </div>
@@ -312,6 +330,16 @@
     <script type="module" src="logs.js"></script>
     <script type="module" src="shared_feedback.js"></script>
     <script type="module" src="shared_notifications.js"></script>
+
+    <script>
+        if ('serviceWorker' in navigator) {
+            window.addEventListener('load', () => {
+                navigator.serviceWorker.register('./sw.js')
+                    .then(registration => { console.log('SW registriert:', registration.scope); })
+                    .catch(err => { console.log('SW Fehler:', err); });
+            });
+        }
+    </script>
 
 </body>
 </html>

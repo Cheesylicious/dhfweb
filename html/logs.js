@@ -1,10 +1,4 @@
-// html/logs.js
-
 import { apiFetch } from './js/utils/api.js';
-import { initAuthCheck } from './js/utils/auth.js';
-
-let user;
-let isAdmin = false;
 
 // State
 let currentPage = 1;
@@ -18,80 +12,55 @@ const filterAction = document.getElementById('filter-action');
 const filterUser = document.getElementById('filter-user');
 const paginationContainer = document.getElementById('pagination-controls');
 
-// 1. Auth Check
-try {
-    const authData = initAuthCheck();
-    user = authData.user;
-    isAdmin = authData.isAdmin;
+// Init
+loadLogs();
 
-    if (!isAdmin) {
-        // Sollte durch logs.html schon blockiert sein, aber zur Sicherheit:
-        window.location.href = 'schichtplan.html';
-        throw new Error("Kein Zugriff.");
-    }
-
-    // Init
-    loadLogs();
-
-} catch (e) {
-    console.error("Logs Init Error:", e);
-}
-
-// 2. Event Listeners
+// Event Listeners
 if (refreshBtn) {
-    refreshBtn.onclick = () => {
-        currentPage = 1;
-        loadLogs();
-    };
+    refreshBtn.onclick = () => { currentPage = 1; loadLogs(); };
 }
-
 if (filterAction) {
-    filterAction.addEventListener('change', () => {
-        currentPage = 1;
-        loadLogs();
-    });
+    filterAction.addEventListener('change', () => { currentPage = 1; loadLogs(); });
 }
-
 if (filterUser) {
-    // Debounce für Texteingabe (wartet kurz, bevor geladen wird)
     let timeout = null;
     filterUser.addEventListener('input', () => {
         clearTimeout(timeout);
-        timeout = setTimeout(() => {
-            currentPage = 1;
-            loadLogs();
-        }, 500);
+        timeout = setTimeout(() => { currentPage = 1; loadLogs(); }, 500);
     });
 }
 
-// 3. Hauptfunktion: Logs laden
 async function loadLogs() {
     if (!tableBody) return;
+    tableBody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: #bdc3c7;">Lade Daten...</td></tr>';
 
-    tableBody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: #bdc3c7;">Lade Daten...</td></tr>';
+    const action = filterAction ? filterAction.value : '';
+    const userSearch = filterUser ? filterUser.value.trim() : '';
 
-    const action = filterAction.value;
-    const userSearch = filterUser.value.trim();
-
-    // Query Params bauen
+    // Query Parameter bauen
     const params = new URLSearchParams({
         page: currentPage,
-        per_page: itemsPerPage
+        limit: itemsPerPage,
+        action: action,
+        user: userSearch
     });
-    if (action) params.append('action', action);
-    if (userSearch) params.append('user', userSearch);
 
     try {
-        // Wir erwarten hier eine paginierte Antwort vom Backend
-        const response = await apiFetch(`/api/activity_logs?${params.toString()}`);
+        // Wir nutzen den neuen Audit-Endpoint
+        const response = await apiFetch(`/api/audit/?${params.toString()}`);
 
-        renderTable(response.items);
-        renderPagination(response.page, response.pages, response.total);
+        // Da die API aktuell eine Liste zurückgibt (keine Paginierung im Backend implementiert in V1),
+        // simulieren wir Paginierung hier oder nehmen alles, was kommt.
+        // Für V1 nehmen wir einfach die Liste (Backend liefert 'limit' Einträge).
+        const logs = Array.isArray(response) ? response : (response.items || []);
 
-        totalPages = response.pages;
+        renderTable(logs);
+
+        // Paginierung UI (Dummy, da Backend V1 nur Limit hat)
+        if(paginationContainer) paginationContainer.innerHTML = '';
 
     } catch (error) {
-        tableBody.innerHTML = `<tr><td colspan="5" style="text-align: center; color: #e74c3c;">Fehler: ${error.message}</td></tr>`;
+        tableBody.innerHTML = `<tr><td colspan="6" style="text-align: center; color: #e74c3c;">Fehler: ${error.message}</td></tr>`;
     }
 }
 
@@ -99,7 +68,7 @@ function renderTable(logs) {
     tableBody.innerHTML = '';
 
     if (!logs || logs.length === 0) {
-        tableBody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: #777;">Keine Einträge gefunden.</td></tr>';
+        tableBody.innerHTML = '<tr><td colspan="6" style="text-align: center; color: #777;">Keine Einträge gefunden.</td></tr>';
         return;
     }
 
@@ -110,63 +79,45 @@ function renderTable(logs) {
         const dateObj = new Date(log.timestamp);
         const dateStr = dateObj.toLocaleString('de-DE', {
             day: '2-digit', month: '2-digit', year: 'numeric',
-            hour: '2-digit', minute: '2-digit', second: '2-digit'
+            hour: '2-digit', minute: '2-digit'
         });
 
-        // Styling für Aktionstyp
-        let actionClass = '';
-        if (log.action === 'LOGIN') actionClass = 'log-type-login';
-        else if (log.action === 'LOGOUT') actionClass = 'log-type-logout';
-        else if (log.action === 'PASSWORD_CHANGE') actionClass = 'log-type-password';
-        else if (log.action === 'PROFILE_UPDATE') actionClass = 'log-type-profile';
-        else if (log.action.includes('FAILED') || log.action.includes('ERROR')) actionClass = 'log-type-error';
+        // Betroffenes Datum (Ziel)
+        let targetDateStr = '-';
+        if (log.target_date) {
+            const td = new Date(log.target_date);
+            targetDateStr = td.toLocaleDateString('de-DE');
+        }
+
+        // Details Logik (Diff anzeigen)
+        let detailsHtml = '-';
+        if (log.details) {
+            if (log.details.old !== undefined || log.details.new !== undefined) {
+                // Es ist ein Vorher/Nachher Vergleich
+                const oldVal = log.details.old || '<i>Leer</i>';
+                const newVal = log.details.new || '<i>Leer</i>';
+                detailsHtml = `<span class="diff-old">${oldVal}</span> &rarr; <span class="diff-new">${newVal}</span>`;
+            } else {
+                // Anderes JSON Objekt
+                detailsHtml = `<span class="detail-text">${JSON.stringify(log.details).substring(0, 50)}</span>`;
+            }
+        }
+
+        // Badge Styling
+        let badgeClass = '';
+        if (log.action.includes('UPDATE')) badgeClass = 'badge-update';
+        else if (log.action.includes('CREATE') || log.action === 'LOGIN') badgeClass = 'badge-create';
+        else if (log.action.includes('DELETE') || log.action.includes('CLEAR')) badgeClass = 'badge-delete';
+        else badgeClass = 'badge-update'; // Fallback
 
         row.innerHTML = `
             <td style="font-family: monospace; font-size: 0.9em;">${dateStr}</td>
-            <td>${log.user_name}</td>
-            <td class="${actionClass}">${log.action}</td>
-            <td>${log.details || '-'}</td>
-            <td style="font-family: monospace; color: #777;">${log.ip_address || 'N/A'}</td>
+            <td><strong>${log.user_name}</strong></td>
+            <td><span class="badge ${badgeClass}">${log.action}</span></td>
+            <td>${targetDateStr}</td>
+            <td>${detailsHtml}</td>
+            <td style="font-family: monospace; color: #777; font-size: 0.8em;">${log.ip_address || '-'}</td>
         `;
         tableBody.appendChild(row);
     });
-}
-
-function renderPagination(current, pages, total) {
-    if (!paginationContainer) return;
-    paginationContainer.innerHTML = '';
-
-    if (pages <= 1) return; // Keine Pagination nötig
-
-    // Vorherige Seite
-    const prevBtn = document.createElement('button');
-    prevBtn.textContent = '<';
-    prevBtn.disabled = current === 1;
-    prevBtn.onclick = () => {
-        if (currentPage > 1) {
-            currentPage--;
-            loadLogs();
-        }
-    };
-    paginationContainer.appendChild(prevBtn);
-
-    // Seiten-Info
-    const info = document.createElement('span');
-    info.style.alignSelf = 'center';
-    info.style.fontSize = '13px';
-    info.style.color = '#bdc3c7';
-    info.textContent = ` Seite ${current} von ${pages} (Gesamt: ${total}) `;
-    paginationContainer.appendChild(info);
-
-    // Nächste Seite
-    const nextBtn = document.createElement('button');
-    nextBtn.textContent = '>';
-    nextBtn.disabled = current === pages;
-    nextBtn.onclick = () => {
-        if (currentPage < pages) {
-            currentPage++;
-            loadLogs();
-        }
-    };
-    paginationContainer.appendChild(nextBtn);
 }
