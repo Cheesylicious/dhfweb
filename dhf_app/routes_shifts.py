@@ -2,7 +2,7 @@
 
 from flask import Blueprint, request, jsonify, current_app
 from .models import Shift, ShiftType, User, ShiftPlanStatus, UpdateLog, ShiftQuery, SpecialDate
-from .extensions import db
+from .extensions import db, socketio  # <--- socketio hinzugefügt
 from .utils import admin_required
 from flask_login import login_required, current_user
 from sqlalchemy import extract, func, or_, and_
@@ -307,6 +307,21 @@ def toggle_shift_lock():
             was_deleted = False
 
         db.session.commit()
+
+        # --- SOCKET EMIT START ---
+        # Benachrichtigen aller Clients über die Lock-Änderung
+        result_data = {
+            "deleted": was_deleted,
+            "user_id": user_id,
+            "date": shift_date.isoformat(),
+            "variant_id": variant_id
+        }
+        if not was_deleted:
+            result_data.update(shift.to_dict())
+
+        socketio.emit('shift_lock_update', result_data)
+        # --- SOCKET EMIT END ---
+
         if was_deleted:
             return jsonify({"deleted": True, "user_id": user_id, "date": shift_date.isoformat()}), 200
         else:
@@ -343,6 +358,16 @@ def clear_shift_plan():
 
         if num_deleted > 0:
             db.session.commit()
+
+            # --- SOCKET EMIT START ---
+            socketio.emit('plan_cleared', {
+                'year': year,
+                'month': month,
+                'variant_id': variant_id,
+                'num_deleted': num_deleted
+            })
+            # --- SOCKET EMIT END ---
+
             return jsonify({"message": f"Plan geleert. {num_deleted} Schichten gelöscht."}), 200
         else:
             return jsonify({"message": "Keine löschbaren Schichten."}), 200
@@ -444,6 +469,20 @@ def save_shift():
 
         response_data['violations'] = list(violations_set)
 
+        # --- SOCKET EMIT START ---
+        # Sende Update an alle Clients
+        socket_payload = {
+            'type': 'single',
+            'user_id': user_id,
+            'date': shift_date.isoformat(),
+            'shifttype_id': shifttype_id,
+            'variant_id': variant_id,
+            'data': response_data,  # Enthält neue Stunden und Violations!
+            'is_deleted': True if not saved_shift_id else False
+        }
+        socketio.emit('shift_update', socket_payload)
+        # --- SOCKET EMIT END ---
+
         return jsonify(response_data), 200 if saved_shift_id else 200
 
     except Exception as e:
@@ -466,6 +505,11 @@ def update_plan_status():
         status_obj.status = data.get('status', status_obj.status)
         status_obj.is_locked = data.get('is_locked', status_obj.is_locked)
         db.session.commit()
+
+        # --- SOCKET EMIT START ---
+        socketio.emit('plan_status_update', status_obj.to_dict())
+        # --- SOCKET EMIT END ---
+
         return jsonify(status_obj.to_dict()), 200
     except Exception as e:
         db.session.rollback()
@@ -669,7 +713,7 @@ def send_completion_notification():
                 date_obj = date(year, month, day)
                 day_of_week = date_obj.weekday()
                 is_holiday_for_calc = (
-                            date_obj.day in special_dates_map and special_dates_map[date_obj.day] == 'holiday')
+                        date_obj.day in special_dates_map and special_dates_map[date_obj.day] == 'holiday')
                 if is_holiday_for_calc:
                     soll = st.min_staff_holiday
                 else:

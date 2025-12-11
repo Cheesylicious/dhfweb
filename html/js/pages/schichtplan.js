@@ -14,6 +14,7 @@ import { PlanApi } from '../modules/schichtplan_api.js';
 import { PlanRenderer } from '../modules/schichtplan_renderer.js';
 import { StaffingModule } from '../modules/schichtplan_staffing.js';
 import { PlanHandlers } from '../modules/schichtplan_handlers.js';
+import { PredictionUI } from '../modules/prediction_ui.js';
 
 // --- DOM Elemente ---
 const prevMonthBtn = document.getElementById('prev-month-btn');
@@ -77,6 +78,9 @@ let processedLogCount = 0;
 // Lokaler State für Month Picker
 let pickerYear = new Date().getFullYear();
 
+// NEU: Socket.IO Instanz
+let socket = null;
+
 // --- 1. Initialisierung ---
 
 async function initialize() {
@@ -90,6 +94,9 @@ async function initialize() {
         PlanState.isVisitor = authData.isVisitor;
         PlanState.isPlanschreiber = authData.isPlanschreiber;
         PlanState.isHundefuehrer = authData.isHundefuehrer;
+
+        // --- NEU: Prediction UI laden ---
+        PredictionUI.init();  // <--- DIESE ZEILE EINFÜGEN
 
         // NEU: Animierte Figur im Header initialisieren
         initPetDisplay(PlanState.loggedInUser);
@@ -134,6 +141,9 @@ async function initialize() {
         // Initialer Check auf offene Krankmeldungen (Banner)
         checkPendingRequests();
 
+        // NEU: Echtzeit-Verbindung aufbauen
+        setupSocketConnection();
+
     } catch (e) {
         console.error("Initialisierung gestoppt:", e);
     }
@@ -175,6 +185,71 @@ function injectWarningStyles() {
     `;
     document.head.appendChild(style);
 }
+
+// --- NEU: Socket.IO Verbindung herstellen ---
+function setupSocketConnection() {
+    if (typeof io === 'undefined') {
+        console.warn("Socket.IO client library not loaded.");
+        return;
+    }
+
+    // Verbindung zum Server herstellen
+    socket = io();
+
+    socket.on('connect', () => {
+        console.log("WebSocket verbunden: Echtzeit-Updates aktiv.");
+    });
+
+    // Event: Eine einzelne Schicht wurde geändert
+    socket.on('shift_update', (data) => {
+        if (isUpdateRelevant(data)) {
+            // isSilent = true -> Kein Blur-Effekt, "Magic Update"
+            renderGrid(true);
+        }
+    });
+
+    // Event: Schicht gesperrt/entsperrt
+    socket.on('shift_lock_update', (data) => {
+        if (isUpdateRelevant(data)) {
+            renderGrid(true);
+        }
+    });
+
+    // Event: Plan wurde geleert
+    socket.on('plan_cleared', (data) => {
+        if (data.year === PlanState.currentYear &&
+            data.month === PlanState.currentMonth &&
+            data.variant_id === PlanState.currentVariantId) {
+            renderGrid(); // Hier mit Blur, da große Änderung
+        }
+    });
+
+    // Event: Plan Status geändert (Gesperrt/Freigabe)
+    socket.on('plan_status_update', (data) => {
+        if (data.year === PlanState.currentYear && data.month === PlanState.currentMonth) {
+            PlanState.currentPlanStatus = data;
+            updatePlanStatusUI(data);
+            renderGrid(true); // Gitter neu laden, um Sperr-Optik zu aktualisieren
+        }
+    });
+}
+
+function isUpdateRelevant(data) {
+    // Prüfen, ob das Update den aktuell angezeigten Monat betrifft
+    if (!data.date) return false;
+
+    // Datum parsen (Format YYYY-MM-DD)
+    const parts = data.date.split('-');
+    const year = parseInt(parts[0]);
+    const month = parseInt(parts[1]);
+
+    // Relevanz prüfen: Gleiches Jahr, gleicher Monat, gleiche Variante
+    // Hinweis: data.variant_id kann null sein, PlanState.currentVariantId auch
+    const variantMatch = data.variant_id === PlanState.currentVariantId;
+
+    return year === PlanState.currentYear && month === PlanState.currentMonth && variantMatch;
+}
+// ---------------------------------------------
 
 function setupUIByRole() {
     if (staffingSortToggleBtn) {
@@ -348,7 +423,7 @@ function renderMonthPicker() {
 
 // --- 3. Render Grid ---
 
-async function renderGrid() {
+async function renderGrid(isSilent = false) { // UPDATE: isSilent Parameter hinzugefügt
     const grid = document.getElementById('schichtplan-grid');
     const monthLabel = document.getElementById('current-month-label');
     const staffingGrid = document.getElementById('staffing-grid');
@@ -356,17 +431,22 @@ async function renderGrid() {
     // --- INNOVATION: Animation Start ---
     // Statt den Inhalt hart zu löschen, fügen wir eine Blur-Klasse hinzu.
     // Der alte Plan bleibt sichtbar, aber verschwommen, bis die neuen Daten da sind.
-    if(grid) grid.classList.add('blur-loading');
-    if(staffingGrid) staffingGrid.classList.add('blur-loading');
-
-    // Kleines UX-Detail: Label aktualisieren, aber Inhalt behalten
-    if(monthLabel) monthLabel.textContent = "Lade...";
+    // NEU: Nur bluren, wenn es kein Silent Update (Socket Update) ist
+    if(!isSilent) {
+        if(grid) grid.classList.add('blur-loading');
+        if(staffingGrid) staffingGrid.classList.add('blur-loading');
+        // Kleines UX-Detail: Label aktualisieren, aber Inhalt behalten
+        if(monthLabel) monthLabel.textContent = "Lade...";
+    }
 
     // WICHTIG: NICHT mehr grid.innerHTML löschen!
     // if(grid) grid.innerHTML = '...';  <-- Entfernt
 
     const planStatusContainer = document.getElementById('plan-status-container');
-    if (planStatusContainer) planStatusContainer.style.display = 'none';
+
+    // --- FIX: Buttons NICHT mehr ausblenden beim Laden, um Flackern zu verhindern ---
+    // if (planStatusContainer) planStatusContainer.style.display = 'none';  <--- ENTFERNT
+
     document.body.classList.remove('plan-locked');
 
     PlanState.isStaffingSortingMode = false;

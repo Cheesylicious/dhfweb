@@ -2,7 +2,7 @@ import os
 from flask import Flask, jsonify
 from flask_cors import CORS
 from .config import config
-from .extensions import db, bcrypt, login_manager, mail
+from .extensions import db, bcrypt, login_manager, mail, socketio
 
 
 def create_app(config_name='default'):
@@ -20,6 +20,9 @@ def create_app(config_name='default'):
     bcrypt.init_app(app)
     login_manager.init_app(app)
     mail.init_app(app)
+
+    # NEU: SocketIO initialisieren (Echtzeit-Kommunikation)
+    socketio.init_app(app, cors_allowed_origins="*")
 
     # 3. CORS initialisieren (Wie zuvor mit dem Fix in utils.py)
     CORS(app, supports_credentials=True, origins=["http://46.224.63.203", "http://ihre-domain.de", "*"])
@@ -81,6 +84,10 @@ def create_app(config_name='default'):
     # --- Balance / Statistik Routes ---
     from .routes.balance_routes import balance_bp
     app.register_blueprint(balance_bp)
+
+    # --- NEU: KI-Prediction Blueprint ---
+    from .routes_prediction import prediction_bp
+    app.register_blueprint(prediction_bp)
 
     # 6. Startup-Logik (Innerhalb des App Context)
     with app.app_context():
