@@ -1,9 +1,12 @@
 # dhf_app/routes_auth.py
 
 from flask import Blueprint, request, jsonify, current_app
-from .models import User, Role, UpdateLog, ActivityLog  # <<< ActivityLog importiert
+from .models import User, Role, UpdateLog, ActivityLog
 from .extensions import db, bcrypt
-from flask_login import login_user, logout_user, login_required, current_user
+# KORREKTUR: Importiere nur die Komponenten von flask_login, die wir BRAUCHEN (nicht login_required!)
+from flask_login import login_user, logout_user, current_user
+# NEU: Importiere unseren gefixten login_required aus utils
+from .utils import login_required
 from datetime import datetime
 
 # Erstellt einen Blueprint. Alle Routen hier beginnen mit /api
@@ -68,8 +71,6 @@ def login():
         db.session.commit()
         return jsonify({"message": "Login erfolgreich", "user": user.to_dict()}), 200
     else:
-        # Optional: Fehlgeschlagene Logins loggen (Vorsicht vor Log-Spamming)
-        # if user: _log_activity(user, "LOGIN_FAILED", "Falsches Passwort")
         return jsonify({"message": "Ungültige Anmeldedaten"}), 401
 
 
@@ -92,7 +93,6 @@ def logout():
     _log_activity(current_user, "LOGOUT", duration_str)
 
     logout_user()
-    # Commit ist nötig für das Log, auch wenn logout_user() session cleart
     db.session.commit()
 
     return jsonify({"message": "Erfolgreich abgemeldet"}), 200
@@ -119,7 +119,6 @@ def change_password():
         return jsonify({"message": "Das neue Passwort muss mindestens 4 Zeichen lang sein."}), 400
 
     if not bcrypt.check_password_hash(current_user.passwort_hash, old_password):
-        # _log_activity(current_user, "PASSWORD_CHANGE_FAILED", "Altes Passwort falsch")
         return jsonify({"message": "Das alte Passwort ist falsch."}), 403
 
     try:
@@ -128,7 +127,6 @@ def change_password():
         current_user.password_geaendert = datetime.utcnow()
         current_user.force_password_change = False
 
-        # Dashboard-Log deaktiviert, dafür Activity-Log:
         _log_activity(current_user, "PASSWORD_CHANGE", "Benutzer hat Passwort geändert")
 
         db.session.commit()
@@ -141,9 +139,9 @@ def change_password():
         return jsonify({"message": f"Datenbankfehler: {str(e)}"}), 500
 
 
-# --- NEU: Profil-Management (Erweitert) ---
+# --- Profil-Management (Erweitert) ---
 
-@auth_bp.route('/profile', methods=['GET'])
+@auth_bp.route('/user/profile', methods=['GET']) # <--- KRITISCHE KORREKTUR: /user/ hinzugefügt
 @login_required
 def get_profile():
     """
@@ -152,7 +150,7 @@ def get_profile():
     return jsonify(current_user.to_dict()), 200
 
 
-@auth_bp.route('/profile', methods=['PUT'])
+@auth_bp.route('/user/profile', methods=['PUT']) # <--- KRITISCHE KORREKTUR: /user/ hinzugefügt
 @login_required
 def update_profile():
     """
@@ -202,7 +200,6 @@ def update_profile():
             changes.append("Geburtstag")
 
         if changes:
-            # Dashboard-Log deaktiviert, dafür Activity-Log:
             details = f"Felder: {', '.join(changes)}"
             _log_activity(current_user, "PROFILE_UPDATE", details)
 

@@ -6,14 +6,15 @@ from sqlalchemy.orm import joinedload
 # WICHTIG: Absolute Importe (dhf_app.X) verhindern Pfad-Fehler!
 from dhf_app.extensions import db
 from dhf_app.models import User, Shift, ShiftType, SpecialDate
-# NEU: GamificationSettings importiert
+# NEU: GamificationSettings und Shop-Modelle importiert
 from dhf_app.models_gamification import GamificationLog, UserGamificationStats, GamificationSettings
+from dhf_app.models_shop import UserActiveEffect
 
 
 class GamificationService:
     """
     Zentraler Service für Gamification-Logik.
-    VERSION: DYNAMISCH (Werte aus Datenbank).
+    VERSION: DYNAMISCH (Werte aus Datenbank) + SHOP INTEGRATION.
     """
 
     XP_PER_LEVEL = 1000
@@ -45,6 +46,23 @@ class GamificationService:
         return "🥚 Anwärter", "#7f8c8d"
 
     @staticmethod
+    def get_current_multiplier(user_id):
+        """
+        Ermittelt den AKTUELLEN Multiplikator für einen User (für Anzeige im Frontend).
+        """
+        now = datetime.datetime.utcnow()
+        effects = UserActiveEffect.query.filter(
+            UserActiveEffect.user_id == user_id,
+            UserActiveEffect.end_date > now
+        ).all()
+
+        mult = 1.0
+        for e in effects:
+            if e.multiplier_value > 1.0:
+                mult += (e.multiplier_value - 1.0)
+        return mult
+
+    @staticmethod
     def get_dashboard_data(user_id):
         try:
             stats = UserGamificationStats.query.filter_by(user_id=user_id).first()
@@ -70,6 +88,9 @@ class GamificationService:
             xp_in_level = stats.points_total % GamificationService.XP_PER_LEVEL
             if stats.current_level >= 100: xp_in_level = 1000
 
+            # NEU: Aktuellen Multiplikator anzeigen
+            current_mult = GamificationService.get_current_multiplier(user_id)
+
             return {
                 'stats': {
                     'current_level': stats.current_level,
@@ -77,7 +98,8 @@ class GamificationService:
                     'rank_name': rank_name,
                     'rank_color': rank_color,
                     'xp_current': xp_in_level,
-                    'xp_max': GamificationService.XP_PER_LEVEL
+                    'xp_max': GamificationService.XP_PER_LEVEL,
+                    'active_multiplier': current_mult  # Für UI Anzeige (z.B. "1.5x Boost aktiv")
                 },
                 'logs': logs_data
             }
@@ -85,7 +107,7 @@ class GamificationService:
             print(f"ERROR in get_dashboard_data: {e}")
             return {
                 'stats': {'current_level': 1, 'points_total': 0, 'rank_name': 'Fehler', 'rank_color': 'gray',
-                          'xp_current': 0, 'xp_max': 1000},
+                          'xp_current': 0, 'xp_max': 1000, 'active_multiplier': 1.0},
                 'logs': []
             }
 
@@ -158,7 +180,7 @@ class GamificationService:
 
     @staticmethod
     def calculate_fairness_metrics():
-        print(">>> STARTE XP-NEUBERECHNUNG (Dynamic Mode) <<<")
+        print(">>> STARTE XP-NEUBERECHNUNG (Dynamic Mode + Shop Support) <<<")
         try:
             current_year = datetime.date.today().year
             start_of_year = datetime.date(current_year, 1, 1)
@@ -185,6 +207,24 @@ class GamificationService:
             except Exception as e:
                 print(f"WARNUNG: Konnte Feiertage nicht laden ({e}).")
 
+            # --- NEU: PERFORMANCE CACHE FÜR SHOP ITEMS ---
+            # Wir laden alle Effekte einmalig, anstatt für jede Schicht eine Query zu senden.
+            # Das beschleunigt die Berechnung massiv.
+            effects_cache = {}  # Dict: user_id -> List of items
+            try:
+                all_effects = UserActiveEffect.query.all()
+                for eff in all_effects:
+                    if eff.user_id not in effects_cache:
+                        effects_cache[eff.user_id] = []
+                    effects_cache[eff.user_id].append({
+                        'start': eff.start_date,
+                        'end': eff.end_date,
+                        'value': eff.multiplier_value
+                    })
+            except Exception as e:
+                print(f"WARNUNG: Konnte Shop-Effekte nicht laden ({e}).")
+            # ---------------------------------------------
+
             # B. RESET
             db.session.query(GamificationLog).filter(
                 GamificationLog.action_type.in_(['shift', 'bonus_health']),
@@ -210,8 +250,9 @@ class GamificationService:
 
                 user_ids.add(shift.user_id)
 
-                # Übergabe der Settings an die Berechnung
-                points, desc = GamificationService._calc_shift_points(shift, abbr, holiday_dates, settings)
+                # Übergabe der Settings UND des Effects-Cache an die Berechnung
+                points, desc = GamificationService._calc_shift_points(shift, abbr, holiday_dates, settings,
+                                                                      effects_cache)
 
                 if points > 0:
                     log = GamificationLog(
@@ -260,9 +301,9 @@ class GamificationService:
             raise e
 
     @staticmethod
-    def _calc_shift_points(shift, abbr, holiday_dates, settings):
+    def _calc_shift_points(shift, abbr, holiday_dates, settings, effects_cache=None):
         """
-        Berechnet Punkte basierend auf den dynamischen Einstellungen.
+        Berechnet Punkte basierend auf den dynamischen Einstellungen UND Shop-Boostern.
         """
         wd = shift.date.weekday()
         is_weekend = wd >= 5
@@ -293,6 +334,27 @@ class GamificationService:
             # Multiplikator aus Settings
             points = int(points * settings.xp_holiday_mult)
             desc += f" (Feiertag x{settings.xp_holiday_mult})"
+
+        # --- NEU: SHOP MULTIPLIKATOR ANWENDEN ---
+        # Wir prüfen im Cache, ob der User zum Zeitpunkt der Schicht einen Booster hatte
+        multiplier = 1.0
+        if effects_cache and shift.user_id in effects_cache:
+            shift_datetime = datetime.datetime.combine(shift.date, datetime.time(12, 0))
+            for eff in effects_cache[shift.user_id]:
+                # Datumsvergleich: War der Effekt zum Schichtzeitpunkt aktiv?
+                # Wir konvertieren sicherheitshalber Start/Ende auf Datetime falls nötig
+                start = eff['start']
+                end = eff['end']
+                if start <= shift_datetime <= end:
+                    if eff['value'] > 1.0:
+                        multiplier += (eff['value'] - 1.0)
+
+        if multiplier > 1.0:
+            original_points = points
+            points = int(points * multiplier)
+            bonus = points - original_points
+            desc += f" [Booster +{bonus}]"
+        # ----------------------------------------
 
         return points, f"{desc} ({abbr.upper()})"
 

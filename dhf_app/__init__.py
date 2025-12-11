@@ -21,19 +21,19 @@ def create_app(config_name='default'):
     login_manager.init_app(app)
     mail.init_app(app)
 
-    # 3. CORS initialisieren
+    # 3. CORS initialisieren (Wie zuvor mit dem Fix in utils.py)
     CORS(app, supports_credentials=True, origins=["http://46.224.63.203", "http://ihre-domain.de", "*"])
 
-    # Modelle laden
+    # 4. Modelle laden (ALLE MÜSSEN HIER SEIN, DAMIT SQLALCHEMY SIE KENNT)
     from . import models
-    # --- NEU: Gamification Models laden (damit db.create_all sie erkennt) ---
     from . import models_gamification
+    from . import models_shop  # <--- KRITISCH: Muss geladen werden!
 
     @login_manager.user_loader
     def load_user(user_id):
         return db.session.get(models.User, int(user_id))
 
-    # 4. Blueprints registrieren
+    # 5. Blueprints registrieren (OHNE URL PREFIX, da die Routen schon /api/... enthalten)
     from .routes_auth import auth_bp
     app.register_blueprint(auth_bp)
 
@@ -58,47 +58,46 @@ def create_app(config_name='default'):
     from .routes_statistics import statistics_bp
     app.register_blueprint(statistics_bp)
 
-    # --- NEU: Feiertage & Sondertermine Blueprint ---
     from .routes_special_dates import special_dates_bp
     app.register_blueprint(special_dates_bp)
 
-    # --- NEU: E-Mails Blueprint ---
     from .routes_emails import emails_bp
     app.register_blueprint(emails_bp)
 
-    # --- NEU: Varianten Blueprint ---
     from .routes_variants import variants_bp
     app.register_blueprint(variants_bp)
 
-    # --- NEU: Gamification Blueprint ---
-    # Diese Datei erstellen wir als nächstes!
     from .routes_gamification import gamification_bp
     app.register_blueprint(gamification_bp)
 
-    # --- KORREKTUR: Schicht-Änderungsanträge ---
-    # Wir importieren aus dem Unterordner "routes"
-    from .routes.shift_change_routes import shift_change_bp
-    # HIER WAR DAS PROBLEM: Der url_prefix fehlte!
-    app.register_blueprint(shift_change_bp, url_prefix='/api/shift-change')
+    # --- KRITISCH: SHOP BLUEPRINT HINZUFÜGEN ---
+    from .routes_shop import shop_bp
+    app.register_blueprint(shop_bp)  # KEIN URL-PREFIX!
 
-    # --- NEU: Balance / Statistik Routes (Wochenend-Bilanz) ---
-    # Importiert den neuen Service-Endpoint aus routes/balance_routes.py
+    # --- Schicht-Änderungsanträge ---
+    from .routes.shift_change_routes import shift_change_bp
+    app.register_blueprint(shift_change_bp, url_prefix='/api/shift-change')  # Korrekter Prefix hier
+
+    # --- Balance / Statistik Routes ---
     from .routes.balance_routes import balance_bp
     app.register_blueprint(balance_bp)
 
-
-    # 5. Startup-Logik
+    # 6. Startup-Logik (Innerhalb des App Context)
     with app.app_context():
+        # Alle Tabellen erstellen/prüfen (jetzt, da alle Models geladen sind)
         db.create_all()
         create_default_roles(db)
         create_default_holidays(db)
         create_default_settings(db)
         create_default_email_templates(db)
+        # NEU: Standard-Items für den Shop anlegen
+        create_default_shop_items(db)
 
     return app
 
 
 # --- Startup-Funktionen ---
+# (Die folgenden Funktionen sind unverändert von Ihren Vorgaben)
 
 def create_default_roles(db_instance):
     from .models import Role
@@ -215,3 +214,43 @@ def create_default_email_templates(db_instance):
     except Exception as e:
         db_instance.session.rollback()
         print(f"Fehler beim Erstellen der Email-Vorlagen: {e}")
+
+
+def create_default_shop_items(db_instance):
+    """
+    Erstellt Standard-Shop-Items, falls der Shop leer ist.
+    """
+    from .models_shop import ShopItem
+    try:
+        if ShopItem.query.count() == 0:
+            # Item 1: Der Booster
+            booster = ShopItem(
+                name="XP Booster (7 Tage)",
+                description="+50% mehr Erfahrungspunkte für eine Woche.",
+                icon_class="fas fa-bolt",
+                cost_xp=500,
+                item_type="xp_multiplier",
+                multiplier_value=1.5,
+                duration_days=7,
+                is_active=True
+            )
+            db_instance.session.add(booster)
+
+            # Item 2: Kaffee (Kosmetisch / Karma)
+            coffee = ShopItem(
+                name="Virtueller Kaffee",
+                description="Zeig deine Wertschätzung für Kollegen.",
+                icon_class="fas fa-coffee",
+                cost_xp=50,
+                item_type="cosmetic",
+                multiplier_value=1.0,
+                duration_days=0,
+                is_active=True
+            )
+            db_instance.session.add(coffee)
+
+            db_instance.session.commit()
+            print("Standard-Shop-Items wurden erstellt.")
+    except Exception as e:
+        db_instance.session.rollback()
+        print(f"Fehler beim Erstellen der Shop-Items: {e}")

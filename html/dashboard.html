@@ -235,7 +235,6 @@
             margin-bottom: 20px;
         }
 
-        /* NEU: Toggle Button Styles */
         .gamification-toggle {
             display: flex;
             background: rgba(0,0,0,0.3);
@@ -303,6 +302,42 @@
         }
         .gamification-log-item:last-child { border-bottom: none; }
         .points-positive { color: #2ecc71; font-weight: bold; }
+
+        /* --- SHOP STYLES --- */
+        .shop-grid {
+            display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 20px;
+        }
+        .shop-item-card {
+            background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1);
+            border-radius: 10px; padding: 20px; text-align: center;
+            transition: transform 0.2s, box-shadow 0.2s; display: flex; flex-direction: column;
+            justify-content: space-between;
+        }
+        .shop-item-card:hover {
+            transform: translateY(-5px); box-shadow: 0 5px 15px rgba(0,0,0,0.3); border-color: #3498db;
+        }
+        .shop-icon { font-size: 2.5rem; color: #3498db; margin-bottom: 15px; }
+        .shop-title { font-weight: 600; margin-bottom: 5px; color: #fff; font-size: 1.1rem; }
+        .shop-desc { font-size: 0.9rem; color: #bdc3c7; margin-bottom: 15px; flex-grow: 1; }
+        .shop-price { font-weight: bold; color: #FFD700; margin-bottom: 15px; font-size: 1.1rem; }
+        .buy-btn {
+            background: #27ae60; color: white; border: none; padding: 8px; border-radius: 5px;
+            cursor: pointer; width: 100%; transition: background 0.2s; font-weight: 600;
+        }
+        .buy-btn:hover { background: #2ecc71; }
+        .buy-btn:disabled { background: #555; cursor: not-allowed; color: #aaa; }
+
+        .active-effect-badge {
+            background: #e74c3c; color: white; padding: 10px; border-radius: 8px; margin-bottom: 20px;
+            display: flex; align-items: center; gap: 10px; border: 1px solid #c0392b;
+        }
+
+        .admin-price-input {
+            width: 60px; padding: 3px; background: #333; border: 1px solid #555; color: #fff; border-radius: 3px; margin-right: 5px;
+        }
+        .admin-price-save {
+            font-size: 0.8rem; background: #666; border: none; color: white; padding: 3px 6px; cursor: pointer; border-radius: 3px;
+        }
 
         @media (max-width: 768px) {
             .card { grid-template-columns: 1fr; }
@@ -403,6 +438,9 @@
                     <button id="btn-view-ranking" onclick="switchGamificationView('ranking')">
                         <i class="fas fa-trophy"></i> Rangliste
                     </button>
+                    <button id="btn-view-shop" onclick="switchGamificationView('shop')">
+                        <i class="fas fa-shopping-cart"></i> Shop
+                    </button>
                     <button id="btn-view-history" onclick="switchGamificationView('history')">
                         <i class="fas fa-history"></i> Historie
                     </button>
@@ -462,6 +500,15 @@
                                 <tr><td colspan="4" style="text-align:center; padding:20px; color:#7f8c8d;">Lade Rangliste...</td></tr>
                             </tbody>
                         </table>
+                    </div>
+                </div>
+            </div>
+
+            <div id="view-shop" style="display: none; grid-column: 1 / -1;">
+                <div class="card-section">
+                    <div id="active-effects-container"></div>
+                    <div class="shop-grid" id="shop-items-grid">
+                        <p style="color:#bdc3c7;">Lade Shop Angebote...</p>
                     </div>
                 </div>
             </div>
@@ -576,7 +623,7 @@
     </div>
 
     <script>
-        // --- START: PARTIKEL-ANIMATION ---
+        // --- START: PARTIKEL-ANIMATION (Unverändert) ---
         const canvas = document.getElementById('particle-canvas');
         const ctx = canvas.getContext('2d');
         const nodeColor = '#3498db';

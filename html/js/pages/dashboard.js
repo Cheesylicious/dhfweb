@@ -40,6 +40,21 @@ const gamificationLogList = document.getElementById('gamification-log-list');
 // --- Balance Elemente (Admin Dashboard) ---
 const balanceCard = document.getElementById('balance-card');
 
+
+// --- NEUE HELFER FUNKTION ---
+// Escape-Funktion, um HTML-Sonderzeichen zu verhindern (z.B. bei 'Grund' Text)
+const escapeHtml = (unsafe) => {
+    if (!unsafe) return '';
+    return unsafe
+         .replace(/&/g, "&amp;")
+         .replace(/</g, "&lt;")
+         .replace(/>/g, "&gt;")
+         .replace(/"/g, "&quot;")
+         .replace(/'/g, "&#039;");
+}
+// --- ENDE NEUE HELFER FUNKTION ---
+
+
 // --- 1. Authentifizierung & Init ---
 try {
     const authData = initAuthCheck();
@@ -114,25 +129,29 @@ try {
     console.error("Fehler bei der Initialisierung von dashboard.js:", e.message);
 }
 
-// --- NEU: Umschalt-Funktion (Persönlich / Rangliste / Historie) ---
+// --- NEU: Umschalt-Funktion (Persönlich / Rangliste / Shop / Historie) ---
 window.switchGamificationView = async function(view) {
     const viewPersonal = document.getElementById('view-personal');
     const viewRanking = document.getElementById('view-ranking');
     const viewHistory = document.getElementById('view-history');
+    const viewShop = document.getElementById('view-shop'); // NEU
 
     const btnPersonal = document.getElementById('btn-view-personal');
     const btnRanking = document.getElementById('btn-view-ranking');
     const btnHistory = document.getElementById('btn-view-history');
+    const btnShop = document.getElementById('btn-view-shop'); // NEU
 
     // 1. Alle ausblenden
     if(viewPersonal) viewPersonal.style.display = 'none';
     if(viewRanking) viewRanking.style.display = 'none';
     if(viewHistory) viewHistory.style.display = 'none';
+    if(viewShop) viewShop.style.display = 'none';
 
     // 2. Buttons resetten
     if(btnPersonal) btnPersonal.classList.remove('active');
     if(btnRanking) btnRanking.classList.remove('active');
     if(btnHistory) btnHistory.classList.remove('active');
+    if(btnShop) btnShop.classList.remove('active');
 
     // 3. Ansicht wählen
     if (view === 'ranking') {
@@ -145,6 +164,11 @@ window.switchGamificationView = async function(view) {
         if(btnHistory) btnHistory.classList.add('active');
         await loadHistoryData();
 
+    } else if (view === 'shop') { // NEU
+        if(viewShop) viewShop.style.display = 'block';
+        if(btnShop) btnShop.classList.add('active');
+        await loadShopData();
+
     } else {
         // Persönlich (Default)
         if(viewPersonal) viewPersonal.style.display = 'contents';
@@ -152,7 +176,251 @@ window.switchGamificationView = async function(view) {
     }
 };
 
-// --- NEU: Admin Settings Logik ---
+// Globale Funktion für Admin Preis-Update
+window.updateShopPrice = async function(itemId) {
+    const input = document.getElementById(`price-input-${itemId}`);
+    if(!input) return;
+    const newPrice = input.value;
+
+    try {
+        const result = await apiFetch('/api/shop/update_price', 'POST', {
+            item_id: itemId,
+            new_price: newPrice
+        });
+
+        if(result.success) {
+            alert("Preis aktualisiert!");
+            loadShopData(); // Refresh UI
+        } else {
+            alert("Fehler: " + result.message);
+        }
+    } catch(e) {
+        alert("Update fehlgeschlagen: " + e.message);
+    }
+};
+
+// NEUE GLOBALE FUNKTION: Item aktivieren/deaktivieren
+window.toggleItemActiveStatus = async function(itemId, currentStatus, currentMessage, itemName) {
+    const newStatus = !currentStatus;
+    let message = '';
+
+    if (newStatus) {
+        // Wird aktiviert
+        if (!confirm(`Sicher, dass Sie das Item '${itemName}' wieder AKTIVIEREN möchten?`)) return;
+
+    } else {
+        // Wird deaktiviert
+        message = prompt(`Item '${itemName}' wird DEAKTIVIERT. Geben Sie eine Nachricht ein (z.B. "Wieder verfügbar ab 1. Jan"):`, currentMessage || '');
+        if (message === null) return; // Abbruch durch Admin
+
+        // Finaler Check, falls der Admin einen leeren Text eingegeben hat, aber bestätigen will
+        if (message.trim() === '') {
+            message = 'Aktuell nicht verfügbar.';
+        }
+
+        if (!confirm(`Item DEAKTIVIEREN mit Nachricht: "${message}"`)) return;
+    }
+
+    try {
+        const result = await apiFetch('/api/shop/toggle_active', 'POST', {
+            item_id: itemId,
+            is_active: newStatus,
+            message: message
+        });
+
+        if(result.success) {
+            alert(result.message);
+            loadShopData(); // UI aktualisieren
+        } else {
+            alert("Fehler: " + result.message);
+        }
+    } catch(e) {
+        alert("Operation fehlgeschlagen: " + e.message);
+    }
+};
+
+
+// --- NEU: Shop Funktionen ---
+async function loadShopData() {
+    const grid = document.getElementById('shop-items-grid');
+    const activeContainer = document.getElementById('active-effects-container');
+    if (!grid) return;
+
+    try {
+        // Wir laden Items vom neuen Endpunkt (auth via Cookie/Token)
+        const response = await apiFetch('/api/shop/items');
+        // Response Struktur: { items: [], active_effects: [], is_admin: bool }
+
+        const items = response.items;
+        const activeEffects = response.active_effects;
+        const userIsAdmin = response.is_admin; // Server Source of Truth
+
+        // 1. Aktive Effekte rendern
+        if(activeContainer) {
+            activeContainer.innerHTML = '';
+            if(activeEffects && activeEffects.length > 0) {
+                activeEffects.forEach(eff => {
+                    const badge = document.createElement('div');
+                    badge.className = 'active-effect-badge';
+                    badge.innerHTML = `
+                        <i class="fas fa-bolt" style="font-size:1.5em;"></i>
+                        <div>
+                            <strong>${eff.name} aktiv!</strong><br>
+                            <span style="font-size:0.9em;">Noch ${eff.days_left} Tage gültig (Boost: x${eff.multiplier})</span>
+                        </div>
+                    `;
+                    activeContainer.appendChild(badge);
+                });
+            }
+        }
+
+        // 2. Items rendern
+        grid.innerHTML = '';
+        if(!items || items.length === 0) {
+            grid.innerHTML = '<p>Aktuell keine Angebote verfügbar.</p>';
+            return;
+        }
+
+        // Wir brauchen das aktuelle Guthaben für die "Kaufen" Button Logik
+        // Hole das Profil, um sicher den aktuellen XP-Stand zu erhalten (Failsafe)
+        const prof = await apiFetch('/api/user/profile');
+        const currentXp = prof.experience_points || 0;
+
+        items.forEach(item => {
+            const card = document.createElement('div');
+            card.className = 'shop-item-card';
+
+            const canAfford = currentXp >= item.cost_xp;
+
+            // NEUE LOGIK FÜR INAKTIVIERTE ITEMS
+            const isDisabledByAdmin = !item.is_active;
+
+            // FIX: btnClass war nicht definiert. Hinzufügen:
+            const btnClass = 'buy-btn';
+
+            // Wähle Farbe basierend auf Status
+            const itemColor = isDisabledByAdmin ? '#e74c3c' : '#3498db';
+
+            const priceStatus = isDisabledByAdmin
+                ? `<span style="color:#e74c3c; font-weight:bold;">NICHT VERFÜGBAR</span>`
+                : `<span style="color:#FFD700;">${item.cost_xp} <i class="fas fa-star"></i> XP</span>`;
+
+            const btnText = isDisabledByAdmin
+                ? 'Deaktiviert'
+                : (canAfford ? `Kaufen für ${item.cost_xp} XP` : `Benötigt ${item.cost_xp} XP`);
+
+            const disabledAttr = isDisabledByAdmin || !canAfford ? 'disabled' : '';
+            const bgStyle = isDisabledByAdmin ? 'background:#333; cursor:not-allowed; border: 1px dashed #e74c3c;' : '';
+
+            // Admin Edit Inputs & Toggle Button
+            let adminHtml = '';
+            let deactMessageHtml = '';
+
+            // --- KRITISCHE KORREKTUR DER ANZEIGE ---
+            if (isDisabledByAdmin) {
+                const messageText = item.deactivation_message || 'Aktuell nicht verfügbar.';
+                const escapedMessage = escapeHtml(messageText); // NEUE HELFER FUNKTION
+
+                deactMessageHtml = `
+                    <div style="background:rgba(231, 76, 60, 0.2); border-radius:5px; padding:10px; margin-bottom:10px; font-size:12px; color:#e74c3c; text-align:left;">
+                        <strong>Grund:</strong> ${escapedMessage}
+                    </div>
+                `;
+            }
+            // --- ENDE KRITISCHE KORREKTUR ---
+
+            if (userIsAdmin) {
+                // Admin Button Logik
+                const toggleBtnColor = isDisabledByAdmin ? 'background:#2ecc71;' : 'background:#e74c3c;';
+                const toggleBtnText = isDisabledByAdmin ? '✅ Aktivieren' : '❌ Deaktivieren';
+
+                // Escape simple quotes for inline JS function call
+                const cleanMessage = item.deactivation_message ? item.deactivation_message.replace(/'/g, "\\'") : '';
+                const cleanName = item.name ? item.name.replace(/'/g, "\\'") : '';
+
+
+                adminHtml = `
+                    <div style="margin-top:10px; border-top:1px solid #444; padding-top:10px; text-align:center;">
+                        <button style="${toggleBtnColor} color:white; border:none; padding: 5px 10px; border-radius: 5px; cursor:pointer; width: 100%;"
+                            onclick="window.toggleItemActiveStatus(${item.id}, ${item.is_active}, '${cleanMessage}', '${cleanName}')">
+                            ${toggleBtnText}
+                        </button>
+                    </div>
+                    <div style="margin-top:10px; text-align:left;">
+                        <small style="color:#aaa;">Preis:</small>
+                        <input type="number" id="price-input-${item.id}" value="${item.cost_xp}" class="admin-price-input">
+                        <button onclick="window.updateShopPrice(${item.id})" class="admin-price-save">OK</button>
+                    </div>
+                `;
+            }
+
+            card.innerHTML = `
+                <div>
+                    <div class="shop-icon" style="color:${itemColor};"><i class="${item.icon_class}"></i></div>
+                    <div class="shop-title">${item.name}</div>
+                    ${deactMessageHtml}
+                    <div class="shop-desc">${item.description}</div>
+                </div>
+                <div>
+                    <div class="shop-price">${priceStatus}</div>
+                    <button class="${btnClass}" style="${bgStyle}" ${disabledAttr} onclick="window.buyShopItem(${item.id})">
+                        ${btnText}
+                    </button>
+                    ${adminHtml}
+                </div>
+            `;
+            grid.appendChild(card);
+        });
+
+    } catch (e) {
+        grid.innerHTML = `<p style="color:#e74c3c">Laden fehlgeschlagen: ${e.message}</p>`;
+    }
+}
+
+// Globale Funktion für den Kaufen-Button
+window.buyShopItem = async function(itemId) {
+    if(!confirm("Möchtest du dieses Item wirklich kaufen? Deine XP werden abgezogen.")) return;
+
+    try {
+        const result = await apiFetch('/api/shop/buy', 'POST', { item_id: itemId });
+
+        if (result.success) {
+            alert(result.message);
+            // Reload Shop & Gamification Data um neue XP anzuzeigen
+            await loadShopData();
+            await loadGamificationData(); // Aktualisiert XP Balken oben
+        } else {
+            alert("Fehler: " + result.message);
+        }
+    } catch (e) {
+        alert("Kauf fehlgeschlagen: " + e.message);
+    }
+};
+
+// Globale Funktion für Admin Preis-Update
+window.updateShopPrice = async function(itemId) {
+    const input = document.getElementById(`price-input-${itemId}`);
+    if(!input) return;
+    const newPrice = input.value;
+
+    try {
+        const result = await apiFetch('/api/shop/update_price', 'POST', {
+            item_id: itemId,
+            new_price: newPrice
+        });
+
+        if(result.success) {
+            alert("Preis aktualisiert!");
+            loadShopData(); // Refresh UI
+        } else {
+            alert("Fehler: " + result.message);
+        }
+    } catch(e) {
+        alert("Update fehlgeschlagen: " + e.message);
+    }
+};
+
+// --- NEU: Admin Settings Logik (bestehend) ---
 window.openGamificationSettings = async function() {
     const modal = document.getElementById('gamification-settings-modal');
     if(modal) modal.style.display = 'block';
@@ -454,12 +722,15 @@ async function loadGamificationData() {
         // Level & XP
         if(userLevelEl) userLevelEl.textContent = data.stats.current_level;
 
-        const currentLevelXp = data.stats.points_total % 1000;
-        if(xpDisplayEl) xpDisplayEl.textContent = `${currentLevelXp} / 1000 XP`;
-        if(xpProgressEl) xpProgressEl.style.width = `${(currentLevelXp / 1000) * 100}%`;
+        // NEU: XP Max dynamisch (aus API) oder fix 1000
+        const xpMax = data.stats.xp_max || 1000;
+        const currentLevelXp = data.stats.xp_current;
+
+        if(xpDisplayEl) xpDisplayEl.textContent = `${currentLevelXp} / ${xpMax} XP`;
+        if(xpProgressEl) xpProgressEl.style.width = `${(currentLevelXp / xpMax) * 100}%`;
 
         // Balance
-        let balanceVal = data.stats.weekend_balance;
+        let balanceVal = data.stats.weekend_balance || 0;
         let displayVal = Math.max(-48, Math.min(48, balanceVal));
 
         if(balanceMarkerEl) {
@@ -505,6 +776,23 @@ async function loadGamificationData() {
                 });
             } else {
                 gamificationLogList.innerHTML = '<p style="color: #777; font-style: italic; font-size:13px;">Noch keine Punkte gesammelt.</p>';
+            }
+        }
+
+        // NEU: Anzeige für aktiven Multiplikator im Header der Karte
+        if (data.stats.active_multiplier && data.stats.active_multiplier > 1.0) {
+            // Wir fügen ein kleines Badge neben dem Level hinzu, falls noch nicht da
+            if (!document.getElementById('boost-badge')) {
+                const badge = document.createElement('span');
+                badge.id = 'boost-badge';
+                badge.style.background = '#e74c3c';
+                badge.style.color = 'white';
+                badge.style.padding = '2px 8px';
+                badge.style.borderRadius = '12px';
+                badge.style.fontSize = '12px';
+                badge.style.marginLeft = '10px';
+                badge.innerHTML = `<i class="fas fa-bolt"></i> Boost x${data.stats.active_multiplier}`;
+                document.querySelector('.gamification-header').appendChild(badge);
             }
         }
 
@@ -738,7 +1026,7 @@ if (saveManualLogBtn) {
 
 window.onclick = (event) => {
     // Schließen aller möglichen Modals bei Klick außerhalb
-    const rModal = document.getElementById('ranking-modal'); // (Falls noch Reste da sind)
+    const rModal = document.getElementById('ranking-modal');
     const manualModal = document.getElementById('manual-update-modal');
     const newsEditModal = document.getElementById('news-edit-modal');
     const settingsModal = document.getElementById('gamification-settings-modal');

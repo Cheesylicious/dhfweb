@@ -1,6 +1,8 @@
 from .extensions import db
 from flask_login import UserMixin
 from datetime import datetime
+# NEU: Importiere das Gamification Model (muss hier stehen, da es in to_dict() verwendet wird)
+from .models_gamification import UserGamificationStats
 
 
 # --- 5. Datenbank-Modelle ---
@@ -45,6 +47,9 @@ class User(db.Model, UserMixin):
     # --- Statistik-Berechtigung ---
     can_see_statistics = db.Column(db.Boolean, default=False, nullable=False)
 
+    # HINWEIS: Die Beziehung (relationship) zu den Stats wird durch den backref
+    # in models_gamification.py automatisch erstellt (Name: self.gamification_stats)
+
     __table_args__ = (db.UniqueConstraint('vorname', 'name', name='_vorname_name_uc'),)
 
     def safe_date_iso(self, date_obj):
@@ -52,6 +57,17 @@ class User(db.Model, UserMixin):
         return None
 
     def to_dict(self):
+        # Initialisiere XP-Werte
+        current_xp = 0
+        current_level = 1
+        current_rank = "Anwärter"
+
+        # KRITISCHE ERGÄNZUNG: Hole XP über die relationship (backref: gamification_stats)
+        if self.gamification_stats:
+            current_xp = self.gamification_stats.points_total
+            current_level = self.gamification_stats.current_level
+            current_rank = self.gamification_stats.current_rank
+
         return {
             "id": self.id, "vorname": self.vorname, "name": self.name, "email": self.email,
             "role": self.role.to_dict() if self.role else None, "role_id": self.role_id,
@@ -66,7 +82,13 @@ class User(db.Model, UserMixin):
             "shift_plan_visible": self.shift_plan_visible,
             "shift_plan_sort_order": self.shift_plan_sort_order,
             "force_password_change": self.force_password_change,
-            "can_see_statistics": self.can_see_statistics
+            "can_see_statistics": self.can_see_statistics,
+
+            # --- KRITISCHE ERGÄNZUNG FÜR DEN SHOP & DASHBOARD ---
+            "experience_points": current_xp,  # Das Feld, das das Frontend sucht
+            "current_level": current_level,
+            "current_rank": current_rank
+            # ------------------------------------
         }
 
 
@@ -114,7 +136,6 @@ class ShiftType(db.Model):
                 }
 
 
-# --- NEU: Plan-Varianten Modell ---
 class PlanVariant(db.Model):
     """
     Speichert Metadaten für Plan-Varianten (z.B. 'Variante A' für Jan 2025).
