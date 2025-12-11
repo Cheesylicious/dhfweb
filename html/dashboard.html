@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">  <title>Dashboard - DHF-Planer</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 
     <script>
         // Prüft sofort, ob der Benutzer ein "Besucher" ist und leitet direkt um.
@@ -12,139 +13,75 @@
                 window.location.href = 'schichtplan.html';
             }
         } catch (e) {
-            // Ignoriere Fehler, wenn localStorage leer ist, der Login-Check kommt später
+            // Ignoriere Fehler
         }
     </script>
 
     <style>
-        /* Import einer modernen Schriftart */
         @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap');
 
         body {
             font-family: 'Poppins', sans-serif;
             margin: 0;
-            background: #1a1a1a; /* Standard-Textfarbe auf Weiß */
-            color: #ffffff; /* Standard-Textfarbe auf Weiß */
-            overflow-x: hidden; /* Verhindert horizontales Scrollen */
+            background: #1a1a1a;
+            color: #ffffff;
+            overflow-x: hidden;
         }
 
-        /* Das Canvas-Element für die Animation */
         #particle-canvas {
             position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            z-index: -1; /* Liegt hinter allem */
+            top: 0; left: 0; width: 100%; height: 100%;
+            z-index: -1;
         }
 
-        /* Header (Glas-Effekt) */
         header {
             background: rgba(255, 255, 255, 0.05);
             border-bottom: 1px solid rgba(255, 255, 255, 0.1);
             backdrop-filter: blur(10px);
             -webkit-backdrop-filter: blur(10px);
-
             padding: 15px 30px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            /* (box-shadow entfernt, da Glas-Effekt) */
+            display: flex; justify-content: space-between; align-items: center;
         }
 
-        header h1 {
-            margin: 0;
-            color: #ffffff; /* Angepasst */
-            font-size: 24px;
-        }
+        header h1 { margin: 0; color: #ffffff; font-size: 24px; }
 
-        header nav {
-            display: flex;
-            gap: 20px;
-            align-items: center; /* (NEU: Für Badge-Ausrichtung) */
-        }
+        header nav { display: flex; gap: 20px; align-items: center; }
 
         header nav a {
-            text-decoration: none;
-            color: #bdc3c7; /* Angepasst (helles Grau) */
-            font-weight: 500;
-            font-size: 16px;
-            padding: 10px;
-            border-radius: 5px;
+            text-decoration: none; color: #bdc3c7; font-weight: 500; font-size: 16px;
+            padding: 10px; border-radius: 5px;
             transition: background-color 0.3s, color 0.3s;
-            display: inline-flex; /* (NEU: Für Badge-Ausrichtung) */
-            align-items: center;
+            display: inline-flex; align-items: center;
         }
 
         header nav a.active, header nav a:hover {
-            background-color: rgba(255, 255, 255, 0.1); /* Leichter Glas-Hover */
-            color: #ffffff; /* Angepasst */
-        }
-        
-        /* --- NEU: Sperr-Klasse für Navigation (wenn Nachricht nicht bestätigt) --- */
-        body.nav-locked header nav a {
-            pointer-events: none;
-            opacity: 0.5;
-            filter: grayscale(1);
+            background-color: rgba(255, 255, 255, 0.1); color: #ffffff;
         }
 
-        #user-info {
-            display: flex;
-            align-items: center;
-            gap: 15px;
-            color: #bdc3c7; /* Angepasst */
-        }
+        body.nav-locked header nav a { pointer-events: none; opacity: 0.5; filter: grayscale(1); }
 
-        /* Logout-Button (Design bleibt, Hover-Effekt angepasst) */
+        #user-info { display: flex; align-items: center; gap: 15px; color: #bdc3c7; }
+
         #logout-btn {
-            background: #e74c3c;
-            color: white;
-            padding: 10px 15px;
-            border: none;
-            border-radius: 5px;
-            cursor: pointer;
-            font-size: 15px;
-            transition: background-color 0.3s;
+            background: #e74c3c; color: white; padding: 10px 15px; border: none;
+            border-radius: 5px; cursor: pointer; font-size: 15px; transition: background-color 0.3s;
         }
-        #logout-btn:hover {
-            background: #c0392b;
-        }
+        #logout-btn:hover { background: #c0392b; }
 
-        /* --- NEU: Feedback Button Styles --- */
         .report-btn {
-            background: #3498db;
-            color: white;
-            padding: 10px 15px;
-            border: none;
-            border-radius: 5px;
-            cursor: pointer;
-            font-size: 15px;
+            background: #3498db; color: white; padding: 10px 15px; border: none;
+            border-radius: 5px; cursor: pointer; font-size: 15px; margin-right: 15px;
             transition: background-color 0.3s;
-            margin-right: 15px;
         }
-        .report-btn:hover {
-            background: #2980b9;
-        }
+        .report-btn:hover { background: #2980b9; }
 
         .nav-badge {
-            background: #e74c3c;
-            color: white;
-            font-size: 10px;
-            font-weight: 600;
-            padding: 2px 5px;
-            border-radius: 5px;
-            margin-left: 8px; /* (Angepasst für besseren Abstand) */
-            display: none; /* (Wird per JS angezeigt) */
-        }
-        /* --- ENDE NEU --- */
-
-        main {
-            padding: 30px;
-            max-width: 1200px;
-            margin: auto;
+            background: #e74c3c; color: white; font-size: 10px; font-weight: 600;
+            padding: 2px 5px; border-radius: 5px; margin-left: 8px; display: none;
         }
 
-        /* Card (Glas-Effekt von index.html übernommen) */
+        main { padding: 30px; max-width: 1200px; margin: auto; }
+
         .card {
             background: rgba(255, 255, 255, 0.05);
             border: 1px solid rgba(255, 255, 255, 0.1);
@@ -153,260 +90,222 @@
             box-shadow: 0 4px 30px rgba(0, 0, 0, 0.2);
             border-radius: 10px;
             padding: 30px;
-            display: grid; /* NEU: Grid für 2-Spalten-Layout */
-            grid-template-columns: 1fr 1fr;
-            gap: 30px;
-            align-items: start;
+            display: grid; grid-template-columns: 1fr 1fr; gap: 30px; align-items: start;
+            margin-bottom: 30px;
         }
 
-        /* --- NEU: Update Log Styles --- */
-        .card-section {
-            padding: 0;
-            display: flex;
-            flex-direction: column;
-            height: 100%;
-        }
-        
-        /* --- NEU: News Box Styles --- */
+        .card.full-width { grid-template-columns: 1fr; }
+
+        .card-section { padding: 0; display: flex; flex-direction: column; height: 100%; }
+
         #news-container {
-            background: rgba(0,0,0,0.2);
-            border: 1px solid #444;
-            border-radius: 8px;
-            padding: 20px;
-            margin-top: 15px;
-            min-height: 200px;
-            position: relative;
+            background: rgba(0,0,0,0.2); border: 1px solid #444; border-radius: 8px;
+            padding: 20px; margin-top: 15px; min-height: 200px; position: relative;
             transition: border-color 0.3s, box-shadow 0.3s;
         }
-        
-        /* Roter Rahmen wenn ungelesen */
-        #news-container.unread {
-            border: 2px solid #e74c3c;
-            box-shadow: 0 0 15px rgba(231, 76, 60, 0.3);
-        }
-        
+        #news-container.unread { border: 2px solid #e74c3c; box-shadow: 0 0 15px rgba(231, 76, 60, 0.3); }
+
         #news-text {
-            white-space: pre-wrap; /* Zeilenumbrüche erhalten */
-            color: #ecf0f1;
-            font-size: 15px;
-            line-height: 1.6;
-            margin-bottom: 20px;
-        }
-        
-        .news-footer {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-top: auto;
-            border-top: 1px solid rgba(255,255,255,0.1);
-            padding-top: 15px;
-        }
-        
-        .ack-wrapper {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-        
-        .ack-wrapper input[type="checkbox"] {
-            width: 20px;
-            height: 20px;
-            cursor: pointer;
-            accent-color: #2ecc71;
-        }
-        
-        .ack-label {
-            color: #bdc3c7;
-            font-size: 14px;
-            cursor: pointer;
-        }
-        
-        #news-admin-btn {
-            font-size: 12px;
-            padding: 5px 10px;
-            background: rgba(255,255,255,0.1);
-            border: 1px solid #555;
-            color: #aaa;
-        }
-        #news-admin-btn:hover {
-            background: rgba(255,255,255,0.2);
-            color: white;
+            white-space: pre-wrap; color: #ecf0f1; font-size: 15px; line-height: 1.6; margin-bottom: 20px;
         }
 
-        #update-log-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 5px;
+        .news-footer {
+            display: flex; justify-content: space-between; align-items: center;
+            margin-top: auto; border-top: 1px solid rgba(255,255,255,0.1); padding-top: 15px;
         }
-        #update-log-header h2 {
-             margin: 0;
-             margin-bottom: 0px !important;
+
+        .ack-wrapper { display: flex; align-items: center; gap: 10px; }
+        .ack-wrapper input[type="checkbox"] { width: 20px; height: 20px; cursor: pointer; accent-color: #2ecc71; }
+        .ack-label { color: #bdc3c7; font-size: 14px; cursor: pointer; }
+
+        #news-admin-btn {
+            font-size: 12px; padding: 5px 10px; background: rgba(255,255,255,0.1);
+            border: 1px solid #555; color: #aaa;
         }
+        #news-admin-btn:hover { background: rgba(255,255,255,0.2); color: white; }
+
+        #update-log-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 5px; }
+        #update-log-header h2 { margin: 0; margin-bottom: 0px !important; }
+
         .btn-secondary {
-            background: #6c757d;
-            color: white;
-            padding: 8px 12px;
-            border: none;
-            border-radius: 5px;
-            cursor: pointer;
-            font-size: 13px;
-            transition: opacity 0.3s;
+            background: #6c757d; color: white; padding: 8px 12px; border: none;
+            border-radius: 5px; cursor: pointer; font-size: 13px; transition: opacity 0.3s;
         }
         .btn-secondary:hover { opacity: 0.8; }
 
         #update-log-list {
-            list-style: none;
-            padding: 0;
-            margin: 15px 0 0 0;
-            max-height: 400px; /* Begrenzung der Höhe */
-            overflow-y: auto; /* Scrollbar, wenn nötig */
+            list-style: none; padding: 0; margin: 15px 0 0 0; max-height: 400px; overflow-y: auto;
         }
 
         .log-item {
-            padding: 10px 0;
-            border-bottom: 1px dashed rgba(255, 255, 255, 0.1);
-            color: #bdc3c7;
-            display: flex; /* NEU: Für Lösch-Button */
-            justify-content: space-between; /* NEU: Für Lösch-Button */
-            align-items: center; /* NEU: Für Lösch-Button */
+            padding: 10px 0; border-bottom: 1px dashed rgba(255, 255, 255, 0.1);
+            color: #bdc3c7; display: flex; justify-content: space-between; align-items: center;
         }
         .log-item:last-child { border-bottom: none; }
 
-        /* NEU: Container für Text und Lösch-Button */
-        .log-content {
-            flex-grow: 1;
-            padding-right: 15px;
-        }
+        .log-content { flex-grow: 1; padding-right: 15px; }
+        .log-area { font-weight: 600; color: #3498db; display: block; font-size: 14px; }
+        .log-date { font-size: 12px; color: #777; margin-top: 2px; display: block; }
 
-        .log-area {
-            font-weight: 600;
-            color: #3498db;
-            display: block;
-            font-size: 14px;
-        }
-        .log-date {
-            font-size: 12px;
-            color: #777;
-            margin-top: 2px;
-            display: block;
-        }
-
-        /* NEU: Lösch-Button Styling */
         .delete-log-btn {
-            background: none;
-            border: none;
-            color: #e74c3c; /* Rot */
-            font-size: 18px;
-            cursor: pointer;
-            padding: 0 5px;
-            opacity: 0.5;
-            transition: opacity 0.3s, transform 0.2s;
-            line-height: 1; /* Wichtig für vertikale Ausrichtung */
+            background: none; border: none; color: #e74c3c; font-size: 18px; cursor: pointer;
+            padding: 0 5px; opacity: 0.5; transition: opacity 0.3s, transform 0.2s; line-height: 1;
         }
-        .delete-log-btn:hover {
-            opacity: 1.0;
-            transform: scale(1.1);
-        }
-        /* --- ENDE NEU: Update Log Styles --- */
+        .delete-log-btn:hover { opacity: 1.0; transform: scale(1.1); }
 
-        /* --- Modal Styles (Glas-Effekt) --- */
+        .balance-table { width: 100%; border-collapse: collapse; margin-top: 15px; color: #ecf0f1; }
+        .balance-table th {
+            text-align: left; padding: 10px; border-bottom: 2px solid rgba(255,255,255,0.1);
+            font-weight: 600; color: #bdc3c7; font-size: 14px;
+        }
+        .balance-table td {
+            padding: 12px 10px; border-bottom: 1px solid rgba(255,255,255,0.05);
+            font-size: 14px; vertical-align: middle;
+        }
+        .balance-table tr:hover { background: rgba(255,255,255,0.05); }
+
+        .avatar-circle {
+            width: 35px; height: 35px; border-radius: 50%; background: #34495e; color: #ecf0f1;
+            display: inline-flex; align-items: center; justify-content: center; font-weight: bold;
+            font-size: 12px; margin-right: 10px; border: 1px solid rgba(255,255,255,0.2);
+        }
+
+        .table-progress {
+            background: rgba(255,255,255,0.1); border-radius: 10px; height: 8px; width: 100%; overflow: hidden;
+        }
+        .table-progress-bar { height: 100%; border-radius: 10px; transition: width 0.6s ease; }
+        .bg-green { background-color: #2ecc71; }
+        .bg-yellow { background-color: #f1c40f; }
+        .bg-red { background-color: #e74c3c; }
+        .text-green { color: #2ecc71; }
+        .text-yellow { color: #f1c40f; }
+        .text-red { color: #e74c3c; font-weight: bold; }
+
+        .loading-spinner {
+            border: 3px solid rgba(255,255,255,0.1); border-radius: 50%; border-top: 3px solid #3498db;
+            width: 30px; height: 30px; animation: spin 1s linear infinite; margin: 20px auto;
+        }
+        @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+        /* Modal Styles */
         .modal {
-            display: none;
-            position: fixed;
-            z-index: 100;
-            left: 0; top: 0;
-            width: 100%; height: 100%;
-            overflow: auto;
-            background-color: rgba(0,0,0,0.6);
+            display: none; position: fixed; z-index: 100; left: 0; top: 0; width: 100%; height: 100%;
+            overflow: auto; background-color: rgba(0,0,0,0.6);
         }
-
         .modal-content {
-            background: rgba(30, 30, 30, 0.8); /* Dunkleres Glas */
-            backdrop-filter: blur(10px);
-            -webkit-backdrop-filter: blur(10px);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-
-            margin: 15% auto;
-            padding: 25px;
-            width: 80%;
-            max-width: 500px;
-            border-radius: 8px;
-            box-shadow: 0 4px 30px rgba(0,0,0,0.4);
-            color: #ffffff;
+            background: rgba(30, 30, 30, 0.8); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1); margin: 15% auto; padding: 25px;
+            width: 80%; max-width: 500px; border-radius: 8px; box-shadow: 0 4px 30px rgba(0,0,0,0.4); color: #ffffff;
         }
-
         .modal-header {
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-            margin-bottom: 20px;
-            padding-bottom: 15px;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            display: flex; justify-content: space-between; align-items: center;
+            margin-bottom: 20px; padding-bottom: 15px; border-bottom: 1px solid rgba(255, 255, 255, 0.1);
         }
-
-        .modal-header h2 {
-            margin: 0;
-            color: #ffffff;
-            font-weight: 600;
-        }
-
-        .close {
-            color: #bdc3c7;
-            font-size: 28px;
-            font-weight: bold;
-            cursor: pointer;
-            transition: color 0.3s;
-        }
-        .close:hover {
-            color: #ffffff;
-        }
+        .modal-header h2 { margin: 0; color: #ffffff; font-weight: 600; }
+        .close { color: #bdc3c7; font-size: 28px; font-weight: bold; cursor: pointer; transition: color 0.3s; }
+        .close:hover { color: #ffffff; }
 
         .form-group { margin-bottom: 15px; }
-
-        .form-group label {
-            display: block;
-            margin-bottom: 8px;
-            color: #bdc3c7;
-            font-weight: 300;
-        }
-
+        .form-group label { display: block; margin-bottom: 8px; color: #bdc3c7; font-weight: 300; }
         .form-group input, .form-group textarea {
-            width: 98%;
-            padding: 10px;
-            box-sizing: border-box;
-            background: rgba(0, 0, 0, 0.2);
-            border: 1px solid #3498db;
-            border-radius: 5px;
-            color: #ffffff;
-            font-family: 'Poppins', sans-serif;
-            font-size: 14px;
+            width: 98%; padding: 10px; box-sizing: border-box; background: rgba(0, 0, 0, 0.2);
+            border: 1px solid #3498db; border-radius: 5px; color: #ffffff; font-family: 'Poppins', sans-serif; font-size: 14px;
         }
         .form-group textarea { resize: vertical; min-height: 80px; }
 
         .btn-primary {
-            background: #007bff;
-            color: white;
-            padding: 10px 15px;
-            border: none;
-            border-radius: 5px;
-            cursor: pointer;
-            font-size: 15px;
-            transition: opacity 0.3s;
+            background: #007bff; color: white; padding: 10px 15px; border: none;
+            border-radius: 5px; cursor: pointer; font-size: 15px; transition: opacity 0.3s;
         }
         .btn-primary:hover { opacity: 0.8; }
         #modal-status { margin-top: 10px; color: #e74c3c; font-weight: 500;}
-        /* --- ENDE Modal Styles --- */
 
-        .card h2 {
-            color: #ffffff;
-            font-weight: 600;
-            margin-top: 0;
+        .card h2 { color: #ffffff; font-weight: 600; margin-top: 0; }
+        .card h3 { color: #ffffff; font-weight: 500; margin-top: 0; margin-bottom: 10px; }
+        .card p { color: #bdc3c7; font-weight: 300; }
+
+        /* --- GAMIFICATION STYLES --- */
+        .gamification-header {
+            grid-column: 1 / -1;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+            padding-bottom: 15px;
+            margin-bottom: 20px;
         }
 
-        .card p {
+        /* NEU: Toggle Button Styles */
+        .gamification-toggle {
+            display: flex;
+            background: rgba(0,0,0,0.3);
+            border-radius: 20px;
+            padding: 3px;
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+        .gamification-toggle button {
+            background: transparent;
+            border: none;
             color: #bdc3c7;
-            font-weight: 300;
+            padding: 6px 15px;
+            border-radius: 15px;
+            cursor: pointer;
+            font-size: 13px;
+            transition: all 0.3s;
+            display: flex; align-items: center; gap: 6px;
+        }
+        .gamification-toggle button:hover { color: #fff; }
+        .gamification-toggle button.active {
+            background: #FFD700;
+            color: #000;
+            font-weight: 600;
+            box-shadow: 0 0 10px rgba(255, 215, 0, 0.3);
+        }
+
+        .level-badge {
+            background: linear-gradient(135deg, #f1c40f, #d35400);
+            color: #fff;
+            padding: 5px 15px;
+            border-radius: 20px;
+            font-weight: bold;
+            box-shadow: 0 0 10px rgba(241, 196, 15, 0.4);
+        }
+
+        .xp-container {
+            background: rgba(0,0,0,0.2); padding: 15px; border-radius: 8px; margin-bottom: 20px;
+        }
+        .xp-label { display: flex; justify-content: space-between; font-size: 13px; color: #bdc3c7; margin-bottom: 5px; }
+        .progress-bar-bg {
+            width: 100%; height: 10px; background: rgba(255,255,255,0.1); border-radius: 5px; overflow: hidden;
+        }
+        .progress-bar-fill {
+            height: 100%; background: #2ecc71; width: 0%; transition: width 1s ease-in-out;
+            box-shadow: 0 0 5px rgba(46, 204, 113, 0.5);
+        }
+
+        .fairness-box { background: rgba(0,0,0,0.2); padding: 15px; border-radius: 8px; }
+
+        .balance-meter {
+            height: 15px;
+            background: linear-gradient(90deg, #27ae60 0%, #2ecc71 30%, #f1c40f 50%, #e67e22 70%, #e74c3c 100%);
+            border-radius: 10px; margin: 15px 0 5px 0; position: relative;
+        }
+        .balance-marker {
+            position: absolute; top: -5px; left: 50%; width: 4px; height: 25px;
+            background: #fff; border: 1px solid #000; box-shadow: 0 0 5px rgba(0,0,0,0.5);
+            transition: left 0.5s ease-out;
+        }
+        .balance-scale { display: flex; justify-content: space-between; font-size: 10px; color: #7f8c8d; margin-top: 5px; }
+
+        .gamification-log-item {
+            display: flex; justify-content: space-between; align-items: center; padding: 8px 0;
+            border-bottom: 1px solid rgba(255,255,255,0.05); font-size: 13px;
+        }
+        .gamification-log-item:last-child { border-bottom: none; }
+        .points-positive { color: #2ecc71; font-weight: bold; }
+
+        @media (max-width: 768px) {
+            .card { grid-template-columns: 1fr; }
         }
     </style>
 </head>
@@ -420,15 +319,11 @@
             <a href="dashboard.html" class="active" id="nav-dashboard" style="display: none;">Dashboard</a>
             <a href="users.html" id="nav-users" style="display: none;">Benutzerverwaltung</a>
             <a href="emails.html" id="nav-emails" style="display: none;">E-Mails</a>
-
             <a href="logs.html" id="nav-logs" style="display: none;">Logs</a>
-
             <a href="feedback.html" id="nav-feedback" style="display: none;">
-                Meldungen
-                <span id="feedback-badge" class="nav-badge">0</span>
+                Meldungen <span id="feedback-badge" class="nav-badge">0</span>
             </a>
             <a href="statistik.html" id="nav-statistik" style="display: none;">Statistik</a>
-
             <a href="schichtplan.html">Schichtplan</a>
         </nav>
         <div id="user-info">
@@ -452,7 +347,7 @@
                          <button id="news-admin-btn" style="display: none;">✏️ Bearbeiten</button>
                     </div>
                 </div>
-                </div>
+            </div>
 
             <div class="card-section">
                 <div id="update-log-header">
@@ -462,6 +357,132 @@
                 <ul id="update-log-list">
                     <li>Lade Update-Historie...</li>
                 </ul>
+            </div>
+        </div>
+
+        <div class="card full-width" id="balance-card">
+            <div class="card-section">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                    <h2>⚖️ Wochenend-Jahresbilanz</h2>
+                    <span id="balance-year-badge" style="background: rgba(255,255,255,0.1); padding: 5px 10px; border-radius: 15px; font-size: 12px; color: #bdc3c7;">Lade Jahr...</span>
+                </div>
+                <p style="font-size: 13px; margin-bottom: 15px;">
+                    Zeigt die tatsächliche Wochenendbelastung (Samstage/Sonntage) im Verhältnis zu den möglichen Wochenenden seit Eintritt in diesem Jahr.
+                    <strong>Berücksichtigt nur Admins & Hundeführer.</strong>
+                </p>
+
+                <div id="balanceLoading" class="text-center py-5">
+                    <div class="loading-spinner"></div>
+                    <p class="small text-muted mt-2" style="text-align: center;">Analysiere Dienstpläne...</p>
+                </div>
+
+                <div id="balanceTableContainer" style="display: none; overflow-x: auto;">
+                    <table class="balance-table">
+                        <thead>
+                            <tr>
+                                <th style="width: 40%;">Mitarbeiter</th>
+                                <th style="text-align: center;">Quote</th>
+                                <th style="width: 30%;">Belastung</th>
+                            </tr>
+                        </thead>
+                        <tbody id="dashboardBalanceBody">
+                            </tbody>
+                    </table>
+                </div>
+
+                <div id="dashboardBalanceError" class="alert alert-danger m-3" style="display: none; color: #e74c3c;"></div>
+            </div>
+        </div>
+
+        <div class="card" id="gamification-card" style="display: none;">
+            <div class="gamification-header">
+                <div class="gamification-toggle">
+                    <button id="btn-view-personal" class="active" onclick="switchGamificationView('personal')">
+                        <i class="fas fa-user-astronaut"></i> Persönlich
+                    </button>
+                    <button id="btn-view-ranking" onclick="switchGamificationView('ranking')">
+                        <i class="fas fa-trophy"></i> Rangliste
+                    </button>
+                    <button id="btn-view-history" onclick="switchGamificationView('history')">
+                        <i class="fas fa-history"></i> Historie
+                    </button>
+                    <button id="btn-gamification-settings" style="display:none; color: #e74c3c;" onclick="openGamificationSettings()">
+                        <i class="fas fa-cog"></i>
+                    </button>
+                </div>
+                <div class="level-badge">Level <span id="user-level">1</span></div>
+            </div>
+
+            <div id="view-personal" style="display: contents;">
+                <div class="card-section">
+                    <div class="xp-container">
+                        <div class="xp-label">
+                            <span>Erfahrungspunkte (XP)</span>
+                            <span id="xp-display">0 / 1000</span>
+                        </div>
+                        <div class="progress-bar-bg">
+                            <div class="progress-bar-fill" id="xp-progress" style="width: 0%"></div>
+                        </div>
+                    </div>
+
+                    <div class="fairness-box">
+                        <h3>Wochenend-Balance (Persönlich)</h3>
+                        <p style="font-size: 12px; color: #bdc3c7;">Vergleich deiner Sa/So-Dienste zum Team-Schnitt</p>
+                        <div class="balance-meter">
+                            <div id="balance-marker" class="balance-marker"></div>
+                            <div class="balance-scale">
+                                <span>Wenig (-50%)</span><span>Schnitt (0%)</span><span>Viel (+50%)</span>
+                            </div>
+                        </div>
+                        <p id="balance-text" style="margin-top: 10px; font-size: 13px;">Lade Daten...</p>
+                    </div>
+                </div>
+
+                <div class="card-section">
+                    <h3>Letzte Belohnungen</h3>
+                    <div id="gamification-log-list">
+                        <p style="color: #777; font-style: italic;">Keine Einträge vorhanden.</p>
+                    </div>
+                </div>
+            </div>
+
+            <div id="view-ranking" style="display: none; grid-column: 1 / -1;">
+                <div class="card-section">
+                    <div style="overflow-x: auto; max-height: 400px;">
+                        <table class="balance-table">
+                            <thead>
+                                <tr>
+                                    <th style="width: 50px; text-align: center;">#</th>
+                                    <th>Mitarbeiter</th>
+                                    <th>Rang</th>
+                                    <th style="text-align: right;">XP</th>
+                                </tr>
+                            </thead>
+                            <tbody id="ranking-table-body">
+                                <tr><td colspan="4" style="text-align:center; padding:20px; color:#7f8c8d;">Lade Rangliste...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+
+            <div id="view-history" style="display: none; grid-column: 1 / -1;">
+                <div class="card-section">
+                    <div style="overflow-x: auto; max-height: 400px;">
+                        <table class="balance-table">
+                            <thead>
+                                <tr>
+                                    <th style="width: 120px;">Datum</th>
+                                    <th>Aktion / Schicht</th>
+                                    <th style="text-align: right;">XP</th>
+                                </tr>
+                            </thead>
+                            <tbody id="history-table-body">
+                                <tr><td colspan="3" style="text-align:center; padding:20px; color:#7f8c8d;">Lade Historie...</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
             </div>
         </div>
     </main>
@@ -504,12 +525,62 @@
         </div>
     </div>
 
+    <div id="gamification-settings-modal" class="modal">
+        <div class="modal-content" style="max-width: 500px;">
+            <div class="modal-header">
+                <h2 style="color: #FFD700;"><i class="fas fa-cog"></i> XP-Einstellungen</h2>
+                <span class="close" onclick="closeGamificationSettings()">&times;</span>
+            </div>
+            <div class="modal-body">
+                <p style="font-size: 13px; color: #bdc3c7; margin-bottom: 20px;">
+                    Änderungen werden sofort wirksam und lösen eine Neuberechnung aller Punkte aus.
+                </p>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                    <div class="form-group">
+                        <label>Tagdienst (Mo-Fr):</label>
+                        <input type="number" id="xp-tag-workday">
+                    </div>
+                    <div class="form-group">
+                        <label>Tagdienst (Sa/So):</label>
+                        <input type="number" id="xp-tag-weekend">
+                    </div>
+                    <div class="form-group">
+                        <label>Nachtdienst:</label>
+                        <input type="number" id="xp-night">
+                    </div>
+                    <div class="form-group">
+                        <label>24h Dienst:</label>
+                        <input type="number" id="xp-24h">
+                    </div>
+                    <div class="form-group">
+                        <label>Freitag (6er):</label>
+                        <input type="number" id="xp-friday-6">
+                    </div>
+                    <div class="form-group">
+                        <label>Gesundheits-Bonus:</label>
+                        <input type="number" id="xp-health-bonus">
+                    </div>
+                    <div class="form-group" style="grid-column: 1 / -1;">
+                        <label>Feiertags-Multiplikator (z.B. 2.0):</label>
+                        <input type="number" step="0.1" id="xp-holiday-mult">
+                    </div>
+                </div>
+                <div style="margin-top: 20px; text-align: right;">
+                    <button class="btn-primary" id="save-gamification-settings-btn" style="background: #e67e22;">
+                        Speichern & Neu berechnen
+                    </button>
+                </div>
+                <div id="gamification-settings-status" style="margin-top: 10px; color: #bdc3c7; text-align: center;"></div>
+            </div>
+        </div>
+    </div>
+
     <script>
         // --- START: PARTIKEL-ANIMATION ---
         const canvas = document.getElementById('particle-canvas');
         const ctx = canvas.getContext('2d');
         const nodeColor = '#3498db';
-        const lineColor = '#ecf0f1'; // (Angepasst für besseren Kontrast)
+        const lineColor = '#ecf0f1';
         let particlesArray;
 
         function setCanvasSize() {

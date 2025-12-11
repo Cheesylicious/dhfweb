@@ -24,7 +24,10 @@ def create_app(config_name='default'):
     # 3. CORS initialisieren
     CORS(app, supports_credentials=True, origins=["http://46.224.63.203", "http://ihre-domain.de", "*"])
 
+    # Modelle laden
     from . import models
+    # --- NEU: Gamification Models laden (damit db.create_all sie erkennt) ---
+    from . import models_gamification
 
     @login_manager.user_loader
     def load_user(user_id):
@@ -67,11 +70,21 @@ def create_app(config_name='default'):
     from .routes_variants import variants_bp
     app.register_blueprint(variants_bp)
 
+    # --- NEU: Gamification Blueprint ---
+    # Diese Datei erstellen wir als nächstes!
+    from .routes_gamification import gamification_bp
+    app.register_blueprint(gamification_bp)
+
     # --- KORREKTUR: Schicht-Änderungsanträge ---
     # Wir importieren aus dem Unterordner "routes"
     from .routes.shift_change_routes import shift_change_bp
     # HIER WAR DAS PROBLEM: Der url_prefix fehlte!
     app.register_blueprint(shift_change_bp, url_prefix='/api/shift-change')
+
+    # --- NEU: Balance / Statistik Routes (Wochenend-Bilanz) ---
+    # Importiert den neuen Service-Endpoint aus routes/balance_routes.py
+    from .routes.balance_routes import balance_bp
+    app.register_blueprint(balance_bp)
 
 
     # 5. Startup-Logik
@@ -200,5 +213,5 @@ def create_default_email_templates(db_instance):
                 db_instance.session.add(new_template)
         db_instance.session.commit()
     except Exception as e:
-        db.session.rollback()
+        db_instance.session.rollback()
         print(f"Fehler beim Erstellen der Email-Vorlagen: {e}")
