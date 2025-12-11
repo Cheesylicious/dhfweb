@@ -122,5 +122,10 @@ export const PlanApi = {
 
     async getGeneratorStatus() {
         return await apiFetch('/api/generator/status');
+    },
+
+    // --- NEU: KRANKMELDUNGEN ---
+    async fetchPendingShiftChangeRequests() {
+        return await apiFetch('/api/shift-change/list');
     }
 };

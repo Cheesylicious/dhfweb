@@ -134,6 +134,12 @@ async function loadShiftChangeRequests() {
                 dateStr = new Date(req.shift_date).toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric' });
             }
 
+            // NEU: Zeitpunkt des Antrags
+            let createdStr = "-";
+            if (req.created_at) {
+                createdStr = new Date(req.created_at).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+            }
+
             let typeBadge = '';
             if (req.reason_type === 'sickness') typeBadge = '<span style="background:#e74c3c; color:white; padding:2px 6px; border-radius:4px; font-size:0.8rem;">Krank</span>';
             else typeBadge = '<span style="background:#3498db; color:white; padding:2px 6px; border-radius:4px; font-size:0.8rem;">Tausch</span>';
@@ -144,10 +150,15 @@ async function loadShiftChangeRequests() {
 
             const noteText = req.note ? req.note : '-';
 
+            // NEU: Schichtart Badge
+            const shiftBadge = req.shift_abbr && req.shift_abbr !== '?'
+                ? `<span class="badge-shift" style="background-color: ${req.shift_color};">${req.shift_abbr}</span>`
+                : '<span style="color:#888;">?</span>';
+
             return `
                 <tr id="shift-req-${req.id}">
                     <td><strong>${dateStr}</strong></td>
-                    <td>${req.original_user_name}</td>
+                    <td>${shiftBadge}</td> <td style="font-size: 0.85rem; color: #ccc;">${createdStr}</td> <td>${req.original_user_name}</td>
                     <td>${typeBadge}</td>
                     <td>
                         <small style="display:block; color:#aaa; margin-bottom:4px;">Notiz: ${noteText}</small>

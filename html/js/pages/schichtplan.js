@@ -125,6 +125,9 @@ async function initialize() {
         // Events binden
         attachGlobalListeners();
 
+        // Initialer Check auf offene Krankmeldungen (Banner)
+        checkPendingRequests();
+
     } catch (e) {
         console.error("Initialisierung gestoppt:", e);
     }
@@ -133,6 +136,7 @@ async function initialize() {
 function injectWarningStyles() {
     const style = document.createElement('style');
     style.innerHTML = `
+        /* Bestehende Styles */
         .hud-day-box.warning {
             border-color: #f1c40f !important;
             background: rgba(241, 196, 21, 0.4) !important;
@@ -149,6 +153,19 @@ function injectWarningStyles() {
         .hud-terminal::-webkit-scrollbar-track { background: #000; }
         .hud-terminal::-webkit-scrollbar-thumb { background: #333; border-radius: 4px; }
         .hud-terminal::-webkit-scrollbar-thumb:hover { background: #555; }
+
+        /* NEU: Styles für den Blur-Übergang */
+        #schichtplan-grid, #staffing-grid {
+            transition: filter 0.3s ease-in-out, opacity 0.3s ease-in-out;
+            filter: blur(0);
+            opacity: 1;
+        }
+
+        .blur-loading {
+            filter: blur(5px) !important;
+            opacity: 0.6 !important;
+            pointer-events: none; /* Klicks während des Ladens verhindern */
+        }
     `;
     document.head.appendChild(style);
 }
@@ -330,9 +347,17 @@ async function renderGrid() {
     const monthLabel = document.getElementById('current-month-label');
     const staffingGrid = document.getElementById('staffing-grid');
 
+    // --- INNOVATION: Animation Start ---
+    // Statt den Inhalt hart zu löschen, fügen wir eine Blur-Klasse hinzu.
+    // Der alte Plan bleibt sichtbar, aber verschwommen, bis die neuen Daten da sind.
+    if(grid) grid.classList.add('blur-loading');
+    if(staffingGrid) staffingGrid.classList.add('blur-loading');
+
+    // Kleines UX-Detail: Label aktualisieren, aber Inhalt behalten
     if(monthLabel) monthLabel.textContent = "Lade...";
-    if(grid) grid.innerHTML = '<div style="padding: 20px; text-align: center; color: #333;">Lade Daten...</div>';
-    if(staffingGrid) staffingGrid.innerHTML = '';
+
+    // WICHTIG: NICHT mehr grid.innerHTML löschen!
+    // if(grid) grid.innerHTML = '...';  <-- Entfernt
 
     const planStatusContainer = document.getElementById('plan-status-container');
     if (planStatusContainer) planStatusContainer.style.display = 'none';
@@ -350,6 +375,10 @@ async function renderGrid() {
     }
 
     try {
+        // Künstliche Verzögerung von 300ms KANN man hier einbauen, wenn man den Effekt erzwingen will.
+        // Aber für maximale Performance ("innovativ") lassen wir es so schnell wie möglich laufen.
+        // Der Blur-Effekt ist auch bei schnellen Ladezeiten als weicher Übergang wahrnehmbar.
+
         const [shiftPayload, specialDatesResult, queriesResult] = await Promise.all([
             PlanApi.fetchShiftData(PlanState.currentYear, PlanState.currentMonth, PlanState.currentVariantId),
             PlanApi.fetchSpecialDates(PlanState.currentYear, 'holiday'),
@@ -393,6 +422,8 @@ async function renderGrid() {
 
         updatePlanStatusUI(PlanState.currentPlanStatus);
 
+        // --- DOM Update ---
+        // Jetzt ersetzen wir den (noch verschwommenen) alten Inhalt durch den neuen.
         PlanRenderer.buildGridDOM({
             onCellClick: handleCellClick,
             onCellEnter: (user, dateStr, cell) => {
@@ -416,9 +447,17 @@ async function renderGrid() {
             }, 300);
         }
 
+        // --- NEU: Check auf offene Krankmeldungen auch beim Reload ---
+        checkPendingRequests();
+
     } catch (error) {
         if(grid) grid.innerHTML = `<div style="padding: 20px; text-align: center; color: red;">Fehler beim Laden des Plans: ${error.message}</div>`;
         console.error(error);
+    } finally {
+        // --- INNOVATION: Animation Ende ---
+        // Egal ob Erfolg oder Fehler, wir entfernen den Blur wieder -> Bild wird scharf.
+        if(grid) grid.classList.remove('blur-loading');
+        if(staffingGrid) staffingGrid.classList.remove('blur-loading');
     }
 }
 
@@ -1162,6 +1201,12 @@ function attachGlobalListeners() {
     if(querySubmitBtn) querySubmitBtn.onclick = () => { const msg = document.getElementById('query-message-input').value; PlanHandlers.saveShiftQuery(msg, () => queryModal.style.display = 'none'); };
     if(queryResolveBtn) queryResolveBtn.onclick = () => { PlanHandlers.resolveShiftQuery(PlanState.modalQueryContext.queryId, () => queryModal.style.display = 'none'); };
     if(queryDeleteBtn) queryDeleteBtn.onclick = () => { PlanHandlers.deleteShiftQuery(PlanState.modalQueryContext.queryId, () => queryModal.style.display = 'none'); };
+
+    // --- NEU: Listener für Reload-Events aus Modulen (z.B. ChangeRequest) ---
+    // Damit wird das Grid aktualisiert, wenn das Modul dies anfordert
+    document.addEventListener('dhf:reload-grid', () => {
+        renderGrid();
+    });
 }
 
 // --- HUD HELPER ---
@@ -1392,6 +1437,61 @@ planUpdateChannel.onmessage = (event) => {
         renderGrid();
     }
 };
+
+// --- NEU: Funktion zum Prüfen und Anzeigen offener Krankmeldungen ---
+async function checkPendingRequests() {
+    if (!PlanState.isAdmin) return; // Nur Admins müssen das sehen
+
+    try {
+        const requests = await PlanApi.fetchPendingShiftChangeRequests();
+        const bannerId = 'shift-change-banner';
+        let banner = document.getElementById(bannerId);
+
+        if (requests && requests.length > 0) {
+            if (!banner) {
+                // Banner erstellen wenn noch nicht vorhanden
+                banner = document.createElement('div');
+                banner.id = bannerId;
+                // Styling ähnlich dem "Bug Banner" (angenommenes Design: Warnfarbe)
+                banner.style.cssText = `
+                    background-color: #e67e22;
+                    color: white;
+                    padding: 10px;
+                    text-align: center;
+                    font-weight: bold;
+                    position: sticky;
+                    top: 0;
+                    z-index: 9999;
+                    cursor: pointer;
+                    box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+                    margin-bottom: 5px;
+                `;
+                // Klick-Aktion: Weiterleitung zur Bearbeitung
+                banner.onclick = () => {
+                     window.location.href = 'anfragen.html';
+                };
+
+                // Ganz oben im Body oder vor dem Content einfügen
+                const mainContainer = document.querySelector('.main-content') || document.body;
+                if (mainContainer === document.body) {
+                    document.body.prepend(banner);
+                } else {
+                    mainContainer.parentNode.insertBefore(banner, mainContainer);
+                }
+            }
+
+            // Text aktualisieren und anzeigen
+            banner.innerHTML = `⚠️ Es gibt <u>${requests.length} offene Krankmeldungs-Anträge</u>. Bitte prüfen!`;
+            banner.style.display = 'block';
+
+        } else {
+            // Ausblenden wenn keine Anträge mehr da sind
+            if (banner) banner.style.display = 'none';
+        }
+    } catch (e) {
+        console.warn("Konnte offene Anträge nicht prüfen:", e);
+    }
+}
 
 // Start
 initialize();

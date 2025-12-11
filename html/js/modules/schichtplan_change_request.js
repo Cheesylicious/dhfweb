@@ -2,6 +2,7 @@
  * Modul für Änderungsanträge in gesperrten Plänen (Planschreiber-Funktion).
  */
 import { PlanState } from './schichtplan_state.js';
+import { PlanRenderer } from './schichtplan_renderer.js';
 
 export const ChangeRequestModule = {
 
@@ -113,11 +114,7 @@ export const ChangeRequestModule = {
             // Sende an Backend
             const response = await fetch('/api/shift-change/request', {
                 method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    // Falls Sie CSRF Tokens nutzen, müssten diese hier rein.
-                    // Bei Standard Flask-Login Session oft cookie-basiert.
-                },
+                headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
                     shift_id: shiftId,
                     replacement_user_id: replacementId ? parseInt(replacementId) : null,
@@ -125,19 +122,51 @@ export const ChangeRequestModule = {
                 })
             });
 
+            const data = await response.json();
+
             if (response.ok) {
-                alert("Antrag erfolgreich gesendet! Der Admin wurde benachrichtigt.");
+                // Modal schließen ohne nervigen Alert
                 document.getElementById('change-request-modal').style.display = "none";
+
+                // --- INNOVATIVES UPDATE: Prüfen ob Änderungen vom Server kamen ---
+                if (data.changes && Array.isArray(data.changes) && data.changes.length > 0) {
+                    // WIR HABEN ÄNDERUNGEN -> LOKAL APPLIZIEREN (KEIN RELOAD)
+                    data.changes.forEach(change => {
+                        const key = `${change.user_id}-${change.date}`;
+
+                        // Shift Type Informationen aus dem lokalen Cache holen
+                        const fullShiftType = PlanState.allShiftTypes[change.shifttype_id];
+
+                        // State lokal aktualisieren
+                        PlanState.currentShifts[key] = {
+                            id: change.id,
+                            user_id: change.user_id,
+                            date: change.date,
+                            shifttype_id: change.shifttype_id,
+                            is_locked: change.is_locked,
+                            shift_type: fullShiftType
+                        };
+
+                        // Renderer anweisen, nur diese Zelle neu zu zeichnen
+                        PlanRenderer.refreshSingleCell(change.user_id, change.date);
+                    });
+
+                    // Erfolg visuell kurz anzeigen (optional, z.B. in der Console oder Statusbar)
+                    console.log("Plan lokal aktualisiert.");
+
+                } else {
+                    // Fallback: Wenn Server keine 'changes' schickt, laden wir sicherheitshalber neu
+                    console.warn("Keine Änderungsdaten empfangen, lade Plan neu...");
+                    document.dispatchEvent(new CustomEvent('dhf:reload-grid'));
+                }
+
             } else {
-                let errText = "Unbekannter Fehler";
-                try {
-                    const err = await response.json();
-                    errText = err.error || errText;
-                } catch(e) {}
+                let errText = data.error || data.message || "Unbekannter Fehler";
                 alert("Fehler: " + errText);
             }
         } catch (e) {
             alert("Netzwerkfehler: " + e.message);
+            console.error(e);
         } finally {
             submitBtn.disabled = false;
             submitBtn.textContent = "Antrag senden";

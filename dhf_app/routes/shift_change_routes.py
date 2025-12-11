@@ -57,27 +57,53 @@ def handle_shift_change_request():
         )
         db.session.add(new_request)
 
-        # 5. SOFORTIGE AUSFÜHRUNG (Die Logik von früher 'Approve')
+        # 5. SOFORTIGE AUSFÜHRUNG
+        # Liste der Änderungen für das Frontend sammeln
+        changes = []
 
-        # Original-Schicht auf "K" setzen (User bleibt gleich!)
+        # A) Original-Schicht auf "K" setzen
         shift.shifttype_id = k_type.id
 
-        # Falls Ersatz gewählt wurde: Neue Schicht erstellen
+        # Wichtig: Wir sammeln die Daten für das Frontend VOR dem Commit,
+        # aber nutzen IDs die vorhanden sind.
+        changes.append({
+            'user_id': shift.user_id,
+            'date': shift.date.strftime('%Y-%m-%d'),
+            'shifttype_id': k_type.id,
+            'id': shift.id,
+            'is_locked': shift.is_locked
+        })
+
+        # B) Falls Ersatz gewählt wurde: Neue Schicht erstellen
         if replacement_user_id:
             replacement_user = db.session.get(User, replacement_user_id)
             if replacement_user:
                 new_shift = Shift(
                     user_id=replacement_user.id,
                     date=shift.date,
-                    shifttype_id=backup_shifttype_id,  # Ersatz bekommt die alte Schichtart (z.B. Früh)
+                    shifttype_id=backup_shifttype_id,  # Ersatz bekommt die alte Schichtart
                     variant_id=shift.variant_id,
                     is_locked=shift.is_locked
                 )
                 db.session.add(new_shift)
+                db.session.flush()  # ID erzwingen
+
+                changes.append({
+                    'user_id': new_shift.user_id,
+                    'date': new_shift.date.strftime('%Y-%m-%d'),
+                    'shifttype_id': new_shift.shifttype_id,
+                    'id': new_shift.id,
+                    'is_locked': new_shift.is_locked
+                })
 
         db.session.commit()
 
-        return jsonify({'message': 'Krankmeldung eingetragen und Plan sofort aktualisiert.', 'status': 'success'}), 200
+        # Rückgabe mit 'changes' Array für das Frontend
+        return jsonify({
+            'message': 'OK',
+            'status': 'success',
+            'changes': changes
+        }), 200
 
     except Exception as e:
         db.session.rollback()
@@ -85,7 +111,7 @@ def handle_shift_change_request():
         return jsonify({'message': f"Serverfehler: {str(e)}"}), 500
 
 
-# --- 2. Liste laden ---
+# --- 2. Liste laden (ERWEITERT) ---
 @shift_change_bp.route('/list', methods=['GET'])
 def list_shift_change_requests():
     try:
@@ -94,7 +120,25 @@ def list_shift_change_requests():
         data = []
         for req in requests:
             try:
-                data.append(req.to_dict())
+                # Basis-Daten
+                req_dict = req.to_dict()
+
+                # ZUSATZ-INFOS: Schichtart (welche Schicht fällt aus?)
+                # Wir holen uns die ursprüngliche Schichtart (Backup), um sie anzuzeigen (z.B. "Nacht")
+                if req.backup_shifttype_id:
+                    st = db.session.get(ShiftType, req.backup_shifttype_id)
+                    if st:
+                        req_dict['shift_abbr'] = st.abbreviation
+                        req_dict['shift_color'] = st.color
+                        req_dict['shift_name'] = st.name
+                    else:
+                        req_dict['shift_abbr'] = "?"
+                        req_dict['shift_color'] = "#7f8c8d"
+                else:
+                    req_dict['shift_abbr'] = "-"
+                    req_dict['shift_color'] = "#7f8c8d"
+
+                data.append(req_dict)
             except Exception as e:
                 continue
         return jsonify(data), 200
@@ -105,10 +149,6 @@ def list_shift_change_requests():
 # --- 3. Antrag BESTÄTIGEN (Nur abhaken) ---
 @shift_change_bp.route('/<int:request_id>/approve', methods=['POST'])
 def approve_shift_change_request(request_id):
-    """
-    Der Admin bestätigt, dass die Änderung korrekt war.
-    Die Änderung ist ja schon passiert, also setzen wir nur den Status auf 'approved'.
-    """
     try:
         req = db.session.get(ShiftChangeRequest, request_id)
         if not req or req.status != 'pending':
@@ -130,9 +170,6 @@ def approve_shift_change_request(request_id):
 # --- 4. RÜCKGÄNGIG MACHEN (Revert) ---
 @shift_change_bp.route('/<int:request_id>/reject', methods=['POST'])
 def reject_shift_change_request(request_id):
-    """
-    Der Admin macht die Änderung RÜCKGÄNGIG.
-    """
     try:
         req = db.session.get(ShiftChangeRequest, request_id)
         if not req or req.status != 'pending':
@@ -140,23 +177,17 @@ def reject_shift_change_request(request_id):
 
         original_shift = db.session.get(Shift, req.original_shift_id)
         if not original_shift:
-            # Wenn Schicht weg ist, können wir nur den Antrag schließen
             req.status = 'rejected'
             db.session.commit()
             return jsonify({'message': 'Originalschicht existiert nicht mehr. Antrag geschlossen.'}), 200
 
         # --- REVERT LOGIC ---
-
-        # 1. Original-Schicht wiederherstellen (von "K" zurück zum Backup)
         if req.backup_shifttype_id:
             original_shift.shifttype_id = req.backup_shifttype_id
         else:
-            # Fallback, falls kein Backup da ist (sollte nicht passieren)
             return jsonify({'message': 'Fehler: Kein Backup-Status vorhanden.'}), 500
 
-        # 2. Falls Ersatz erstellt wurde -> Löschen
         if req.replacement_user_id:
-            # Wir suchen die Schicht des Ersatzmannes am gleichen Tag
             replacement_shift = Shift.query.filter_by(
                 user_id=req.replacement_user_id,
                 date=original_shift.date,
@@ -166,7 +197,6 @@ def reject_shift_change_request(request_id):
             if replacement_shift:
                 db.session.delete(replacement_shift)
 
-        # 3. Request Status auf rejected setzen
         req.status = 'rejected'
         req.note = (req.note or "") + " [Vom Admin rückgängig gemacht]"
         req.processed_at = datetime.utcnow()
