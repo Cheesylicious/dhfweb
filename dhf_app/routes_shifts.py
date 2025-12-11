@@ -2,8 +2,9 @@
 
 from flask import Blueprint, request, jsonify, current_app
 from .models import Shift, ShiftType, User, ShiftPlanStatus, UpdateLog, ShiftQuery, SpecialDate
-from .extensions import db, socketio  # <--- socketio hinzugefügt
+from .extensions import db, socketio
 from .utils import admin_required
+from .models_audit import log_audit  # <<< NEU: Import für das Audit-Log
 from flask_login import login_required, current_user
 from sqlalchemy import extract, func, or_, and_
 from sqlalchemy.orm import joinedload
@@ -16,8 +17,6 @@ import threading
 
 # --- Import für Bildgenerierung ---
 from .plan_renderer import generate_roster_image_bytes
-
-# ----------------------------------
 
 shifts_bp = Blueprint('shifts', __name__, url_prefix='/api')
 
@@ -294,6 +293,8 @@ def toggle_shift_lock():
 
     try:
         shift = Shift.query.filter_by(user_id=user_id, date=shift_date, variant_id=variant_id).first()
+        old_status = "Gesperrt" if shift and shift.is_locked else "Offen"
+
         if shift:
             shift.is_locked = not shift.is_locked
             if shift.shifttype_id is None and not shift.is_locked:
@@ -308,8 +309,17 @@ def toggle_shift_lock():
 
         db.session.commit()
 
+        # --- AUDIT LOG ---
+        new_status = "Gesperrt" if not was_deleted and shift.is_locked else "Offen"
+        log_audit(
+            action="SHIFT_LOCK_TOGGLE",
+            details={"old": old_status, "new": new_status},
+            target_date=shift_date,
+            user=current_user
+        )
+        # -----------------
+
         # --- SOCKET EMIT START ---
-        # Benachrichtigen aller Clients über die Lock-Änderung
         result_data = {
             "deleted": was_deleted,
             "user_id": user_id,
@@ -359,6 +369,14 @@ def clear_shift_plan():
         if num_deleted > 0:
             db.session.commit()
 
+            # --- AUDIT LOG ---
+            log_audit(
+                action="PLAN_CLEAR",
+                details={"year": year, "month": month, "deleted_count": num_deleted},
+                user=current_user
+            )
+            # -----------------
+
             # --- SOCKET EMIT START ---
             socketio.emit('plan_cleared', {
                 'year': year,
@@ -405,6 +423,13 @@ def save_shift():
         if existing_shift and existing_shift.is_locked:
             return jsonify({"message": "Schicht gesperrt."}), 403
 
+        # --- AUDIT PREPARE ---
+        old_val = "FREI"
+        if existing_shift and existing_shift.shifttype_id:
+            st = ShiftType.query.get(existing_shift.shifttype_id)
+            if st: old_val = st.abbreviation
+        # ---------------------
+
         saved_shift_id = None
         if existing_shift:
             saved_shift_id = existing_shift.id
@@ -420,6 +445,32 @@ def save_shift():
             saved_shift_id = new_shift.id
 
         db.session.commit()
+
+        # --- AUDIT LOGGING ---
+        new_val = "FREI"
+        if shifttype_id:
+            st_new = ShiftType.query.get(shifttype_id)
+            if st_new: new_val = st_new.abbreviation
+
+        # Nur loggen wenn sich was geändert hat
+        if old_val != new_val:
+            action = "SHIFT_UPDATE"
+            if old_val == "FREI":
+                action = "SHIFT_CREATE"
+            elif new_val == "FREI":
+                action = "SHIFT_DELETE"
+
+            # Betroffenen User finden (für den Log-Text, nicht den Akteur)
+            target_user = User.query.get(user_id)
+            target_name = f"{target_user.vorname} {target_user.name}" if target_user else f"User {user_id}"
+
+            log_audit(
+                action=action,
+                details={"old": old_val, "new": new_val, "target_user": target_name},
+                target_date=shift_date,
+                user=current_user
+            )
+        # ---------------------
 
         response_data = {}
         if saved_shift_id:
@@ -502,6 +553,7 @@ def update_plan_status():
             status_obj = ShiftPlanStatus(year=year, month=month)
             db.session.add(status_obj)
 
+        old_status = status_obj.status
         status_obj.status = data.get('status', status_obj.status)
         status_obj.is_locked = data.get('is_locked', status_obj.is_locked)
         db.session.commit()

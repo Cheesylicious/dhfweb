@@ -1,48 +1,17 @@
 # dhf_app/routes_auth.py
 
 from flask import Blueprint, request, jsonify, current_app
-from .models import User, Role, UpdateLog, ActivityLog
+from .models import User, Role, UpdateLog
 from .extensions import db, bcrypt
-# KORREKTUR: Importiere nur die Komponenten von flask_login, die wir BRAUCHEN (nicht login_required!)
+# KORREKTUR: Importiere nur die Komponenten von flask_login, die wir BRAUCHEN
 from flask_login import login_user, logout_user, current_user
 # NEU: Importiere unseren gefixten login_required aus utils
 from .utils import login_required
+from .models_audit import log_audit  # <<< NEU: Unser zentraler Audit-Logger
 from datetime import datetime
 
 # Erstellt einen Blueprint. Alle Routen hier beginnen mit /api
 auth_bp = Blueprint('auth', __name__, url_prefix='/api')
-
-
-def _log_update_event(area, description):
-    """Hilfsfunktion für das alte Dashboard-Log (nur noch manuell genutzt)"""
-    try:
-        new_log = UpdateLog(area=area, description=description, updated_at=datetime.utcnow())
-        db.session.add(new_log)
-    except Exception:
-        pass
-
-
-def _log_activity(user, action, details=None):
-    """
-    Hilfsfunktion für das neue detaillierte ActivityLog.
-    """
-    try:
-        # Versuche IP-Adresse zu ermitteln (berücksichtigt Proxy-Header falls vorhanden)
-        if request.headers.getlist("X-Forwarded-For"):
-            ip = request.headers.getlist("X-Forwarded-For")[0]
-        else:
-            ip = request.remote_addr
-
-        new_log = ActivityLog(
-            user_id=user.id,
-            action=action,
-            details=details,
-            ip_address=ip,
-            timestamp=datetime.utcnow()
-        )
-        db.session.add(new_log)
-    except Exception as e:
-        current_app.logger.error(f"Fehler beim Activity-Logging: {e}")
 
 
 @auth_bp.route('/check_session', methods=['GET'])
@@ -60,17 +29,20 @@ def login():
     Loggt einen Benutzer ein.
     """
     data = request.get_json()
-    user = User.query.filter_by(vorname=data['vorname'], name=data['name']).first()
-    if user and bcrypt.check_password_hash(user.passwort_hash, data['passwort']):
+    user = User.query.filter_by(vorname=data.get('vorname'), name=data.get('name')).first()
+
+    if user and bcrypt.check_password_hash(user.passwort_hash, data.get('passwort')):
         login_user(user, remember=True)
 
-        # Aktivität loggen
-        _log_activity(user, "LOGIN")
+        # Aktivität loggen mit dem neuen Audit-System
+        log_audit(action="LOGIN", user=user)
 
         user.zuletzt_online = datetime.utcnow()
         db.session.commit()
         return jsonify({"message": "Login erfolgreich", "user": user.to_dict()}), 200
     else:
+        # Optional: Fehlgeschlagene Logins loggen (Vorsicht: kann Logs fluten)
+        # log_audit(action="LOGIN_FAILED", details={"name": data.get('name')})
         return jsonify({"message": "Ungültige Anmeldedaten"}), 401
 
 
@@ -80,7 +52,7 @@ def logout():
     """
     Loggt den aktuellen Benutzer aus.
     """
-    # Dauer berechnen
+    # Dauer berechnen für Details
     duration_str = ""
     if current_user.zuletzt_online:
         diff = datetime.utcnow() - current_user.zuletzt_online
@@ -90,10 +62,11 @@ def logout():
         minutes, seconds = divmod(remainder, 60)
         duration_str = f"Dauer: {hours}h {minutes}m {seconds}s"
 
-    _log_activity(current_user, "LOGOUT", duration_str)
+    # Loggen VOR dem Logout, damit wir den User noch haben
+    log_audit(action="LOGOUT", details={"duration": duration_str}, user=current_user)
 
     logout_user()
-    db.session.commit()
+    # db.session.commit() # Nicht zwingend nötig für logout_user, aber schadet nicht
 
     return jsonify({"message": "Erfolgreich abgemeldet"}), 200
 
@@ -127,7 +100,7 @@ def change_password():
         current_user.password_geaendert = datetime.utcnow()
         current_user.force_password_change = False
 
-        _log_activity(current_user, "PASSWORD_CHANGE", "Benutzer hat Passwort geändert")
+        log_audit(action="PASSWORD_CHANGE", user=current_user)
 
         db.session.commit()
 
@@ -141,7 +114,7 @@ def change_password():
 
 # --- Profil-Management (Erweitert) ---
 
-@auth_bp.route('/user/profile', methods=['GET']) # <--- KRITISCHE KORREKTUR: /user/ hinzugefügt
+@auth_bp.route('/user/profile', methods=['GET'])
 @login_required
 def get_profile():
     """
@@ -150,7 +123,7 @@ def get_profile():
     return jsonify(current_user.to_dict()), 200
 
 
-@auth_bp.route('/user/profile', methods=['PUT']) # <--- KRITISCHE KORREKTUR: /user/ hinzugefügt
+@auth_bp.route('/user/profile', methods=['PUT'])
 @login_required
 def update_profile():
     """
@@ -200,8 +173,12 @@ def update_profile():
             changes.append("Geburtstag")
 
         if changes:
-            details = f"Felder: {', '.join(changes)}"
-            _log_activity(current_user, "PROFILE_UPDATE", details)
+            # Audit Log
+            log_audit(
+                action="PROFILE_UPDATE",
+                details={"changed_fields": changes},
+                user=current_user
+            )
 
             db.session.commit()
             return jsonify({"message": "Profil erfolgreich aktualisiert.", "user": current_user.to_dict()}), 200

@@ -22,6 +22,7 @@ def create_app(config_name='default'):
     mail.init_app(app)
 
     # NEU: SocketIO initialisieren (Echtzeit-Kommunikation)
+    # cors_allowed_origins="*" erlaubt Verbindungen von überall (analog zu deinen CORS-Einstellungen)
     socketio.init_app(app, cors_allowed_origins="*")
 
     # 3. CORS initialisieren (Wie zuvor mit dem Fix in utils.py)
@@ -30,7 +31,8 @@ def create_app(config_name='default'):
     # 4. Modelle laden (ALLE MÜSSEN HIER SEIN, DAMIT SQLALCHEMY SIE KENNT)
     from . import models
     from . import models_gamification
-    from . import models_shop  # <--- KRITISCH: Muss geladen werden!
+    from . import models_shop
+    from . import models_audit  # <<< NEU: Audit-Log Modell laden
 
     @login_manager.user_loader
     def load_user(user_id):
@@ -88,6 +90,10 @@ def create_app(config_name='default'):
     # --- NEU: KI-Prediction Blueprint ---
     from .routes_prediction import prediction_bp
     app.register_blueprint(prediction_bp)
+
+    # --- NEU: Audit-Log Blueprint ---
+    from .routes_audit import audit_bp
+    app.register_blueprint(audit_bp)
 
     # 6. Startup-Logik (Innerhalb des App Context)
     with app.app_context():
