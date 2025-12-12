@@ -124,8 +124,26 @@ export const PlanApi = {
         return await apiFetch('/api/generator/status');
     },
 
-    // --- NEU: KRANKMELDUNGEN ---
+    // --- KRANKMELDUNGEN ---
     async fetchPendingShiftChangeRequests() {
         return await apiFetch('/api/shift-change/list');
+    },
+
+    // --- MARKTPLATZ (TAUSCHBÖRSE) --- [NEU]
+    async fetchMarketOffers() {
+        // Holt alle aktiven Angebote
+        return await apiFetch('/api/market/offers');
+    },
+
+    async createMarketOffer(shiftId, note) {
+        return await apiFetch('/api/market/offer', 'POST', { shift_id: shiftId, note: note });
+    },
+
+    async cancelMarketOffer(offerId) {
+        return await apiFetch(`/api/market/offer/${offerId}`, 'DELETE');
+    },
+
+    async acceptMarketOffer(offerId) {
+        return await apiFetch(`/api/market/accept/${offerId}`, 'POST');
     }
 };

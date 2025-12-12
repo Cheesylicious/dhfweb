@@ -55,6 +55,13 @@ export const PlanRenderer = {
         const shiftType = shift ? shift.shift_type : null;
         const violationKey = `${userId}-${day}`;
 
+        // --- MARKTPLATZ CHECK (NEU) ---
+        // Wir prüfen, ob diese Schicht in der Tauschbörse ist
+        // Struktur von currentMarketOffers: { "userId-dateStr": OfferObject }
+        const marketOffer = (PlanState.currentMarketOffers || {})[key];
+        // Nur anzeigen für Admin oder Hundeführer
+        const showMarket = marketOffer && (PlanState.isAdmin || PlanState.isHundefuehrer);
+
         // --- Check ob heute ---
         const today = new Date();
         const isToday = (d.getFullYear() === today.getFullYear() &&
@@ -65,6 +72,12 @@ export const PlanRenderer = {
         if (PlanState.loggedInUser.id === userId) cellClasses += ' current-user-row';
         if (PlanState.currentViolations.has(violationKey)) cellClasses += ' violation';
         if (shift && shift.is_locked) cellClasses += ' locked-shift';
+
+        // Marktplatz-Klasse (für Blinken)
+        if (showMarket) {
+            cellClasses += ' market-offer-active';
+            // Eigene Angebote anders markieren? Optional via CSS über data-Attribute
+        }
 
         // Klasse hinzufügen, wenn es heute ist
         if (isToday) cellClasses += ' current-day-highlight';
@@ -77,10 +90,9 @@ export const PlanRenderer = {
         cell.style.backgroundColor = '';
         cell.style.color = '';
         delete cell.dataset.queryId;
+        delete cell.dataset.marketOfferId; // Aufräumen
 
         // --- KORREKTUR START: Filter angepasst für "Thema des Tages" ---
-        // Wir suchen Anfragen, die zum Datum passen und OFFEN sind.
-        // UND: Entweder für diesen User bestimmt sind ODER für "Alle" (null) sind.
         const queriesForCell = PlanState.currentShiftQueries.filter(q =>
             q.shift_date === dateStr &&
             q.status === 'offen' &&
@@ -114,9 +126,6 @@ export const PlanRenderer = {
                 isShiftRequestCell = true;
                 shiftRequestText = wunschQuery.message.substring("Anfrage für:".length).trim();
             }
-            // Optional: Soll HF auch allgemeine Tages-Notizen sehen?
-            // Wenn ja, folgende Zeile einkommentieren:
-            // if (notizQuery && notizQuery.target_user_id === null) showQuestionMark = true;
         }
 
         const dayHasSpecialBg = eventType || isWeekend;
@@ -143,23 +152,44 @@ export const PlanRenderer = {
         // Klasse setzen
         cell.className = cellClasses;
 
-        // --- ICON EINFÜGEN ---
+        // --- ICONS EINFÜGEN ---
+
+        // 1. Marktplatz Icon (NEU)
+        if (showMarket) {
+             const marketIcon = document.createElement('div');
+             marketIcon.className = 'market-icon-overlay';
+             marketIcon.innerHTML = '⇄'; // Tausch-Symbol
+
+             let tooltip = "In Tauschbörse verfügbar";
+             if (marketOffer.is_my_offer) {
+                 tooltip = "Dein Angebot (In Tauschbörse)";
+                 marketIcon.style.color = "#f1c40f"; // Gold für eigene
+             } else {
+                 marketIcon.style.color = "#2ecc71"; // Grün für andere
+             }
+             if (marketOffer.note) tooltip += ` - Notiz: ${marketOffer.note}`;
+
+             marketIcon.title = tooltip;
+             cell.appendChild(marketIcon);
+
+             // ID speichern für Click-Handler (um Modal zu öffnen)
+             cell.dataset.marketOfferId = marketOffer.id;
+        }
+
+        // 2. Notiz Icon
         if (showQuestionMark) {
              const iconSpan = document.createElement('span');
              iconSpan.className = 'shift-query-icon';
              iconSpan.textContent = '❓';
 
-             // Tooltip Logik: Unterscheidung zwischen Allgemein und Spezifisch
+             // Tooltip Logik
              if (notizQuery) {
                  if (notizQuery.target_user_id === null) {
                      iconSpan.title = "Thema des Tages / Allgemeine Notiz";
-                     // Optional: Visuelle Unterscheidung für allgemeine Notizen (z.B. andere Farbe)
-                     // iconSpan.style.backgroundColor = "#e67e22";
                  } else {
                      iconSpan.title = "Persönliche Notiz";
                  }
              }
-
              cell.appendChild(iconSpan);
         }
 

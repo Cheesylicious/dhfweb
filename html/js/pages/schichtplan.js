@@ -16,6 +16,9 @@ import { StaffingModule } from '../modules/schichtplan_staffing.js';
 import { PlanHandlers } from '../modules/schichtplan_handlers.js';
 import { PredictionUI } from '../modules/prediction_ui.js';
 
+// --- NEU: Marktplatz Modul importieren ---
+import { MarketModule } from '../modules/schichtplan_market.js';
+
 // --- DOM Elemente ---
 const prevMonthBtn = document.getElementById('prev-month-btn');
 const nextMonthBtn = document.getElementById('next-month-btn');
@@ -181,6 +184,25 @@ function injectWarningStyles() {
             filter: blur(5px) !important;
             opacity: 0.6 !important;
             pointer-events: none; /* Klicks während des Ladens verhindern */
+        }
+
+        /* --- NEU: Marktplatz Icon Overlay & Styles --- */
+        .market-icon-overlay {
+            position: absolute;
+            top: 2px;
+            right: 2px;
+            font-size: 14px;
+            z-index: 10;
+            text-shadow: 0 0 3px rgba(0,0,0,0.5);
+            animation: pulse-market 2s infinite;
+        }
+        @keyframes pulse-market {
+            0% { transform: scale(1); opacity: 0.8; }
+            50% { transform: scale(1.2); opacity: 1; }
+            100% { transform: scale(1); opacity: 0.8; }
+        }
+        .market-offer-active {
+            border: 2px dashed #f1c40f !important; /* Goldener Rahmen für Angebote */
         }
     `;
     document.head.appendChild(style);
@@ -465,11 +487,16 @@ async function renderGrid(isSilent = false) { // UPDATE: isSilent Parameter hinz
         // Aber für maximale Performance ("innovativ") lassen wir es so schnell wie möglich laufen.
         // Der Blur-Effekt ist auch bei schnellen Ladezeiten als weicher Übergang wahrnehmbar.
 
-        const [shiftPayload, specialDatesResult, queriesResult] = await Promise.all([
+        // --- UPDATE: Marktplatz Daten laden (Parallel) ---
+        const [shiftPayload, specialDatesResult, queriesResult, marketOffersResult] = await Promise.all([
             PlanApi.fetchShiftData(PlanState.currentYear, PlanState.currentMonth, PlanState.currentVariantId),
             PlanApi.fetchSpecialDates(PlanState.currentYear, 'holiday'),
             (PlanState.isAdmin || PlanState.isPlanschreiber || PlanState.isHundefuehrer)
                 ? PlanApi.fetchOpenQueries(PlanState.currentYear, PlanState.currentMonth)
+                : Promise.resolve([]),
+            // NEU: Marktplatz Angebote laden
+            (PlanState.isAdmin || PlanState.isHundefuehrer)
+                ? PlanApi.fetchMarketOffers()
                 : Promise.resolve([])
         ]);
 
@@ -493,6 +520,16 @@ async function renderGrid(isSilent = false) { // UPDATE: isSilent Parameter hinz
         PlanState.currentViolations.clear();
         if (shiftPayload.violations) {
             shiftPayload.violations.forEach(v => PlanState.currentViolations.add(`${v[0]}-${v[1]}`));
+        }
+
+        // --- NEU: Marktplatz-Daten in State speichern ---
+        PlanState.currentMarketOffers = {};
+        if (marketOffersResult && Array.isArray(marketOffersResult)) {
+            marketOffersResult.forEach(offer => {
+                const d = offer.shift_date.split('T')[0];
+                const key = `${offer.offering_user_id}-${d}`;
+                PlanState.currentMarketOffers[key] = offer;
+            });
         }
 
         PlanState.currentStaffingActual = shiftPayload.staffing_actual || {};
@@ -535,6 +572,9 @@ async function renderGrid(isSilent = false) { // UPDATE: isSilent Parameter hinz
 
         // --- NEU: Check auf offene Krankmeldungen auch beim Reload ---
         checkPendingRequests();
+
+        // NEU: Marktplatz Benachrichtigungen aktualisieren
+        MarketModule.updateMarketNotifications();
 
     } catch (error) {
         if(grid) grid.innerHTML = `<div style="padding: 20px; text-align: center; color: red;">Fehler beim Laden des Plans: ${error.message}</div>`;
@@ -719,7 +759,8 @@ function showClickActionModal(event, user, dateStr, cell, isCellOnOwnRow) {
 
     PlanState.clickModalContext = {
         userId: user.id, dateStr, userName,
-        isPlanGesperrt: PlanState.currentPlanStatus.is_locked && PlanState.currentVariantId === null
+        isPlanGesperrt: PlanState.currentPlanStatus.is_locked && PlanState.currentVariantId === null,
+        isCellOnOwnRow: isCellOnOwnRow // <<< WICHTIG: Speichern für Module
     };
 
     const camTitle = document.getElementById('cam-title');
@@ -735,6 +776,23 @@ function showClickActionModal(event, user, dateStr, cell, isCellOnOwnRow) {
 
     [camAdminWunschActions, camAdminShifts, camHundefuehrerRequests, camNotizActions, camHundefuehrerDelete].forEach(el => el.style.display = 'none');
 
+    // --- NEU: Marktplatz Bereich dynamisch erstellen ---
+    let marketSection = document.getElementById('cam-market-actions');
+    if (!marketSection) {
+        marketSection = document.createElement('div');
+        marketSection.id = 'cam-market-actions';
+        marketSection.className = 'cam-section';
+        // Füge es vor dem Notiz-Bereich ein
+        if (camNotizActions && camNotizActions.parentNode) {
+            camNotizActions.parentNode.insertBefore(marketSection, camNotizActions);
+        } else {
+            // Fallback
+            document.getElementById('click-action-modal').appendChild(marketSection);
+        }
+    }
+    marketSection.style.display = 'none';
+    // -------------------------------------------------
+
     // Filter
     const queries = PlanState.currentShiftQueries.filter(q =>
         q.shift_date === dateStr &&
@@ -749,6 +807,13 @@ function showClickActionModal(event, user, dateStr, cell, isCellOnOwnRow) {
     PlanState.clickModalContext.notizQuery = notiz;
 
     let hasContent = false;
+
+    // --- NEU: Marktplatz Modul einbinden ---
+    // Hier rufen wir das neue Modul auf!
+    if (MarketModule.renderModalActions(marketSection, PlanState.clickModalContext, renderGrid, () => clickActionModal.style.display = 'none')) {
+        hasContent = true;
+    }
+    // ---------------------------------------
 
     // --- NEU: Spezialfall für Planschreiber/Admin bei gesperrtem Plan ---
     if ((PlanState.isPlanschreiber || PlanState.isAdmin) && PlanState.clickModalContext.isPlanGesperrt) {

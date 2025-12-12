@@ -53,7 +53,7 @@ try {
     const infoEl = document.getElementById('user-info');
     if (infoEl) {
         const welcomeUser = document.getElementById('welcome-user');
-        if (welcomeUser) welcomeUser.textContent = `Angemeldet als: ${user.vorname} ${user.name} (${user.role})`;
+        if (welcomeUser) welcomeUser.textContent = `Angemeldet als: ${user.vorname} ${user.name} (${user.role.name})`;
     }
 
 } catch (e) {
@@ -73,13 +73,13 @@ const tabContentAnfragen = document.getElementById('tab-content-anfragen');
 const tabContentWunsch = document.getElementById('tab-content-wunsch');
 const contentWrapper = document.getElementById('content-wrapper');
 
-// --- NEU: BULK ELEMENTS (ANFRAGEN) ---
+// --- BULK ELEMENTS (ANFRAGEN) ---
 const bulkBarAnfragen = document.getElementById('bulk-bar-anfragen');
 const selectAllAnfragen = document.getElementById('select-all-anfragen');
 const btnBulkDoneAnfragen = document.getElementById('btn-bulk-done-anfragen');
 const btnBulkDeleteAnfragen = document.getElementById('btn-bulk-delete-anfragen');
 
-// --- NEU: BULK ELEMENTS (WÜNSCHE) ---
+// --- BULK ELEMENTS (WÜNSCHE) ---
 const bulkBarWunsch = document.getElementById('bulk-bar-wunsch');
 const selectAllWunsch = document.getElementById('select-all-wunsch');
 const btnBulkApproveWunsch = document.getElementById('btn-bulk-approve-wunsch');
@@ -106,7 +106,7 @@ async function loadAllShiftTypes() {
 }
 
 // =========================================================
-// TEIL A: SCHICHT-ÄNDERUNGSANTRÄGE (NEU & LIVE)
+// TEIL A: SCHICHT-ÄNDERUNGSANTRÄGE (KRANK / TAUSCH)
 // =========================================================
 
 async function loadShiftChangeRequests() {
@@ -134,39 +134,53 @@ async function loadShiftChangeRequests() {
                 dateStr = new Date(req.shift_date).toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric' });
             }
 
-            // NEU: Zeitpunkt des Antrags
+            // Zeitpunkt des Antrags
             let createdStr = "-";
             if (req.created_at) {
                 createdStr = new Date(req.created_at).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
             }
 
+            // --- VISUELLE UNTERSCHEIDUNG: KRANK vs TAUSCH ---
             let typeBadge = '';
-            if (req.reason_type === 'sickness') typeBadge = '<span style="background:#e74c3c; color:white; padding:2px 6px; border-radius:4px; font-size:0.8rem;">Krank</span>';
-            else typeBadge = '<span style="background:#3498db; color:white; padding:2px 6px; border-radius:4px; font-size:0.8rem;">Tausch</span>';
+            // Wir prüfen, ob es ein Tausch ist (anhand reason_type ODER Notiz)
+            const isTrade = (req.reason_type === 'trade') || (req.note && req.note.includes("Marktplatz-Deal"));
 
+            if (isTrade) {
+                typeBadge = '<span style="background:#3498db; color:white; padding:4px 8px; border-radius:4px; font-size:0.8rem; font-weight:600;"><i class="fas fa-handshake"></i> Tausch</span>';
+            } else {
+                typeBadge = '<span style="background:#e74c3c; color:white; padding:4px 8px; border-radius:4px; font-size:0.8rem; font-weight:600;"><i class="fas fa-procedures"></i> Krank</span>';
+            }
+
+            // Ersatz-Anzeige
             const replacementText = req.replacement_name !== 'Kein Ersatz'
-                ? `<span style="color:#2ecc71"><i class="fas fa-arrow-right"></i> ${req.replacement_name}</span>`
+                ? `<span style="color:#2ecc71; font-weight:500;"><i class="fas fa-arrow-right"></i> ${req.replacement_name}</span>`
                 : '<span style="color:#e74c3c"><em>Schicht wird frei (K)</em></span>';
 
             const noteText = req.note ? req.note : '-';
 
-            // NEU: Schichtart Badge
-            const shiftBadge = req.shift_abbr && req.shift_abbr !== '?'
-                ? `<span class="badge-shift" style="background-color: ${req.shift_color};">${req.shift_abbr}</span>`
+            // Schichtart Badge
+            const shiftBadge = req.shift_abbr && req.shift_abbr !== '?' && req.shift_abbr !== '-'
+                ? `<span class="badge-shift" style="background-color: ${req.shift_color || '#555'}; color: #fff; padding: 2px 6px; border-radius: 4px;">${req.shift_abbr}</span>`
                 : '<span style="color:#888;">?</span>';
+
+            // Hinweis für Admin bei Tausch
+            const approveTitle = isTrade ? "Tausch genehmigen & abschließen" : "Krankmeldung bestätigen";
+            const rejectTitle = isTrade ? "Tausch ablehnen (Original bleibt)" : "Rückgängig machen (Mitarbeiter wieder einsetzen)";
 
             return `
                 <tr id="shift-req-${req.id}">
                     <td><strong>${dateStr}</strong></td>
-                    <td>${shiftBadge}</td> <td style="font-size: 0.85rem; color: #ccc;">${createdStr}</td> <td>${req.original_user_name}</td>
+                    <td>${shiftBadge}</td>
+                    <td style="font-size: 0.85rem; color: #ccc;">${createdStr}</td>
+                    <td>${req.original_user_name}</td>
                     <td>${typeBadge}</td>
                     <td>
-                        <small style="display:block; color:#aaa; margin-bottom:4px;">Notiz: ${noteText}</small>
+                        <small style="display:block; color:#aaa; margin-bottom:4px;">${isTrade ? 'Notiz / Tauschpartner:' : 'Notiz:'} ${noteText}</small>
                         <div>${replacementText}</div>
                     </td>
                     <td>
-                        <button class="btn-mini approve" onclick="window.handleShiftAction(${req.id}, 'approve')" title="Bestätigen & Archivieren">✓ OK</button>
-                        <button class="btn-mini reject" onclick="window.handleShiftAction(${req.id}, 'reject')" title="Rückgängig machen (Undo)">↺ Undo</button>
+                        <button class="btn-mini approve" onclick="window.handleShiftAction(${req.id}, 'approve')" title="${approveTitle}">✓ OK</button>
+                        <button class="btn-mini reject" onclick="window.handleShiftAction(${req.id}, 'reject')" title="${rejectTitle}">↺ Undo</button>
                     </td>
                 </tr>
             `;
@@ -184,34 +198,40 @@ async function loadShiftChangeRequests() {
 window.handleShiftAction = async function(id, action) {
     const endpoint = action === 'approve' ? 'approve' : 'reject';
 
-    // --- TEXTE ANGEPASST FÜR SOFORT-AUSFÜHRUNG ---
-    const confirmMsg = action === 'approve'
-        ? "Änderung bestätigen? (Ist bereits im Plan, wird hiermit archiviert)"
-        : "ACHTUNG: Änderung rückgängig machen? (Der Mitarbeiter wird wieder eingeteilt)";
+    // Text anpassen je nach Aktion
+    let confirmMsg = "";
+    if (action === 'approve') {
+        confirmMsg = "Änderung endgültig bestätigen und archivieren?";
+    } else {
+        confirmMsg = "ACHTUNG: Änderung ablehnen/rückgängig machen? \n(Der ursprüngliche Mitarbeiter wird ggf. wieder eingeteilt.)";
+    }
 
     if (!confirm(confirmMsg)) return;
 
     try {
-        // HIER IST DER FIX: String 'POST' statt Objekt
         const response = await apiFetch(`/api/shift-change/${id}/${endpoint}`, 'POST');
 
         if (response && response.status === 'success') {
-            alert(response.message);
-
-            // --- NEU: FUNKSPRUCH SENDEN ---
-            // Sagt allen anderen Tabs: "Hey, ladet den Plan neu!"
-            planUpdateChannel.postMessage({ type: 'PLAN_UPDATED' });
-            // ------------------------------
+            // FUNKSPRUCH SENDEN: Grid neu laden in allen Tabs
+            if (planUpdateChannel) {
+                planUpdateChannel.postMessage({ type: 'PLAN_UPDATED' });
+            }
 
             // Zeile entfernen
             const row = document.getElementById(`shift-req-${id}`);
-            if (row) row.remove();
-
-            // Wenn Tabelle leer, Bereich ausblenden
-            const tableBody = document.getElementById('shift-requests-table-body');
-            if (tableBody && tableBody.children.length === 0) {
-                document.getElementById('shift-requests-section').style.display = 'none';
+            if (row) {
+                row.style.opacity = '0';
+                setTimeout(() => row.remove(), 300); // Sanftes Ausblenden
             }
+
+            // Wenn Tabelle leer, Bereich ausblenden (verzögert)
+            setTimeout(() => {
+                const tableBody = document.getElementById('shift-requests-table-body');
+                if (tableBody && tableBody.children.length === 0) {
+                    document.getElementById('shift-requests-section').style.display = 'none';
+                }
+            }, 350);
+
         } else {
             alert("Fehler: " + (response.message || response.error || 'Unbekannter Fehler'));
         }
@@ -234,7 +254,6 @@ async function loadQueries() {
     resetBulkSelection();
 
     try {
-        // Wir laden ALLE Status, um auch erledigte in der Liste zu haben (wichtig für Löschen)
         const queries = await apiFetch(`/api/queries`);
         allQueriesCache = queries;
         renderQueries();
@@ -404,7 +423,6 @@ function createQueryElement(query) {
 
     // --- Checkbox ---
     let checkboxHtml = '';
-    // Admin und Scheduler dürfen immer, HF nur wenns eigene sind
     const canBulk = isAdmin || (isScheduler && !isWunsch);
 
     if (canBulk) {
@@ -464,7 +482,6 @@ function renderQueries() {
         }
     }
 
-    // Checkbox Listener anhängen
     attachCheckboxListeners();
 }
 

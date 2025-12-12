@@ -32,6 +32,10 @@ export const PlanState = {
     currentPlanStatus: {}, // {status, is_locked, ...}
     currentShiftQueries: [], // Array of query objects
 
+    // --- NEU: Marktplatz Angebote Cache ---
+    // Key: "userId-dateStr" (z.B. "5-2025-01-12") -> Offer Object
+    currentMarketOffers: {},
+
     // Einstellungen
     colorSettings: {},
     shortcutMap: {},
