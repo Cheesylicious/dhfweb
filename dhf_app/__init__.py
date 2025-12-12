@@ -33,6 +33,7 @@ def create_app(config_name='default'):
     from . import models_gamification
     from . import models_shop
     from . import models_audit  # <<< NEU: Audit-Log Modell laden
+    from . import models_market  # <<< NEU: Marktplatz Modell laden
 
     @login_manager.user_loader
     def load_user(user_id):
@@ -94,6 +95,10 @@ def create_app(config_name='default'):
     # --- NEU: Audit-Log Blueprint ---
     from .routes_audit import audit_bp
     app.register_blueprint(audit_bp)
+
+    # --- NEU: Tauschbörse (Market) Blueprint ---
+    from .routes_market import market_bp
+    app.register_blueprint(market_bp)
 
     # 6. Startup-Logik (Innerhalb des App Context)
     with app.app_context():
