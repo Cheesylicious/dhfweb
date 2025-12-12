@@ -201,11 +201,89 @@ function injectWarningStyles() {
             50% { transform: scale(1.2); opacity: 1; }
             100% { transform: scale(1); opacity: 0.8; }
         }
+
+        /* --- DYNAMISCHE GESTRICHELTE UMRANDUNG (MARCHING ANTS) --- */
+        @keyframes marchingAnts {
+            0% { background-position: 0 0, 100% 0, 0 100%, 0 100%; }
+            100% { background-position: 20px 0, 100% 20px, -20px 100%, 0 calc(100% - 20px); }
+        }
+
         .market-offer-active {
-            border: 2px dashed #f1c40f !important; /* Goldener Rahmen für Angebote */
+            border-color: transparent !important;
+            background-image:
+                linear-gradient(90deg, #f1c40f 50%, transparent 50%),
+                linear-gradient(180deg, #f1c40f 50%, transparent 50%),
+                linear-gradient(270deg, #f1c40f 50%, transparent 50%),
+                linear-gradient(0deg, #f1c40f 50%, transparent 50%);
+            background-repeat: repeat-x, repeat-y, repeat-x, repeat-y;
+            background-size: 20px 2px, 2px 20px, 20px 2px, 2px 20px;
+            background-position: 0 0, 100% 0, 0 100%, 0 100%;
+            animation: marchingAnts 1s infinite linear !important;
+            z-index: 20 !important;
+            box-shadow: inset 0 0 5px rgba(0,0,0,0.1);
+        }
+
+        /* --- NEU: PENDING TAKEOVER VISUALISIERUNG (Blau/Türkis) --- */
+        @keyframes pendingPulse {
+            0% { box-shadow: inset 0 0 0 3px #3498db; border-color: #3498db; }
+            50% { box-shadow: inset 0 0 0 3px #1abc9c, 0 0 10px rgba(26, 188, 156, 0.6); border-color: #1abc9c; }
+            100% { box-shadow: inset 0 0 0 3px #3498db; border-color: #3498db; }
+        }
+
+        .pending-takeover-active {
+            animation: pendingPulse 2s infinite ease-in-out !important;
+            z-index: 21 !important; /* Etwas höher als Market Offer */
+            border-style: solid !important;
+        }
+
+        .pending-icon-overlay {
+            position: absolute;
+            bottom: 2px;
+            right: 2px;
+            font-size: 14px;
+            z-index: 12;
+            text-shadow: 0 0 2px rgba(255,255,255,0.8);
+            animation: spin-slow 3s infinite linear;
+        }
+        @keyframes spin-slow {
+            0% { transform: rotate(0deg); }
+            50% { transform: rotate(10deg); }
+            100% { transform: rotate(0deg); }
         }
     `;
     document.head.appendChild(style);
+}
+
+// --- NEU: Funktion zum Markieren eigener Übernahme-Anträge ---
+function markPendingTakeovers() {
+    if (!PlanState.currentShiftQueries) return;
+
+    PlanState.currentShiftQueries.forEach(query => {
+        // Wir suchen Anträge, die noch offen sind ('pending')
+        if (query.status !== 'pending') return;
+
+        // Wir prüfen, ob ICH der Ersatzmann bin (replacement_user_id == meine ID)
+        if (query.replacement_user_id === PlanState.loggedInUser.id) {
+
+            // Ziel-Zelle finden: Die Zelle gehört dem ursprünglichen Besitzer (target_user_id)
+            const selector = `.grid-cell[data-user-id="${query.target_user_id}"][data-date="${query.shift_date}"]`;
+            const cell = document.querySelector(selector);
+
+            if (cell) {
+                // Klasse hinzufügen (Blaues Pulsieren)
+                cell.classList.add('pending-takeover-active');
+
+                // Icon hinzufügen (Sanduhr)
+                if (!cell.querySelector('.pending-icon-overlay')) {
+                    const icon = document.createElement('div');
+                    icon.className = 'pending-icon-overlay';
+                    icon.innerHTML = '⏳'; // Sanduhr Emoji
+                    icon.title = "Deine Übernahme wartet auf Bestätigung";
+                    cell.appendChild(icon);
+                }
+            }
+        }
+    });
 }
 
 // --- NEU: Socket.IO Verbindung herstellen ---
@@ -491,6 +569,8 @@ async function renderGrid(isSilent = false) { // UPDATE: isSilent Parameter hinz
         const [shiftPayload, specialDatesResult, queriesResult, marketOffersResult] = await Promise.all([
             PlanApi.fetchShiftData(PlanState.currentYear, PlanState.currentMonth, PlanState.currentVariantId),
             PlanApi.fetchSpecialDates(PlanState.currentYear, 'holiday'),
+            // WICHTIG: Queries auch für normale User laden (für pending visualisierung)
+            // Früher nur Admin/Planschreiber/Hundeführer -> Jetzt alle (da HFs auch hier dabei sind)
             (PlanState.isAdmin || PlanState.isPlanschreiber || PlanState.isHundefuehrer)
                 ? PlanApi.fetchOpenQueries(PlanState.currentYear, PlanState.currentMonth)
                 : Promise.resolve([]),
@@ -573,8 +653,11 @@ async function renderGrid(isSilent = false) { // UPDATE: isSilent Parameter hinz
         // --- NEU: Check auf offene Krankmeldungen auch beim Reload ---
         checkPendingRequests();
 
-        // NEU: Marktplatz Benachrichtigungen aktualisieren
+        // --- NEU: Marktplatz Benachrichtigungen aktualisieren ---
         MarketModule.updateMarketNotifications();
+
+        // --- NEU: Pending Takeovers markieren (Sanduhr) ---
+        markPendingTakeovers();
 
     } catch (error) {
         if(grid) grid.innerHTML = `<div style="padding: 20px; text-align: center; color: red;">Fehler beim Laden des Plans: ${error.message}</div>`;

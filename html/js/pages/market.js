@@ -3,6 +3,9 @@
 import { apiFetch } from '../utils/api.js';
 import { initAuthCheck } from '../utils/auth.js';
 
+// Konstante für den Highlight-Key (muss mit schichtplan.js übereinstimmen)
+const DHF_HIGHLIGHT_KEY = 'dhf_highlight_goto';
+
 let user;
 
 // DOM Elemente
@@ -118,16 +121,27 @@ function createOfferElement(offer, isMine) {
         ? `<div class="offer-user" style="color:#3498db;">Dein Angebot</div>`
         : `<div class="offer-user">Von: <strong>${escapeHtml(offer.offering_user_name)}</strong></div>`;
 
-    // Buttons
+
+    // --- NEU: Jump-Button HTML ---
+    // Dieser Button wird sowohl bei eigenen als auch fremden Angeboten angezeigt
+    const jumpBtnHtml = `
+        <button class="btn-jump" title="Im Plan anzeigen" onclick="window.jumpToOffer('${offer.shift_date}', ${offer.offering_user_id})">
+            <i class="fas fa-search"></i>
+        </button>
+    `;
+
+    // Buttons zusammensetzen
     let actionBtn = '';
     if (isMine) {
         actionBtn = `
+            ${jumpBtnHtml}
             <button class="btn-cancel" onclick="window.cancelOffer(${offer.id})">
                 <i class="fas fa-trash"></i> Zurückziehen
             </button>
         `;
     } else {
         actionBtn = `
+            ${jumpBtnHtml}
             <button class="btn-accept" onclick="window.acceptOffer(${offer.id}, '${offer.shift_date}', '${offer.shift_type_abbr}')">
                 <i class="fas fa-check"></i> Übernehmen
             </button>
@@ -159,6 +173,26 @@ function createOfferElement(offer, isMine) {
 }
 
 // 4. Global Functions (für OnClick)
+
+// --- NEU: Funktion zum Springen in den Schichtplan ---
+window.jumpToOffer = function(dateStr, userId) {
+    // 1. Daten für den Schichtplan vorbereiten
+    const highlightData = {
+        date: dateStr,          // z.B. "2025-02-13"
+        targetUserId: userId    // Die ID des Users, dessen Zeile wir suchen
+    };
+
+    // 2. Im LocalStorage speichern, damit der Schichtplan es beim Laden findet
+    try {
+        localStorage.setItem(DHF_HIGHLIGHT_KEY, JSON.stringify(highlightData));
+        // 3. Weiterleitung
+        window.location.href = 'schichtplan.html';
+    } catch (e) {
+        console.error("Fehler beim Speichern des Sprungziels:", e);
+        alert("Fehler: Konnte Sprungziel nicht speichern.");
+    }
+};
+
 window.acceptOffer = async function(offerId, dateStr, type) {
     const formattedDate = new Date(dateStr).toLocaleDateString('de-DE');
 
