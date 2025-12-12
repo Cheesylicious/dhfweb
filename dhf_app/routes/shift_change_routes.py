@@ -33,6 +33,28 @@ def create_shift_change_request():
             note=note,
             reason_type=reason_type
         )
+
+        # --- NEU: Auto-Approve für Planschreiber und Admins ---
+        # Wenn der Ersteller vertrauenswürdig ist (Admin oder Planschreiber),
+        # setzen wir die Änderung sofort um (Auto-Genehmigung).
+        if status_code == 201:
+            user_role = current_user.role.name if current_user.role else ""
+
+            if user_role in ['admin', 'Planschreiber']:
+                # ID des neuen Antrags aus der Antwort holen
+                req_data = result.get('request', {})
+                new_req_id = req_data.get('id')
+
+                if new_req_id:
+                    # Sofort genehmigen (Self-Approval)
+                    approve_res, approve_code = ShiftChangeService.approve_request(new_req_id, current_user.id)
+
+                    # Wenn erfolgreich, geben wir direkt das Approval-Ergebnis zurück,
+                    # damit das Frontend sofort Bescheid weiß (und Sockets feuern).
+                    if approve_code == 200:
+                        return jsonify(approve_res), 200
+
+        # Falls keine Auto-Genehmigung (normaler User) oder Fehler dabei, geben wir das normale Ergebnis zurück
         return jsonify(result), status_code
 
     except Exception as e:

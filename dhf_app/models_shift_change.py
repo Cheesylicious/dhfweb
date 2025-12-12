@@ -10,7 +10,7 @@ class ShiftChangeRequest(db.Model):
     requester_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
     replacement_user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True)
 
-    # NEU: Speichert die ursprüngliche Schichtart für "Rückgängig machen"
+    # Speichert die ursprüngliche Schichtart für "Rückgängig machen"
     backup_shifttype_id = db.Column(db.Integer, nullable=True)
 
     reason_type = db.Column(db.String(50), default='sickness', nullable=False)
@@ -29,9 +29,23 @@ class ShiftChangeRequest(db.Model):
 
     def to_dict(self):
         shift_date_str = self.original_shift.date.isoformat() if self.original_shift else None
+
+        # --- NEU: Schicht-Kürzel und Farbe ermitteln ---
+        shift_abbr = "?"
+        shift_color = "#555555"
+
+        if self.original_shift and self.original_shift.shift_type:
+            shift_abbr = self.original_shift.shift_type.abbreviation
+            shift_color = self.original_shift.shift_type.color
+        # -----------------------------------------------
+
         original_user = "Unbekannt"
+        target_user_id = None  # Variable initialisieren
+
         if self.original_shift and self.original_shift.user:
             original_user = f"{self.original_shift.user.vorname} {self.original_shift.user.name}"
+            # --- WICHTIG: Die ID speichern, damit das Frontend die Zeile findet ---
+            target_user_id = self.original_shift.user.id
         elif not self.original_shift:
             original_user = "Schicht gelöscht/offen"
 
@@ -47,6 +61,13 @@ class ShiftChangeRequest(db.Model):
             "id": self.id,
             "original_shift_id": self.original_shift_id,
             "shift_date": shift_date_str,
+
+            # --- WICHTIG FÜR DAS FRONTEND ---
+            "shift_abbr": shift_abbr,
+            "shift_color": shift_color,
+            "target_user_id": target_user_id, # <--- Hier übergeben wir die ID
+            # --------------------------------
+
             "original_user_name": original_user,
             "requester_name": requester_name,
             "replacement_user_id": self.replacement_user_id,
