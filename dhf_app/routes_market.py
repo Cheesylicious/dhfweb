@@ -1,6 +1,6 @@
 from flask import Blueprint, request, jsonify
 from flask_login import login_required, current_user
-from datetime import datetime, date  # <<< WICHTIG: date importieren
+from datetime import datetime, date
 from .extensions import db
 from .models import Shift
 from .models_market import ShiftMarketOffer
@@ -61,10 +61,22 @@ def create_market_offer():
     if not shift:
         return jsonify({"message": "Schicht nicht gefunden."}), 404
 
-    # --- NEU: Zeit-Check (Vergangenheit blockieren) ---
+    # --- 1. Zeit-Check (Vergangenheit blockieren) ---
     if shift.date < date.today():
         return jsonify({"message": "Vergangene Schichten können nicht getauscht werden."}), 400
-    # --------------------------------------------------
+
+    # --- 2. Whitelist-Check (Nur bestimmte Schichten erlauben) ---
+    # Wir greifen auf shift.shift_type zu (SQLAlchemy Relationship muss existieren)
+    ALLOWED_MARKET_SHIFTS = ['T.', 'N.', '6', '24']
+
+    if not shift.shift_type:
+        return jsonify({"message": "Schicht-Typ konnte nicht ermittelt werden."}), 400
+
+    if shift.shift_type.abbreviation not in ALLOWED_MARKET_SHIFTS:
+        return jsonify({
+            "message": f"Diese Schichtart darf nicht getauscht werden. Erlaubt sind nur: {', '.join(ALLOWED_MARKET_SHIFTS)}"
+        }), 400
+    # -------------------------------------------------------------
 
     if shift.user_id != current_user.id:
         return jsonify({"message": "Sie können nur eigene Schichten anbieten."}), 403
@@ -125,10 +137,9 @@ def accept_market_offer(offer_id):
     if offer.status != 'active':
         return jsonify({"message": "Angebot ist leider schon weg oder nicht mehr verfügbar."}), 400
 
-    # --- NEU: Auch hier sicherheitshalber Datum prüfen ---
+    # Sicherheits-Check Datum
     if offer.shift.date < date.today():
         return jsonify({"message": "Diese Schicht liegt in der Vergangenheit."}), 400
-    # ----------------------------------------------------
 
     if offer.offering_user_id == current_user.id:
         return jsonify({"message": "Sie können Ihr eigenes Angebot nicht selbst annehmen."}), 400
@@ -141,7 +152,10 @@ def accept_market_offer(offer_id):
         variant_id=offer.shift.variant_id
     ).first()
 
+    # Wenn der User an dem Tag schon eine Schicht hat (die KEIN 'Frei' ist)
     if existing_shift and existing_shift.shifttype_id is not None:
+        # Optional: Prüfen ob es "Frei" ist, falls "Frei" als Schicht gespeichert wird.
+        # Hier gehen wir davon aus, dass jeder Eintrag blockiert.
         return jsonify({
             "message": f"Nicht möglich: Sie haben am {target_date.strftime('%d.%m.%Y')} bereits einen Dienst eingetragen!"
         }), 409
@@ -151,6 +165,7 @@ def accept_market_offer(offer_id):
         offer.accepted_by_id = current_user.id
         offer.accepted_at = datetime.utcnow()
 
+        # Automatischen Änderungsantrag erstellen
         service_result, status_code = ShiftChangeService.create_request(
             shift_id=offer.shift_id,
             requester_id=offer.offering_user_id,
