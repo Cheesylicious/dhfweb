@@ -99,7 +99,7 @@ async function initialize() {
         PlanState.isHundefuehrer = authData.isHundefuehrer;
 
         // --- NEU: Prediction UI laden ---
-        PredictionUI.init();  // <--- DIESE ZEILE EINFÜGEN
+        PredictionUI.init();
 
         // NEU: Animierte Figur im Header initialisieren
         initPetDisplay(PlanState.loggedInUser);
@@ -141,8 +141,8 @@ async function initialize() {
         // Events binden
         attachGlobalListeners();
 
-        // Initialer Check auf offene Krankmeldungen (Banner)
-        checkPendingRequests();
+        // Initialer Check auf offene Krankmeldungen & Tausch (Banner)
+        renderUnifiedBanner();
 
         // NEU: Echtzeit-Verbindung aufbauen
         setupSocketConnection();
@@ -153,7 +153,11 @@ async function initialize() {
 }
 
 function injectWarningStyles() {
+    // Performance Check: Style nur einmal injecten
+    if (document.getElementById('dhf-dynamic-styles')) return;
+
     const style = document.createElement('style');
+    style.id = 'dhf-dynamic-styles';
     style.innerHTML = `
         /* Bestehende Styles */
         .hud-day-box.warning {
@@ -184,6 +188,29 @@ function injectWarningStyles() {
             filter: blur(5px) !important;
             opacity: 0.6 !important;
             pointer-events: none; /* Klicks während des Ladens verhindern */
+        }
+
+        /* --- HIGHLIGHT ANIMATION --- */
+        .grid-cell-highlight {
+            position: relative !important;
+            z-index: 50 !important;
+        }
+        .grid-cell-highlight::after {
+            content: '';
+            position: absolute;
+            top: -3px; left: -3px; right: -3px; bottom: -3px;
+            background-color: rgba(241, 196, 21, 0.4);
+            border: 3px solid #f1c40f;
+            border-radius: 4px;
+            box-shadow: 0 0 15px #f1c40f;
+            z-index: 100;
+            pointer-events: none;
+            animation: flash-overlay 1.5s ease-in-out 3;
+        }
+        @keyframes flash-overlay {
+            0% { opacity: 0; transform: scale(1); }
+            50% { opacity: 1; transform: scale(1.05); }
+            100% { opacity: 0; transform: scale(1); }
         }
 
         /* --- NEU: Marktplatz Icon Overlay & Styles --- */
@@ -224,62 +251,136 @@ function injectWarningStyles() {
         }
 
         /* --- NEU: PENDING TAKEOVER VISUALISIERUNG (Blau/Türkis) --- */
-        @keyframes pendingPulse {
-            0% { box-shadow: inset 0 0 0 3px #3498db; border-color: #3498db; }
-            50% { box-shadow: inset 0 0 0 3px #1abc9c, 0 0 10px rgba(26, 188, 156, 0.6); border-color: #1abc9c; }
-            100% { box-shadow: inset 0 0 0 3px #3498db; border-color: #3498db; }
+        .pending-outgoing {
+            opacity: 0.6 !important;
+            border: 2px dashed #f39c12 !important; /* Orange gestrichelt */
+            background-image: repeating-linear-gradient(45deg, transparent, transparent 10px, rgba(243, 156, 18, 0.1) 10px, rgba(243, 156, 18, 0.1) 20px) !important;
+            position: relative;
+        }
+        .icon-outgoing {
+            position: absolute; bottom: 2px; right: 2px; font-size: 16px; color: #f39c12; z-index: 22;
+            filter: drop-shadow(0 0 2px rgba(0,0,0,0.8));
         }
 
-        .pending-takeover-active {
-            animation: pendingPulse 2s infinite ease-in-out !important;
-            z-index: 21 !important; /* Etwas höher als Market Offer */
-            border-style: solid !important;
+        .pending-incoming {
+            border: 2px dashed #2ecc71 !important; /* Grün gestrichelt */
+            background-color: rgba(46, 204, 113, 0.15) !important;
+            color: #fff !important;
+            display: flex; justify-content: center; align-items: center;
+            position: relative;
+        }
+        .icon-incoming {
+            position: absolute; bottom: 2px; right: 2px; font-size: 16px; color: #2ecc71; z-index: 22;
+            filter: drop-shadow(0 0 2px rgba(0,0,0,0.8));
+        }
+        .ghost-text {
+            font-style: italic; opacity: 0.8; font-weight: bold; color: #2ecc71; font-size: 1.1em;
         }
 
-        .pending-icon-overlay {
-            position: absolute;
-            bottom: 2px;
-            right: 2px;
+        /* --- UNIFIED BANNER STYLES (Smart Grid) --- */
+        #dhf-unified-grid {
+            display: flex;
+            width: 100%;
+            gap: 2px;
+            margin-bottom: 5px;
+            position: sticky;
+            top: 0;
+            z-index: 9999;
+            flex-wrap: wrap;
+            box-shadow: 0 3px 6px rgba(0,0,0,0.15);
+        }
+
+        /* Basis-Klasse für alle Banner-Items (auch das Server-Banner wird hiermit versehen) */
+        .unified-banner-item {
+            flex: 1; /* Teilt den Platz gleichmäßig */
+            min-width: 250px;
+            padding: 10px 15px;
+            text-align: center;
+            font-weight: 700;
+            color: white !important;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+            transition: all 0.2s ease;
             font-size: 14px;
-            z-index: 12;
-            text-shadow: 0 0 2px rgba(255,255,255,0.8);
-            animation: spin-slow 3s infinite linear;
+            border-radius: 0;
+            margin: 0;
+            border: none;
         }
-        @keyframes spin-slow {
-            0% { transform: rotate(0deg); }
-            50% { transform: rotate(10deg); }
-            100% { transform: rotate(0deg); }
-        }
+        .unified-banner-item:hover { filter: brightness(1.1); transform: none; }
+
+        /* Damit Ecken unten abgerundet sind, wenn es das einzige Element ist oder am Rand */
+        #dhf-unified-grid .unified-banner-item:first-child { border-bottom-left-radius: 5px; }
+        #dhf-unified-grid .unified-banner-item:last-child { border-bottom-right-radius: 5px; }
+
+        /* Farben */
+        .u-banner-red    { background-color: #c0392b; }
+        .u-banner-orange { background-color: #e67e22; }
+        .u-banner-blue   { background-color: #2980b9; }
+        .u-banner-green  { background-color: #27ae60; }
     `;
     document.head.appendChild(style);
 }
 
-// --- NEU: Funktion zum Markieren eigener Übernahme-Anträge ---
+// --- INNOVATIVE FUNKTION: Visualisierung von offenen Tausch-Vorgängen ---
 function markPendingTakeovers() {
-    if (!PlanState.currentShiftQueries) return;
+    // Liste der aktuellen Änderungsanträge nutzen
+    if (!PlanState.currentChangeRequests || PlanState.currentChangeRequests.length === 0) return;
 
-    PlanState.currentShiftQueries.forEach(query => {
-        // Wir suchen Anträge, die noch offen sind ('pending')
-        if (query.status !== 'pending') return;
+    PlanState.currentChangeRequests.forEach(req => {
+        // Wir suchen nur nach offenen Anträgen ('pending')
+        if (req.status !== 'pending') return;
 
-        // Wir prüfen, ob ICH der Ersatzmann bin (replacement_user_id == meine ID)
-        if (query.replacement_user_id === PlanState.loggedInUser.id) {
+        const myId = PlanState.loggedInUser.id;
+        const giverId = req.target_user_id; // Der ursprüngliche Besitzer (aus Backend to_dict)
+        const receiverId = req.replacement_user_id; // Der neue Besitzer
 
-            // Ziel-Zelle finden: Die Zelle gehört dem ursprünglichen Besitzer (target_user_id)
-            const selector = `.grid-cell[data-user-id="${query.target_user_id}"][data-date="${query.shift_date}"]`;
-            const cell = document.querySelector(selector);
+        // Nur relevant, wenn ich beteiligt bin ODER Admin bin
+        const isRelevantForMe = (myId === giverId || myId === receiverId || PlanState.isAdmin);
+        if (!isRelevantForMe) return;
 
-            if (cell) {
-                // Klasse hinzufügen (Blaues Pulsieren)
-                cell.classList.add('pending-takeover-active');
+        // Datum bereinigen (Zeitstempel entfernen)
+        const dateOnly = req.shift_date ? req.shift_date.split('T')[0] : null;
+        if (!dateOnly) return;
 
-                // Icon hinzufügen (Sanduhr)
-                if (!cell.querySelector('.pending-icon-overlay')) {
+        // --- 1. VISUALISIERUNG BEIM ABGEBER (GIVER) ---
+        // Wenn ich der Abgeber bin (oder Admin schaut), zeige "Ausgang"
+        const giverCell = PlanRenderer.findCellByKey(`${giverId}-${dateOnly}`);
+        if (giverCell) {
+            giverCell.classList.add('pending-outgoing');
+
+            // Icon "Ausgang" (Pfeil nach rechts oben)
+            if (!giverCell.querySelector('.icon-outgoing')) {
+                const icon = document.createElement('div');
+                icon.className = 'icon-outgoing';
+                icon.innerHTML = '<i class="fas fa-share-square"></i>'; // FontAwesome Icon
+                icon.title = `Wartet auf Übergabe an ${req.replacement_name}`;
+                giverCell.appendChild(icon);
+            }
+        }
+
+        // --- 2. VISUALISIERUNG BEIM ÜBERNEHMER (RECEIVER) ---
+        // Wenn ich der Übernehmer bin (oder Admin schaut), zeige "Eingang" (Geister-Schicht)
+        if (receiverId) {
+            const receiverCell = PlanRenderer.findCellByKey(`${receiverId}-${dateOnly}`);
+            if (receiverCell) {
+                receiverCell.classList.add('pending-incoming');
+
+                // Wir fügen das Kürzel der Schicht ein (Ghost Text), falls die Zelle leer ist
+                // req.shift_abbr kommt aus dem Backend (to_dict von ShiftChangeRequest)
+                if (req.shift_abbr && (!receiverCell.textContent || receiverCell.textContent.trim() === '')) {
+                     receiverCell.innerHTML = `<span class="ghost-text">${req.shift_abbr}</span>`;
+                }
+
+                // Icon "Eingang" (Pfeil nach unten/innen)
+                if (!receiverCell.querySelector('.icon-incoming')) {
                     const icon = document.createElement('div');
-                    icon.className = 'pending-icon-overlay';
-                    icon.innerHTML = '⏳'; // Sanduhr Emoji
-                    icon.title = "Deine Übernahme wartet auf Bestätigung";
-                    cell.appendChild(icon);
+                    icon.className = 'icon-incoming';
+                    icon.innerHTML = '<i class="fas fa-download"></i>'; // FontAwesome Icon
+                    icon.title = `Wartet auf Übernahme von ${req.original_user_name}`;
+                    receiverCell.appendChild(icon);
                 }
             }
         }
@@ -418,6 +519,12 @@ function checkHighlights() {
         if (data) {
             highlightData = JSON.parse(data);
             localStorage.removeItem(DHF_HIGHLIGHT_KEY);
+
+            // FIX: Datum bereinigen, falls ISO-String mit Zeit gespeichert wurde
+            if (highlightData.date && highlightData.date.includes('T')) {
+                highlightData.date = highlightData.date.split('T')[0];
+            }
+
             const parts = highlightData.date.split('-');
             PlanState.currentYear = parseInt(parts[0]);
             PlanState.currentMonth = parseInt(parts[1]);
@@ -539,13 +646,8 @@ async function renderGrid(isSilent = false) { // UPDATE: isSilent Parameter hinz
         if(monthLabel) monthLabel.textContent = "Lade...";
     }
 
-    // WICHTIG: NICHT mehr grid.innerHTML löschen!
-    // if(grid) grid.innerHTML = '...';  <-- Entfernt
-
     const planStatusContainer = document.getElementById('plan-status-container');
-
-    // --- FIX: Buttons NICHT mehr ausblenden beim Laden, um Flackern zu verhindern ---
-    // if (planStatusContainer) planStatusContainer.style.display = 'none';  <--- ENTFERNT
+    // if (planStatusContainer) planStatusContainer.style.display = 'none'; // Flackern vermeiden
 
     document.body.classList.remove('plan-locked');
 
@@ -561,22 +663,21 @@ async function renderGrid(isSilent = false) { // UPDATE: isSilent Parameter hinz
     }
 
     try {
-        // Künstliche Verzögerung von 300ms KANN man hier einbauen, wenn man den Effekt erzwingen will.
-        // Aber für maximale Performance ("innovativ") lassen wir es so schnell wie möglich laufen.
-        // Der Blur-Effekt ist auch bei schnellen Ladezeiten als weicher Übergang wahrnehmbar.
-
         // --- UPDATE: Marktplatz Daten laden (Parallel) ---
-        const [shiftPayload, specialDatesResult, queriesResult, marketOffersResult] = await Promise.all([
+        const [shiftPayload, specialDatesResult, queriesResult, marketOffersResult, pendingRequestsResult] = await Promise.all([
             PlanApi.fetchShiftData(PlanState.currentYear, PlanState.currentMonth, PlanState.currentVariantId),
             PlanApi.fetchSpecialDates(PlanState.currentYear, 'holiday'),
             // WICHTIG: Queries auch für normale User laden (für pending visualisierung)
-            // Früher nur Admin/Planschreiber/Hundeführer -> Jetzt alle (da HFs auch hier dabei sind)
             (PlanState.isAdmin || PlanState.isPlanschreiber || PlanState.isHundefuehrer)
                 ? PlanApi.fetchOpenQueries(PlanState.currentYear, PlanState.currentMonth)
                 : Promise.resolve([]),
             // NEU: Marktplatz Angebote laden
             (PlanState.isAdmin || PlanState.isHundefuehrer)
                 ? PlanApi.fetchMarketOffers()
+                : Promise.resolve([]),
+            // NEU: Pending Requests laden (für Übernahme-Anzeige)
+            (PlanState.isAdmin || PlanState.isPlanschreiber || PlanState.isHundefuehrer)
+                ? PlanApi.fetchPendingShiftChangeRequests()
                 : Promise.resolve([])
         ]);
 
@@ -612,6 +713,10 @@ async function renderGrid(isSilent = false) { // UPDATE: isSilent Parameter hinz
             });
         }
 
+        // --- NEU: Change Requests in State speichern (für Pending Visualisierung) ---
+        PlanState.currentChangeRequests = pendingRequestsResult || [];
+
+
         PlanState.currentStaffingActual = shiftPayload.staffing_actual || {};
         PlanState.currentPlanStatus = shiftPayload.plan_status || {
             year: PlanState.currentYear, month: PlanState.currentMonth,
@@ -626,7 +731,6 @@ async function renderGrid(isSilent = false) { // UPDATE: isSilent Parameter hinz
         updatePlanStatusUI(PlanState.currentPlanStatus);
 
         // --- DOM Update ---
-        // Jetzt ersetzen wir den (noch verschwommenen) alten Inhalt durch den neuen.
         PlanRenderer.buildGridDOM({
             onCellClick: handleCellClick,
             onCellEnter: (user, dateStr, cell) => {
@@ -650,11 +754,17 @@ async function renderGrid(isSilent = false) { // UPDATE: isSilent Parameter hinz
             }, 300);
         }
 
-        // --- NEU: Check auf offene Krankmeldungen auch beim Reload ---
-        checkPendingRequests();
+        // --- NEU: Check auf offene Krankmeldungen & Tausch (Banner) beim Reload ---
+        renderUnifiedBanner();
 
-        // --- NEU: Marktplatz Benachrichtigungen aktualisieren ---
-        MarketModule.updateMarketNotifications();
+        // --- NEU: Marktplatz Benachrichtigungen (Badge) aktualisieren ---
+        // Hinweis: Das Banner wird jetzt von renderUnifiedBanner übernommen!
+        const badge = document.getElementById('market-badge');
+        if (badge && PlanState.currentMarketOffers) {
+             const count = Object.keys(PlanState.currentMarketOffers).length;
+             badge.textContent = count;
+             badge.style.display = count > 0 ? 'inline-block' : 'none';
+        }
 
         // --- NEU: Pending Takeovers markieren (Sanduhr) ---
         markPendingTakeovers();
@@ -664,7 +774,6 @@ async function renderGrid(isSilent = false) { // UPDATE: isSilent Parameter hinz
         console.error(error);
     } finally {
         // --- INNOVATION: Animation Ende ---
-        // Egal ob Erfolg oder Fehler, wir entfernen den Blur wieder -> Bild wird scharf.
         if(grid) grid.classList.remove('blur-loading');
         if(staffingGrid) staffingGrid.classList.remove('blur-loading');
     }
@@ -836,6 +945,12 @@ function showClickActionModal(event, user, dateStr, cell, isCellOnOwnRow) {
     if (PlanState.isBulkMode) return;
     if(clickActionModal) clickActionModal.style.display = 'none';
 
+    // --- FIX ZOMBIE BUTTONS START ---
+    // Hier entfernen wir alte Tausch-Bereiche, bevor wir neue erstellen
+    const oldTradeSection = document.getElementById('cam-trade-section');
+    if (oldTradeSection) oldTradeSection.remove();
+    // --- FIX ZOMBIE BUTTONS ENDE ---
+
     const userName = `${user.vorname} ${user.name}`;
     const d = new Date(dateStr);
     const dateDisplay = d.toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit' });
@@ -897,6 +1012,39 @@ function showClickActionModal(event, user, dateStr, cell, isCellOnOwnRow) {
         hasContent = true;
     }
     // ---------------------------------------
+
+    // --- NEU: Admin Trade UI (In-Plan Genehmigung) ---
+    // Wir prüfen, ob es einen offenen Antrag für diese Zelle gibt
+    const pendingReq = PlanState.currentChangeRequests.find(req =>
+        req.status === 'pending' &&
+        (req.shift_date ? req.shift_date.split('T')[0] : null) === dateStr &&
+        (req.target_user_id === user.id || req.replacement_user_id === user.id)
+    );
+
+    if (pendingReq && (PlanState.isAdmin || PlanState.isPlanschreiber)) {
+        const tradeSection = document.createElement('div');
+        tradeSection.id = 'cam-trade-section'; // WICHTIG: ID setzen für Cleanup
+        tradeSection.className = 'cam-section';
+        tradeSection.innerHTML = `
+            <div class="cam-section-title" style="color:#f1c40f;">⚠️ Offener Tausch</div>
+            <div style="font-size:11px; margin-bottom:5px; color:#ccc;">
+                ${pendingReq.original_user_name} ➔ ${pendingReq.replacement_name}
+            </div>
+            <div style="display:grid; grid-template-columns:1fr 1fr; gap:5px;">
+                <button class="cam-button approve" onclick="window.confirmApproveTrade(${pendingReq.id})">Genehmigen</button>
+                <button class="cam-button reject" onclick="window.confirmRejectTrade(${pendingReq.id})">Ablehnen</button>
+            </div>
+        `;
+        // Einfügen ganz oben oder vor den Shifts
+        const shiftsSection = document.getElementById('cam-admin-shifts');
+        if (shiftsSection) {
+            shiftsSection.parentNode.insertBefore(tradeSection, shiftsSection);
+        } else {
+            document.getElementById('click-action-modal').appendChild(tradeSection);
+        }
+        hasContent = true;
+    }
+    // --- ENDE NEU ---
 
     // --- NEU: Spezialfall für Planschreiber/Admin bei gesperrtem Plan ---
     if ((PlanState.isPlanschreiber || PlanState.isAdmin) && PlanState.clickModalContext.isPlanGesperrt) {
@@ -992,6 +1140,30 @@ function showClickActionModal(event, user, dateStr, cell, isCellOnOwnRow) {
     clickActionModal.style.top = `${top}px`;
     clickActionModal.style.display = 'block';
 }
+
+// --- NEU: Globale Funktionen für das Trade-UI ---
+window.confirmApproveTrade = async function(reqId) {
+    if (!confirm("Diesen Tausch genehmigen?")) return;
+    try {
+        await PlanApi.approveShiftChangeRequest(reqId);
+        // Hinweis: Sockets erledigen den Grid-Reload, wir schließen nur das Modal
+        document.getElementById('click-action-modal').style.display = 'none';
+    } catch (e) {
+        alert("Fehler: " + e.message);
+    }
+};
+
+window.confirmRejectTrade = async function(reqId) {
+    if (!confirm("Tausch ablehnen?")) return;
+    try {
+        await PlanApi.rejectShiftChangeRequest(reqId);
+        document.getElementById('click-action-modal').style.display = 'none';
+        // Reload Grid um Pending-Status zu entfernen
+        renderGrid();
+    } catch (e) {
+        alert("Fehler: " + e.message);
+    }
+};
 
 function populateAdminShiftButtons() {
     const container = document.getElementById('cam-admin-shifts');
@@ -1672,58 +1844,119 @@ planUpdateChannel.onmessage = (event) => {
     }
 };
 
-// --- NEU: Funktion zum Prüfen und Anzeigen offener Krankmeldungen ---
-async function checkPendingRequests() {
-    if (!PlanState.isAdmin) return; // Nur Admins müssen das sehen
+// =========================================================
+// === DIE ENTSCHEIDENDE FUNKTION (THE AGGRESSIVE MERGER) ===
+// =========================================================
+
+async function renderUnifiedBanner() {
+    // Nur für Admins / Planschreiber / Hundeführer relevant
+    if (!PlanState.isAdmin && !PlanState.isPlanschreiber && !PlanState.isHundefuehrer) return;
 
     try {
-        const requests = await PlanApi.fetchPendingShiftChangeRequests();
-        const bannerId = 'shift-change-banner';
-        let banner = document.getElementById(bannerId);
+        const gridId = 'dhf-unified-grid';
 
-        if (requests && requests.length > 0) {
-            if (!banner) {
-                // Banner erstellen wenn noch nicht vorhanden
-                banner = document.createElement('div');
-                banner.id = bannerId;
-                // Styling ähnlich dem "Bug Banner" (angenommenes Design: Warnfarbe)
-                banner.style.cssText = `
-                    background-color: #e67e22;
-                    color: white;
-                    padding: 10px;
-                    text-align: center;
-                    font-weight: bold;
-                    position: sticky;
-                    top: 0;
-                    z-index: 9999;
-                    cursor: pointer;
-                    box-shadow: 0 2px 5px rgba(0,0,0,0.2);
-                    margin-bottom: 5px;
-                `;
-                // Klick-Aktion: Weiterleitung zur Bearbeitung
-                banner.onclick = () => {
-                     window.location.href = 'anfragen.html';
-                };
+        // 1. AUFRÄUMEN: Suche nach alten Containern und lösche sie
+        // Damit verhindern wir Dopplungen, egal wie oft renderGrid aufgerufen wird
+        const existingGrid = document.getElementById(gridId);
+        if (existingGrid) existingGrid.remove();
 
-                // Ganz oben im Body oder vor dem Content einfügen
-                const mainContainer = document.querySelector('.main-content') || document.body;
-                if (mainContainer === document.body) {
-                    document.body.prepend(banner);
-                } else {
-                    mainContainer.parentNode.insertBefore(banner, mainContainer);
+        // 2. SERVER-BANNER KAPERN (The Hijack)
+        // Wir suchen nach Containern, die typische Flask-Flash-Klassen haben
+        // oder den Text "Meldungen" enthalten.
+        let serverMessage = null;
+        let serverAction = null;
+        let serverType = 'u-banner-red'; // Default Red
+
+        // Selektoren für mögliche Server-Banner (pass auf deine Template-Struktur an)
+        const possibleBanners = document.querySelectorAll('.alert, .flash, .flashes div, .alert-danger, .alert-success');
+
+        possibleBanners.forEach(el => {
+            // Nur wenn das Element sichtbar ist und Text hat
+            if (el.offsetParent !== null && el.innerText.trim().length > 0) {
+                // Check: Ist es das "Meldungen"-Banner?
+                if (el.innerText.includes('Meldung') || el.innerText.includes('Krankmeldung')) {
+                    serverMessage = el.innerText.trim();
+
+                    // Hat es einen Link?
+                    const link = el.querySelector('a');
+                    if (link) {
+                        serverAction = () => window.location.href = link.href;
+                    } else {
+                        // Fallback Action für Meldungen
+                        serverAction = () => window.location.href = 'meldungen.html'; // Oder wo auch immer das hin soll
+                    }
+
+                    // WICHTIG: Das Original-Element aus dem DOM entfernen!
+                    el.remove();
                 }
             }
+        });
 
-            // Text aktualisieren und anzeigen
-            banner.innerHTML = `⚠️ Es gibt <u>${requests.length} offene Krankmeldungs-Anträge</u>. Bitte prüfen!`;
-            banner.style.display = 'block';
-
-        } else {
-            // Ausblenden wenn keine Anträge mehr da sind
-            if (banner) banner.style.display = 'none';
+        // 3. API DATEN HOLEN (Client-Side State)
+        let pendingRequests = [];
+        if (PlanState.isAdmin || PlanState.isPlanschreiber) {
+             pendingRequests = await PlanApi.fetchPendingShiftChangeRequests();
         }
+        let marketOffers = [];
+        if (PlanState.currentMarketOffers) {
+             marketOffers = Object.values(PlanState.currentMarketOffers).filter(o => !o.is_my_offer);
+        }
+
+        // 4. DATEN ANALYSIEREN
+        const tradeReqs = pendingRequests.filter(r => r.reason_type === 'trade');
+        const otherReqs = pendingRequests.filter(r => r.reason_type !== 'trade');
+
+        const countTrade = tradeReqs.length;
+        const countSick = otherReqs.length;
+        const countMarket = marketOffers.length;
+
+        // Wenn gar nichts da ist -> Abbruch
+        if (!serverMessage && countTrade === 0 && countSick === 0 && countMarket === 0) return;
+
+        // 5. GRID BAUEN (Der neue, saubere Container)
+        const grid = document.createElement('div');
+        grid.id = gridId;
+
+        // Helper zum Bauen der Kacheln
+        const addTile = (text, typeClass, iconClass, onClick) => {
+            const div = document.createElement('div');
+            div.className = `unified-banner-item ${typeClass}`;
+            div.innerHTML = `<i class="fas ${iconClass}"></i> <span>${text}</span>`;
+            if (onClick) div.onclick = onClick;
+            grid.appendChild(div);
+        };
+
+        // Kachel 1: System / Server Nachricht (Rot)
+        if (serverMessage) {
+            addTile(serverMessage, 'u-banner-red', 'fa-bell', serverAction);
+        }
+
+        // Kachel 2: Krankmeldungen (Orange)
+        if (countSick > 0) {
+            addTile(`${countSick} Krankmeldung(en)`, 'u-banner-orange', 'fa-exclamation-triangle', () => window.location.href='anfragen.html');
+        }
+
+        // Kachel 3: Tausch-Genehmigungen (Blau)
+        if (countTrade > 0) {
+            addTile(`${countTrade} Tausch-Genehmigung(en)`, 'u-banner-blue', 'fa-exchange-alt', () => window.location.href='anfragen.html');
+        }
+
+        // Kachel 4: Markt-Angebote (Grün)
+        if (countMarket > 0 && PlanState.isHundefuehrer) {
+            addTile(`${countMarket} neue(s) Angebot(e)`, 'u-banner-green', 'fa-tags', () => window.location.href='market.html');
+        }
+
+        // 6. INJECT (Ganz oben einfügen)
+        const mainContainer = document.querySelector('.main-content') || document.body;
+        // Wir fügen es VOR allem anderen ein, damit es ganz oben klebt
+        if (mainContainer.firstChild) {
+            mainContainer.insertBefore(grid, mainContainer.firstChild);
+        } else {
+            mainContainer.appendChild(grid);
+        }
+
     } catch (e) {
-        console.warn("Konnte offene Anträge nicht prüfen:", e);
+        console.warn("Banner Render Error:", e);
     }
 }
 

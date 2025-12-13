@@ -30,9 +30,12 @@ export const PlanState = {
     currentSpecialDates: {}, // Key: dateStr -> Type
     currentStaffingActual: {}, // Nested Object
     currentPlanStatus: {}, // {status, is_locked, ...}
-    currentShiftQueries: [], // Array of query objects
 
-    // --- NEU: Marktplatz Angebote Cache ---
+    // Anfragen & Anträge
+    currentShiftQueries: [], // Array of query objects (Text-Notizen)
+    currentChangeRequests: [], // NEU: Array of change requests (Krank/Tausch)
+
+    // Marktplatz Angebote Cache
     // Key: "userId-dateStr" (z.B. "5-2025-01-12") -> Offer Object
     currentMarketOffers: {},
 
@@ -63,16 +66,8 @@ export const PlanState = {
     selectedQueryIds: new Set()
 };
 
-/**
- * Hilfsfunktion zum Zurücksetzen von temporären UI-Zuständen
- * (z.B. beim Monatswechsel).
- */
 export function resetTemporaryState() {
     PlanState.hoveredCellContext = null;
     PlanState.clickModalContext = null;
     PlanState.selectedQueryIds.clear();
-    // Bulk Mode bleibt ggf. aktiv oder wird hier deaktiviert, je nach UX-Wunsch.
-    // Wir lassen isBulkMode unangetastet, damit man über Monate hinweg arbeiten kann,
-    // oder setzen es zurück:
-    // PlanState.isBulkMode = false;
 }

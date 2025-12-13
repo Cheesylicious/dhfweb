@@ -122,10 +122,13 @@ function createOfferElement(offer, isMine) {
         : `<div class="offer-user">Von: <strong>${escapeHtml(offer.offering_user_name)}</strong></div>`;
 
 
-    // --- NEU: Jump-Button HTML ---
-    // Dieser Button wird sowohl bei eigenen als auch fremden Angeboten angezeigt
+    // --- KORREKTUR: Datum bereinigen (Nur YYYY-MM-DD) für Jump Funktion ---
+    const rawDate = offer.shift_date; // z.B. "2025-05-12T00:00:00"
+    const dateOnly = rawDate.includes('T') ? rawDate.split('T')[0] : rawDate;
+
+    // Jump-Button HTML
     const jumpBtnHtml = `
-        <button class="btn-jump" title="Im Plan anzeigen" onclick="window.jumpToOffer('${offer.shift_date}', ${offer.offering_user_id})">
+        <button class="btn-jump" title="Im Plan anzeigen" onclick="window.jumpToOffer('${dateOnly}', ${offer.offering_user_id})">
             <i class="fas fa-search"></i>
         </button>
     `;
@@ -174,11 +177,11 @@ function createOfferElement(offer, isMine) {
 
 // 4. Global Functions (für OnClick)
 
-// --- NEU: Funktion zum Springen in den Schichtplan ---
+// --- Funktion zum Springen in den Schichtplan ---
 window.jumpToOffer = function(dateStr, userId) {
     // 1. Daten für den Schichtplan vorbereiten
     const highlightData = {
-        date: dateStr,          // z.B. "2025-02-13"
+        date: dateStr,          // Muss "YYYY-MM-DD" sein
         targetUserId: userId    // Die ID des Users, dessen Zeile wir suchen
     };
 
@@ -202,7 +205,7 @@ window.acceptOffer = async function(offerId, dateStr, type) {
 
     try {
         const res = await apiFetch(`/api/market/accept/${offerId}`, 'POST');
-        alert(res.message);
+        alert(res.message || "Erfolgreich beantragt!");
         loadOffers(); // Reload UI
         // Event feuern für Notifications Update
         window.dispatchEvent(new CustomEvent('dhf:notification_update'));

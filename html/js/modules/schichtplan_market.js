@@ -1,4 +1,6 @@
-import { apiFetch } from '../utils/api.js'; // Nutzung von apiFetch statt PlanApi
+// html/js/modules/schichtplan_market.js
+
+import { apiFetch } from '../utils/api.js';
 import { PlanState } from './schichtplan_state.js';
 
 export const MarketModule = {
@@ -35,7 +37,17 @@ export const MarketModule = {
         if (context.isCellOnOwnRow && PlanState.isHundefuehrer) {
 
             // Wenn keine echte Schicht da ist, können wir nichts anbieten
-            if (!currentShift || !currentShift.shifttype_id) {
+            if (!currentShift || !currentShift.shifttype_id || !currentShift.shift_type) {
+                return false;
+            }
+
+            // --- NEU: Whitelist-Check ---
+            // Nur erlaubte Arbeitsschichten dürfen getauscht werden.
+            // Urlaub (EU), Wunschfrei (X) etc. sind ausgeschlossen.
+            const ALLOWED_MARKET_SHIFTS = ["T.", "N.", "6", "24"];
+
+            // Wir prüfen das Kürzel (abbreviation) der Schicht
+            if (!ALLOWED_MARKET_SHIFTS.includes(currentShift.shift_type.abbreviation)) {
                 return false;
             }
 
