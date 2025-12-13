@@ -1,19 +1,22 @@
-// cheesylicious/dhfweb/dhfweb-ec604d738e9bd121b65cc8557f8bb98d2aa18062/html/shared_notifications.js
+// html/shared_notifications.js
 /**
  * DHF-Planer - Geteiltes Benachrichtigungs-Modul
- * V6: Hundeführer sieht Banner mit korrektem Link und Tab-Switching.
+ * V7: Deaktiviert sich selbst auf schichtplan.html (verhindert Dopplung/Flackern).
  */
 (function() {
     // Alte Styles aufräumen
-    const oldIds = ['notification-styles', 'notification-styles-v2', 'notification-styles-v3', 'notification-styles-v4', 'notification-styles-v5'];
+    const oldIds = ['notification-styles', 'notification-styles-v2', 'notification-styles-v3', 'notification-styles-v4', 'notification-styles-v5', 'notification-styles-v6'];
     oldIds.forEach(id => {
         const el = document.getElementById(id);
         if (el) el.remove();
     });
 
-    if (document.getElementById('notification-styles-v6')) { return; }
+    if (document.getElementById('notification-styles-v7')) { return; }
 
-    if (window.location.pathname.endsWith('change_password.html')) {
+    // --- NEU: Auf der Schichtplan-Seite brechen wir hier ab ---
+    // Der 'schichtplan_banner.js' übernimmt dort die Anzeige im Grid-Layout.
+    // Das verhindert das "Aufblitzen" und doppelte API-Calls.
+    if (window.location.pathname.includes('schichtplan.html') || window.location.pathname.endsWith('change_password.html')) {
         return;
     }
 
@@ -101,7 +104,7 @@
     `;
 
     const styleSheet = document.createElement("style");
-    styleSheet.id = "notification-styles-v6";
+    styleSheet.id = "notification-styles-v7";
     styleSheet.innerText = styles;
     document.head.appendChild(styleSheet);
 
@@ -159,7 +162,6 @@
                 const div = document.createElement('div');
                 div.className = 'notification-banner banner-wishes';
                 div.title = "Offene Wunsch-Anfragen";
-                // --- KORREKTUR: Link mit Parameter für Tab-Switch ---
                 const targetUrl = "anfragen.html?tab=wunsch";
                 div.innerHTML = `
                     <a href="${targetUrl}" class="banner-link">
@@ -170,7 +172,6 @@
                     </a>
                 `;
 
-                // --- KORREKTUR: Click-Handler auch für Hundeführer ---
                 if (isAdmin || isHundefuehrer) {
                     div.onclick = (e) => {
                         if (window.location.pathname.endsWith('anfragen.html')) {

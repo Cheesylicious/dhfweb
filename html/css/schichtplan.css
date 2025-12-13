@@ -18,3 +18,10 @@
 
 /* 6. Generator HUD (Spezial-Modul) */
 @import url('modules/generator.css');
+
+/* --- NEU: FIX FÜR FLACKERNDEN BANNER --- */
+/* Verhindert, dass der globale rote Banner beim Laden kurz aufblitzt. */
+/* Die Steuerung übernimmt hier exklusiv schichtplan_banner.js */
+#notification-container {
+    display: none !important;
+}
