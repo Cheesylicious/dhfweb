@@ -3,7 +3,6 @@
 import { PlanState } from './schichtplan_state.js';
 import { PlanApi } from './schichtplan_api.js';
 import { PlanRenderer } from './schichtplan_renderer.js';
-import { apiFetch } from '../utils/api.js'; // [NEU] Import für direkten Abruf der Meldungen
 
 /**
  * Modul für Benachrichtigungen (Banner) und visuelle Marker im Plan.
@@ -19,14 +18,6 @@ export const PlanBanner = {
         if (!PlanState.isAdmin && !PlanState.isPlanschreiber && !PlanState.isHundefuehrer) return;
 
         try {
-            // --- SCHRITT 0: KONFLIKT-MANAGEMENT ---
-            // Wir verstecken den globalen Container von shared_notifications.js,
-            // damit wir die "Meldungen" hier integrieren können, statt sie doppelt/getrennt zu haben.
-            const globalNotificationContainer = document.getElementById('notification-container');
-            if (globalNotificationContainer) {
-                globalNotificationContainer.style.display = 'none';
-            }
-
             const gridId = 'dhf-unified-grid';
 
             // 1. AUFRÄUMEN: Suche nach alten Containern und lösche sie
@@ -54,7 +45,7 @@ export const PlanBanner = {
                             serverAction = () => window.location.href = link.href;
                         } else {
                             // Fallback Action für Meldungen
-                            serverAction = () => window.location.href = 'feedback.html';
+                            serverAction = () => window.location.href = 'meldungen.html';
                         }
 
                         // WICHTIG: Das Original-Element aus dem DOM entfernen!
@@ -64,30 +55,21 @@ export const PlanBanner = {
             });
 
             // 3. API DATEN HOLEN (Client-Side State)
+            // Hinweis: Wir nutzen die im State gecacheten Daten, falls vorhanden,
+            // oder holen sie frisch, falls PlanState leer ist (beim ersten Load).
+            // Idealweise hat renderGrid() den State bereits gefüllt.
 
-            // A) Schicht-Anträge & Tausch
             let pendingRequests = PlanState.currentChangeRequests || [];
             if ((PlanState.isAdmin || PlanState.isPlanschreiber) && pendingRequests.length === 0) {
+                 // Fallback fetch, falls State leer (selten)
                  try {
                      pendingRequests = await PlanApi.fetchPendingShiftChangeRequests();
                  } catch(e) {}
             }
 
-            // B) Marktplatz
             let marketOffers = [];
             if (PlanState.currentMarketOffers) {
                  marketOffers = Object.values(PlanState.currentMarketOffers).filter(o => !o.is_my_offer);
-            }
-
-            // C) [NEU] Feedback/Meldungen (Nur für Admin)
-            let feedbackCount = 0;
-            if (PlanState.isAdmin) {
-                try {
-                    const fbRes = await apiFetch('/api/feedback/count_new');
-                    feedbackCount = fbRes.count || 0;
-                } catch(e) {
-                    console.warn("Konnte Feedback-Count nicht laden", e);
-                }
             }
 
             // 4. DATEN ANALYSIEREN
@@ -99,7 +81,7 @@ export const PlanBanner = {
             const countMarket = marketOffers.length;
 
             // Wenn gar nichts da ist -> Abbruch
-            if (!serverMessage && countTrade === 0 && countSick === 0 && countMarket === 0 && feedbackCount === 0) return;
+            if (!serverMessage && countTrade === 0 && countSick === 0 && countMarket === 0) return;
 
             // 5. GRID BAUEN (Der neue, saubere Container)
             const grid = document.createElement('div');
@@ -114,33 +96,29 @@ export const PlanBanner = {
                 grid.appendChild(div);
             };
 
-            // Kachel 1: System / Server Nachricht (Rot - Höchste Prio)
+            // Kachel 1: System / Server Nachricht (Rot)
             if (serverMessage) {
                 addTile(serverMessage, 'u-banner-red', 'fa-bell', serverAction);
             }
 
-            // Kachel 2: Feedback / Meldungen (Rot - Admin Only) - [NEU INTEGRIERT]
-            if (feedbackCount > 0 && PlanState.isAdmin) {
-                addTile(`${feedbackCount} Meldung(en)`, 'u-banner-red', 'fa-bug', () => window.location.href='feedback.html');
-            }
-
-            // Kachel 3: Krankmeldungen (Orange)
-            if (countSick > 0 && !PlanState.isHundefuehrer) {
+            // Kachel 2: Krankmeldungen (Orange)
+            if (countSick > 0) {
                 addTile(`${countSick} Krankmeldung(en)`, 'u-banner-orange', 'fa-exclamation-triangle', () => window.location.href='anfragen.html');
             }
 
-            // Kachel 4: Tausch-Genehmigungen (Blau)
-            if (countTrade > 0 && !PlanState.isHundefuehrer) {
-                addTile(`${countTrade} Schicht(en) wurde getauscht`, 'u-banner-blue', 'fa-exchange-alt', () => window.location.href='anfragen.html');
+            // Kachel 3: Tausch-Genehmigungen (Blau)
+            if (countTrade > 0) {
+                addTile(`${countTrade} Tausch-Genehmigung(en)`, 'u-banner-blue', 'fa-exchange-alt', () => window.location.href='anfragen.html');
             }
 
-            // Kachel 5: Markt-Angebote (Grün)
-            if (countMarket > 0 && (PlanState.isHundefuehrer || PlanState.isAdmin)) {
-                addTile(`${countMarket} Schicht steht zum Tausch verfügbar`, 'u-banner-green', 'fa-tags', () => window.location.href='market.html');
+            // Kachel 4: Markt-Angebote (Grün)
+            if (countMarket > 0 && PlanState.isHundefuehrer) {
+                addTile(`${countMarket} neue(s) Angebot(e)`, 'u-banner-green', 'fa-tags', () => window.location.href='market.html');
             }
 
             // 6. INJECT (Ganz oben einfügen)
             const mainContainer = document.querySelector('.main-content') || document.body;
+            // Wir fügen es VOR allem anderen ein, damit es ganz oben klebt
             if (mainContainer.firstChild) {
                 mainContainer.insertBefore(grid, mainContainer.firstChild);
             } else {
