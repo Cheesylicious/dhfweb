@@ -1,8 +1,8 @@
 from flask import Blueprint, request, jsonify
 from flask_login import login_required, current_user
-from datetime import datetime, date
+from datetime import datetime, date, timedelta
 from .extensions import db
-from .models import Shift
+from .models import Shift, ShiftType, User
 from .models_market import ShiftMarketOffer
 from .services_shift_change import ShiftChangeService
 
@@ -18,6 +18,33 @@ def _is_allowed():
     if current_user.role.name in ['admin', 'Hundeführer']:
         return True
     return False
+
+
+def _check_overlap(st1, st2):
+    """
+    Hilfsfunktion: Prüft, ob sich zwei Schichtarten zeitlich überschneiden.
+    Erwartet ShiftType-Objekte.
+    """
+    if not st1 or not st2: return False
+    if not st1.start_time or not st1.end_time or not st2.start_time or not st2.end_time:
+        return False  # Keine Zeiten definiert (z.B. Urlaub)
+
+    try:
+        def to_min(t_str):
+            h, m = map(int, t_str.split(':'))
+            return h * 60 + m
+
+        s1, e1 = to_min(st1.start_time), to_min(st1.end_time)
+        s2, e2 = to_min(st2.start_time), to_min(st2.end_time)
+
+        # Nachtschicht-Handling (Ende < Start bedeutet Folgetag)
+        if e1 <= s1: e1 += 24 * 60
+        if e2 <= s2: e2 += 24 * 60
+
+        # Überlappung: Start1 < Ende2 UND Start2 < Ende1
+        return s1 < e2 and s2 < e1
+    except:
+        return False
 
 
 @market_bp.route('/offers', methods=['GET'])
@@ -66,7 +93,6 @@ def create_market_offer():
         return jsonify({"message": "Vergangene Schichten können nicht getauscht werden."}), 400
 
     # --- 2. Whitelist-Check (Nur bestimmte Schichten erlauben) ---
-    # Wir greifen auf shift.shift_type zu (SQLAlchemy Relationship muss existieren)
     ALLOWED_MARKET_SHIFTS = ['T.', 'N.', '6', '24']
 
     if not shift.shift_type:
@@ -76,7 +102,6 @@ def create_market_offer():
         return jsonify({
             "message": f"Diese Schichtart darf nicht getauscht werden. Erlaubt sind nur: {', '.join(ALLOWED_MARKET_SHIFTS)}"
         }), 400
-    # -------------------------------------------------------------
 
     if shift.user_id != current_user.id:
         return jsonify({"message": "Sie können nur eigene Schichten anbieten."}), 403
@@ -126,6 +151,7 @@ def cancel_market_offer(offer_id):
 def accept_market_offer(offer_id):
     """
     Ein anderer User nimmt das Angebot an.
+    Führt Konfliktprüfungen durch (Ruhezeiten, Hundedopperlung).
     """
     if not _is_allowed():
         return jsonify({"message": "Zugriff verweigert."}), 403
@@ -137,29 +163,58 @@ def accept_market_offer(offer_id):
     if offer.status != 'active':
         return jsonify({"message": "Angebot ist leider schon weg oder nicht mehr verfügbar."}), 400
 
-    # Sicherheits-Check Datum
     if offer.shift.date < date.today():
         return jsonify({"message": "Diese Schicht liegt in der Vergangenheit."}), 400
 
     if offer.offering_user_id == current_user.id:
         return jsonify({"message": "Sie können Ihr eigenes Angebot nicht selbst annehmen."}), 400
 
-    # Konflikt-Check (Doppelbelegung)
     target_date = offer.shift.date
+    target_shift_type = offer.shift.shift_type
+
+    # --- 1. Doppelbelegungs-Check (User hat schon was) ---
     existing_shift = Shift.query.filter_by(
         user_id=current_user.id,
         date=target_date,
         variant_id=offer.shift.variant_id
     ).first()
 
-    # Wenn der User an dem Tag schon eine Schicht hat (die KEIN 'Frei' ist)
     if existing_shift and existing_shift.shifttype_id is not None:
-        # Optional: Prüfen ob es "Frei" ist, falls "Frei" als Schicht gespeichert wird.
-        # Hier gehen wir davon aus, dass jeder Eintrag blockiert.
+        # Prüfen ob es "Frei" ist (optional, hier gehen wir davon aus, dass DB-Eintrag = Belegt)
         return jsonify({
             "message": f"Nicht möglich: Sie haben am {target_date.strftime('%d.%m.%Y')} bereits einen Dienst eingetragen!"
         }), 409
 
+    # --- 2. Ruhezeit-Check (N. -> T.) ---
+    # Prüfe den Tag DAVOR
+    prev_date = target_date - timedelta(days=1)
+    prev_shift = Shift.query.filter_by(user_id=current_user.id, date=prev_date).first()
+
+    if prev_shift and prev_shift.shift_type and target_shift_type:
+        # Wenn Gestern = Nacht und Heute = Tag
+        if prev_shift.shift_type.abbreviation == 'N.' and target_shift_type.abbreviation == 'T.':
+            return jsonify({
+                "message": "Konflikt: Ruhezeitverletzung! Sie können keine Tag-Schicht direkt nach einer Nachtschicht übernehmen."
+            }), 409
+
+    # --- 3. Diensthund-Check (Doppelbelegung des Hundes) ---
+    if current_user.diensthund and current_user.diensthund != '---' and target_shift_type:
+        # Suche alle Schichten am Zieltag, wo der User denselben Hund hat (außer mir selbst)
+        same_dog_shifts = db.session.query(Shift).join(User).filter(
+            Shift.date == target_date,
+            User.diensthund == current_user.diensthund,
+            User.id != current_user.id,
+            Shift.shifttype_id != None  # Nur echte Schichten
+        ).all()
+
+        for other_s in same_dog_shifts:
+            # Prüfe Zeitüberlappung mit diesem Kollegen
+            if other_s.shift_type and _check_overlap(target_shift_type, other_s.shift_type):
+                return jsonify({
+                    "message": f"Konflikt: Ihr Diensthund '{current_user.diensthund}' ist an diesem Tag bereits durch {other_s.user.vorname} {other_s.user.name} im Einsatz ({other_s.shift_type.abbreviation})."
+                }), 409
+
+    # --- OK: Tausch durchführen (Antrag erstellen) ---
     try:
         offer.status = 'pending'
         offer.accepted_by_id = current_user.id
