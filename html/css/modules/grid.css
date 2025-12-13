@@ -1,0 +1,91 @@
+/* html/css/modules/grid.css */
+
+/* Navigation über dem Grid */
+.plan-nav {
+    display: flex; justify-content: space-between; align-items: center; padding: 20px;
+    background-color: #fcfcfc; border-bottom: 1px solid #eee; flex-wrap: wrap; gap: 15px;
+}
+.plan-nav-center {
+    display: flex; flex-direction: column; align-items: center; justify-content: center; flex-grow: 2; gap: 10px; position: relative;
+}
+#current-month-label {
+    margin: 0; font-size: 24px; color: #333; cursor: pointer; padding: 5px 10px; border-radius: 5px; transition: background-color 0.2s; user-select: none;
+}
+#current-month-label:hover { background-color: #eef2f7; color: #3498db; }
+
+/* Status Container Buttons */
+#plan-status-toggle-btn {
+    font-weight: 700; padding: 8px 14px; font-size: 15px; border: 1px solid transparent; border-radius: 5px; cursor: pointer; transition: all 0.3s;
+}
+#plan-status-toggle-btn.status-in-bearbeitung { background-color: #fff3cd; color: #856404; border-color: #ffeeba; }
+#plan-status-toggle-btn.status-fertiggestellt { background-color: #d4edda; color: #155724; border-color: #c3e6cb; }
+
+#plan-lock-btn { background-color: #f8d7da; color: #721c24; border: none; padding: 8px 14px; border-radius: 5px; cursor: pointer;}
+#plan-lock-btn.locked { background-color: #e74c3c; color: white; }
+
+#plan-bulk-mode-btn { background-color: #e2e6ea; color: #333; border: 1px solid #ccc; padding: 8px 14px; border-radius: 5px; cursor: pointer;}
+#plan-bulk-mode-btn.active { background-color: #3498db; color: white; border-color: #3498db; }
+
+/* Varianten Tabs */
+.variant-tabs {
+    display: flex; gap: 5px; margin-top: 5px; padding: 3px; background: #f0f0f0; border-radius: 5px; border: 1px solid #ddd;
+}
+.variant-tab {
+    padding: 5px 12px; font-size: 13px; border: none; background: none; color: #777; cursor: pointer; border-radius: 4px; transition: all 0.2s; font-weight: 500;
+}
+.variant-tab:hover { background: rgba(0,0,0,0.05); color: #333; }
+.variant-tab.active { background: #ffffff; color: #3498db; font-weight: 600; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+.variant-tab-add { color: #2ecc71; font-weight: bold; font-size: 16px; line-height: 1; padding: 3px 8px; }
+
+/* Das Grid selbst */
+#unified-grid-wrapper { overflow-x: auto; }
+#schichtplan-grid { display: grid; }
+
+.grid-header, .grid-cell, .grid-user-name, .grid-user-total, .grid-user-dog, .grid-header-uebertrag, .grid-user-uebertrag {
+    padding: 10px; border-bottom: 1px solid #eee; border-right: 1px solid #eee;
+    text-align: center; font-size: 14px; line-height: 1.4; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: #333;
+}
+
+.grid-header { background: #fcfcfc; font-weight: 600; position: sticky; top: 0; z-index: 100; }
+.header-separator-bottom { border-bottom: 2px solid #000000 !important; }
+
+/* User Spalten Sticky */
+.grid-user-name {
+    font-weight: 600; text-align: left; position: sticky; left: 0; background: #fcfcfc; z-index: 100; border-left: 1px solid #eee;
+}
+.grid-user-name.current-user-row { background-color: #eaf2ff !important; border-left: 2px solid #3498db; }
+
+/* Interaktion & Zustände */
+.grid-cell {
+    cursor: default; font-weight: 500; transition: background-color 0.2s, transform 0.2s, box-shadow 0.2s;
+    box-shadow: inset 0px 1px 3px rgba(0, 0, 0, 0.2); position: relative; z-index: 1;
+}
+.grid-cell.hovered {
+    background-color: #d6eaff !important; box-shadow: 0px 2px 8px rgba(0, 0, 0, 0.3); transform: scale(1.05); z-index: 20;
+}
+.grid-cell.violation { box-shadow: inset 0 0 0 3px #e74c3c !important; border: 1px solid #e74c3c !important; }
+.shift-request-cell { background-color: #f0ad4e !important; color: #1a1a1a !important; font-weight: 600; font-style: italic; }
+.grid-cell.selected { box-shadow: inset 0 0 0 4px #3498db !important; background-color: rgba(52, 152, 219, 0.2) !important; z-index: 15; }
+
+/* Bulk Action Bar */
+.bulk-action-bar-plan {
+    display: none; background: #333; color: #fff; padding: 10px 20px; border-radius: 5px; margin-bottom: 15px;
+    align-items: center; justify-content: space-between; box-shadow: 0 4px 10px rgba(0,0,0,0.2);
+}
+.bulk-action-bar-plan.visible { display: flex; }
+
+/* Staffing (Besetzung) Tabelle */
+#staffing-grid-container { border-top: 2px solid #3498db; padding-top: 5px; background: #fdfdfd; }
+.staffing-label { font-weight: 600; text-align: left; position: sticky; left: 0; background: #fcfcfc; z-index: 4; border-left: 1px solid #eee; padding: 8px 10px;}
+.staffing-cell { padding: 8px 10px; text-align: center; font-size: 13px; border-right: 1px solid #eee;}
+.staffing-ok { background-color: #d4edda !important; color: #155724; font-weight: 700; }
+.staffing-warning { background-color: #fff3cd !important; color: #856404; font-weight: 700; }
+.staffing-violation { background-color: #ffcccc !important; color: #c00000; font-weight: 700; }
+
+/* Legende */
+.plan-legende {
+    padding: 20px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 25px; background: #fcfcfc; color: #333; border-top: 1px solid #eee;
+}
+.legende-titel { font-weight: 600; border-bottom: 2px solid #3498db; margin-bottom: 10px; }
+.legende-item { display: flex; align-items: flex-start; gap: 8px; }
+.legende-color { width: 15px; height: 15px; border: 1px solid #ccc; border-radius: 3px; flex-shrink: 0; margin-top: 3px; }

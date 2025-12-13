@@ -2,13 +2,10 @@
 
 import { DHF_HIGHLIGHT_KEY, SHORTCUT_STORAGE_KEY, DEFAULT_COLORS, DEFAULT_SHORTCUTS } from '../utils/constants.js';
 import { initAuthCheck } from '../utils/auth.js';
-import { isColorDark } from '../utils/helpers.js';
 import { apiFetch } from '../utils/api.js';
-
-// NEU: Import aus dem Renderer Modul für die Figur
 import { initPetDisplay } from '../utils/pet_renderer.js';
 
-// Module importieren
+// Core Modules (Daten & State)
 import { PlanState } from '../modules/schichtplan_state.js';
 import { PlanApi } from '../modules/schichtplan_api.js';
 import { PlanRenderer } from '../modules/schichtplan_renderer.js';
@@ -16,81 +13,23 @@ import { StaffingModule } from '../modules/schichtplan_staffing.js';
 import { PlanHandlers } from '../modules/schichtplan_handlers.js';
 import { PredictionUI } from '../modules/prediction_ui.js';
 
-// --- NEU: Marktplatz Modul importieren ---
-import { MarketModule } from '../modules/schichtplan_market.js';
+// Feature Modules (Neu ausgelagert)
+import { PlanUIHelper } from '../modules/schichtplan_ui_helper.js';
+import { PlanNavigation } from '../modules/schichtplan_navigation.js';
+import { PlanBanner } from '../modules/schichtplan_banner.js';
+import { PlanInteraction } from '../modules/schichtplan_interaction.js';
+import { PlanGeneratorUI } from '../modules/schichtplan_generator_ui.js';
+import { PlanSocket } from '../modules/schichtplan_socket.js';
 
-// --- DOM Elemente ---
-const prevMonthBtn = document.getElementById('prev-month-btn');
-const nextMonthBtn = document.getElementById('next-month-btn');
-const monthLabel = document.getElementById('current-month-label');
-const planLockBtn = document.getElementById('plan-lock-btn');
-const planStatusToggleBtn = document.getElementById('plan-status-toggle-btn');
-const planSendMailBtn = document.getElementById('plan-send-mail-btn');
-const planBulkModeBtn = document.getElementById('plan-bulk-mode-btn');
-const bulkActionBarPlan = document.getElementById('bulk-action-bar-plan');
-const bulkCancelBtn = document.getElementById('bulk-cancel-btn');
-const bulkApproveBtn = document.getElementById('bulk-approve-btn');
-const bulkRejectBtn = document.getElementById('bulk-reject-btn');
-const staffingSortToggleBtn = document.getElementById('staffing-sort-toggle');
 
-// --- Month Picker Elemente ---
-const monthPickerDropdown = document.getElementById('month-picker-dropdown');
-const mpPrevYearBtn = document.getElementById('mp-prev-year');
-const mpNextYearBtn = document.getElementById('mp-next-year');
-const mpYearDisplay = document.getElementById('mp-year-display');
-const mpMonthsGrid = document.getElementById('mp-months-grid');
-
-// Modals & Links
-const openGeneratorLink = document.getElementById('open-generator-modal');
-const openGenSettingsLink = document.getElementById('open-gen-settings-modal');
-const deletePlanLink = document.getElementById('delete-plan-link');
-const closeGeneratorModalBtn = document.getElementById('close-generator-modal');
-const startGeneratorBtn = document.getElementById('start-generator-btn');
-const closeGenSettingsModalBtn = document.getElementById('close-gen-settings-modal');
-const saveGenSettingsBtn = document.getElementById('save-gen-settings-btn');
-const generatorModal = document.getElementById('generator-modal');
-const genSettingsModal = document.getElementById('gen-settings-modal');
-const shiftModal = document.getElementById('shift-modal');
-const closeShiftModalBtn = document.getElementById('close-shift-modal');
-const queryModal = document.getElementById('query-modal');
-const closeQueryModalBtn = document.getElementById('close-query-modal');
-const querySubmitBtn = document.getElementById('query-submit-btn');
-const queryResolveBtn = document.getElementById('query-resolve-btn');
-const queryDeleteBtn = document.getElementById('query-delete-btn');
-const replySubmitBtn = document.getElementById('reply-submit-btn'); // Button für Antwort
-const clickActionModal = document.getElementById('click-action-modal');
-
-// Varianten Elemente
-const variantModal = document.getElementById('variant-modal');
-const closeVariantModalBtn = document.getElementById('close-variant-modal');
-const createVariantBtn = document.getElementById('create-variant-btn');
-const variantTabsContainer = document.getElementById('variant-tabs-container');
-
-// Klick-Modal Actions
-const camLinkNotiz = document.getElementById('cam-link-notiz');
-const camLinkDelete = document.getElementById('cam-link-delete');
-const camBtnApprove = document.getElementById('cam-btn-approve');
-const camBtnReject = document.getElementById('cam-btn-reject');
-
-// Generator State lokal
-let generatorInterval = null;
-let visualInterval = null;
-let visualQueue = [];
-let processedLogCount = 0;
-
-// Lokaler State für Month Picker
-let pickerYear = new Date().getFullYear();
-
-// NEU: Socket.IO Instanz
-let socket = null;
-
-// --- 1. Initialisierung ---
+// --- 1. HAUPTFUNKTIONEN (Startup) ---
 
 async function initialize() {
     try {
-        injectWarningStyles();
+        // 1. Visuelle Basis (CSS Injection)
+        PlanUIHelper.injectWarningStyles();
 
-        // Auth Check
+        // 2. Auth & User State
         const authData = initAuthCheck();
         PlanState.loggedInUser = authData.user;
         PlanState.isAdmin = authData.isAdmin;
@@ -98,381 +37,263 @@ async function initialize() {
         PlanState.isPlanschreiber = authData.isPlanschreiber;
         PlanState.isHundefuehrer = authData.isHundefuehrer;
 
-        // --- NEU: Prediction UI laden ---
-        PredictionUI.init();
-
-        // NEU: Animierte Figur im Header initialisieren
-        initPetDisplay(PlanState.loggedInUser);
-
-        // State für Varianten
+        // Initiale State-Werte
         PlanState.currentVariantId = null;
         PlanState.variants = [];
-
-        // Generator Config Init (für Animation)
         PlanState.generatorConfig = {};
 
-        // UI Setup
-        setupUIByRole();
+        // Feature-Inits (Unabhängige Module)
+        PredictionUI.init();
+        initPetDisplay(PlanState.loggedInUser);
 
-        // Handler Init
+        // --- 3. MODULE INITIALISIEREN & VERKNÜPFEN ---
+
+        // UI Helper: Braucht Callbacks für Varianten-Reload und Grid-Reload
+        PlanUIHelper.setupUIByRole();
+        PlanUIHelper.init(
+            () => PlanNavigation.loadVariants(),
+            renderGrid
+        );
+
+        // Handlers: Basis-Logik für API-Calls
         PlanHandlers.init(renderGrid);
 
-        // Daten laden
+        // Navigation: Zeitsteuerung und Varianten-Tabs
+        PlanNavigation.init(renderGrid);
+
+        // Interaction: Klicks auf Zellen, Modals, Tausch-Logik
+        PlanInteraction.init(renderGrid);
+
+        // Generator UI: HUD und Steuerung
+        PlanGeneratorUI.init(renderGrid);
+
+        // Socket: Echtzeit-Updates (Verbindet Grid-Reload und Status-UI Update)
+        PlanSocket.init(
+            renderGrid,
+            PlanUIHelper.updatePlanStatusUI.bind(PlanUIHelper)
+        );
+
+
+        // --- 4. DATEN LADEN ---
+
+        // Einstellungen & Statics
         await loadColorSettings();
-        await populateStaticElements();
+        await PlanUIHelper.populateStaticElements();
         loadShortcuts();
 
-        // Generator Config vorladen (für UI Logik)
+        // Generator Config vorladen (nur für Admins relevant)
         if (PlanState.isAdmin) {
             try {
                 PlanState.generatorConfig = await PlanApi.getGeneratorConfig();
-            } catch(e) { console.warn("Konnte Generator-Config nicht laden", e); }
+            } catch(e) { console.warn("Generator-Config nicht geladen", e); }
         }
 
-        // Highlight Check
+        // Highlight Check (Hat der User von "Anfragen" hierher geklickt?)
         checkHighlights();
 
-        // Varianten laden
-        await loadVariants();
+        // Varianten laden (Startet auch die Tab-Anzeige)
+        await PlanNavigation.loadVariants();
 
-        // Grid rendern
+        // ERSTES RENDERING DES GRIDS
         await renderGrid();
-
-        // Events binden
-        attachGlobalListeners();
-
-        // Initialer Check auf offene Krankmeldungen & Tausch (Banner)
-        renderUnifiedBanner();
-
-        // NEU: Echtzeit-Verbindung aufbauen
-        setupSocketConnection();
 
     } catch (e) {
         console.error("Initialisierung gestoppt:", e);
     }
 }
 
-function injectWarningStyles() {
-    // Performance Check: Style nur einmal injecten
-    if (document.getElementById('dhf-dynamic-styles')) return;
 
-    const style = document.createElement('style');
-    style.id = 'dhf-dynamic-styles';
-    style.innerHTML = `
-        /* Bestehende Styles */
-        .hud-day-box.warning {
-            border-color: #f1c40f !important;
-            background: rgba(241, 196, 21, 0.4) !important;
-            color: #fff !important;
-            box-shadow: 0 0 10px #f1c40f !important;
-        }
-        .hud-day-box.critical {
-            border-color: #e74c3c !important;
-            background: rgba(231, 76, 60, 0.4) !important;
-            color: #fff !important;
-            box-shadow: 0 0 10px #e74c3c !important;
-        }
-        .hud-terminal::-webkit-scrollbar { width: 8px; }
-        .hud-terminal::-webkit-scrollbar-track { background: #000; }
-        .hud-terminal::-webkit-scrollbar-thumb { background: #333; border-radius: 4px; }
-        .hud-terminal::-webkit-scrollbar-thumb:hover { background: #555; }
+// --- 2. ZENTRALE RENDER-LOGIK ---
 
-        /* NEU: Styles für den Blur-Übergang */
-        #schichtplan-grid, #staffing-grid {
-            transition: filter 0.3s ease-in-out, opacity 0.3s ease-in-out;
-            filter: blur(0);
-            opacity: 1;
-        }
+/**
+ * Lädt alle Schichtdaten neu und aktualisiert das gesamte Grid.
+ * Diese Funktion wird an fast alle Module als Callback übergeben.
+ * * @param {boolean} isSilent - Wenn true, wird kein Lade-Blur angezeigt (für Live-Updates).
+ */
+async function renderGrid(isSilent = false) {
+    const grid = document.getElementById('schichtplan-grid');
+    const monthLabel = document.getElementById('current-month-label');
+    const staffingGrid = document.getElementById('staffing-grid');
 
-        .blur-loading {
-            filter: blur(5px) !important;
-            opacity: 0.6 !important;
-            pointer-events: none; /* Klicks während des Ladens verhindern */
-        }
+    // Animation Start (Blur Effekt)
+    if(!isSilent) {
+        if(grid) grid.classList.add('blur-loading');
+        if(staffingGrid) staffingGrid.classList.add('blur-loading');
+        if(monthLabel) monthLabel.textContent = "Lade...";
+    }
 
-        /* --- HIGHLIGHT ANIMATION --- */
-        .grid-cell-highlight {
-            position: relative !important;
-            z-index: 50 !important;
-        }
-        .grid-cell-highlight::after {
-            content: '';
-            position: absolute;
-            top: -3px; left: -3px; right: -3px; bottom: -3px;
-            background-color: rgba(241, 196, 21, 0.4);
-            border: 3px solid #f1c40f;
-            border-radius: 4px;
-            box-shadow: 0 0 15px #f1c40f;
-            z-index: 100;
-            pointer-events: none;
-            animation: flash-overlay 1.5s ease-in-out 3;
-        }
-        @keyframes flash-overlay {
-            0% { opacity: 0; transform: scale(1); }
-            50% { opacity: 1; transform: scale(1.05); }
-            100% { opacity: 0; transform: scale(1); }
-        }
+    // Reset UI State
+    document.body.classList.remove('plan-locked');
 
-        /* --- NEU: Marktplatz Icon Overlay & Styles --- */
-        .market-icon-overlay {
-            position: absolute;
-            top: 2px;
-            right: 2px;
-            font-size: 14px;
-            z-index: 10;
-            text-shadow: 0 0 3px rgba(0,0,0,0.5);
-            animation: pulse-market 2s infinite;
+    // Sortiermodus der Besetzungstabelle zurücksetzen
+    if (PlanState.isStaffingSortingMode) {
+        const toggleBtn = document.getElementById('staffing-sort-toggle');
+        if(toggleBtn) {
+            toggleBtn.textContent = 'Besetzung sortieren';
+            toggleBtn.classList.remove('btn-secondary');
+            toggleBtn.classList.add('btn-primary');
         }
-        @keyframes pulse-market {
-            0% { transform: scale(1); opacity: 0.8; }
-            50% { transform: scale(1.2); opacity: 1; }
-            100% { transform: scale(1); opacity: 0.8; }
-        }
+        PlanState.isStaffingSortingMode = false;
+        PlanState.sortableStaffingInstance = null;
+    }
 
-        /* --- DYNAMISCHE GESTRICHELTE UMRANDUNG (MARCHING ANTS) --- */
-        @keyframes marchingAnts {
-            0% { background-position: 0 0, 100% 0, 0 100%, 0 100%; }
-            100% { background-position: 20px 0, 100% 20px, -20px 100%, 0 calc(100% - 20px); }
+    try {
+        // --- PARALLEL DATEN LADEN ---
+        // Wir nutzen Promise.all für maximale Geschwindigkeit
+        const [shiftPayload, specialDatesResult, queriesResult, marketOffersResult, pendingRequestsResult] = await Promise.all([
+            // 1. Schichten & Status
+            PlanApi.fetchShiftData(PlanState.currentYear, PlanState.currentMonth, PlanState.currentVariantId),
+            // 2. Feiertage
+            PlanApi.fetchSpecialDates(PlanState.currentYear, 'holiday'),
+            // 3. Queries (Text-Notizen & Wünsche) - Nur für Berechtigte
+            (PlanState.isAdmin || PlanState.isPlanschreiber || PlanState.isHundefuehrer)
+                ? PlanApi.fetchOpenQueries(PlanState.currentYear, PlanState.currentMonth)
+                : Promise.resolve([]),
+            // 4. Marktplatz Angebote
+            (PlanState.isAdmin || PlanState.isHundefuehrer)
+                ? PlanApi.fetchMarketOffers()
+                : Promise.resolve([]),
+            // 5. Change Requests (Offene Anträge für Visualisierung)
+            (PlanState.isAdmin || PlanState.isPlanschreiber || PlanState.isHundefuehrer)
+                ? PlanApi.fetchPendingShiftChangeRequests()
+                : Promise.resolve([])
+        ]);
+
+        // --- STATE UPDATE ---
+
+        // Users & Shifts ins State-Objekt mappen
+        PlanState.allUsers = shiftPayload.users;
+        PlanState.currentShifts = {};
+        shiftPayload.shifts.forEach(s => {
+            const key = `${s.user_id}-${s.date}`;
+            const fullShiftType = PlanState.allShiftTypes[s.shifttype_id];
+            PlanState.currentShifts[key] = { ...s, shift_type: fullShiftType };
+        });
+
+        // Last Month (für Übertrag-Anzeige)
+        PlanState.currentShiftsLastMonth = {};
+        if (shiftPayload.shifts_last_month) {
+            shiftPayload.shifts_last_month.forEach(s => {
+                const fullShiftType = PlanState.allShiftTypes[s.shifttype_id];
+                PlanState.currentShiftsLastMonth[s.user_id] = { ...s, shift_type: fullShiftType };
+            });
         }
 
-        .market-offer-active {
-            border-color: transparent !important;
-            background-image:
-                linear-gradient(90deg, #f1c40f 50%, transparent 50%),
-                linear-gradient(180deg, #f1c40f 50%, transparent 50%),
-                linear-gradient(270deg, #f1c40f 50%, transparent 50%),
-                linear-gradient(0deg, #f1c40f 50%, transparent 50%);
-            background-repeat: repeat-x, repeat-y, repeat-x, repeat-y;
-            background-size: 20px 2px, 2px 20px, 20px 2px, 2px 20px;
-            background-position: 0 0, 100% 0, 0 100%, 0 100%;
-            animation: marchingAnts 1s infinite linear !important;
-            z-index: 20 !important;
-            box-shadow: inset 0 0 5px rgba(0,0,0,0.1);
+        // Stats & Violations
+        PlanState.currentTotals = shiftPayload.totals;
+        PlanState.currentViolations.clear();
+        if (shiftPayload.violations) {
+            shiftPayload.violations.forEach(v => PlanState.currentViolations.add(`${v[0]}-${v[1]}`));
         }
 
-        /* --- NEU: PENDING TAKEOVER VISUALISIERUNG (Blau/Türkis) --- */
-        .pending-outgoing {
-            opacity: 0.6 !important;
-            border: 2px dashed #f39c12 !important; /* Orange gestrichelt */
-            background-image: repeating-linear-gradient(45deg, transparent, transparent 10px, rgba(243, 156, 18, 0.1) 10px, rgba(243, 156, 18, 0.1) 20px) !important;
-            position: relative;
-        }
-        .icon-outgoing {
-            position: absolute; bottom: 2px; right: 2px; font-size: 16px; color: #f39c12; z-index: 22;
-            filter: drop-shadow(0 0 2px rgba(0,0,0,0.8));
-        }
-
-        .pending-incoming {
-            border: 2px dashed #2ecc71 !important; /* Grün gestrichelt */
-            background-color: rgba(46, 204, 113, 0.15) !important;
-            color: #fff !important;
-            display: flex; justify-content: center; align-items: center;
-            position: relative;
-        }
-        .icon-incoming {
-            position: absolute; bottom: 2px; right: 2px; font-size: 16px; color: #2ecc71; z-index: 22;
-            filter: drop-shadow(0 0 2px rgba(0,0,0,0.8));
-        }
-        .ghost-text {
-            font-style: italic; opacity: 0.8; font-weight: bold; color: #2ecc71; font-size: 1.1em;
+        // Market Offers
+        PlanState.currentMarketOffers = {};
+        if (marketOffersResult && Array.isArray(marketOffersResult)) {
+            marketOffersResult.forEach(offer => {
+                // Key format: userId-dateStr
+                const d = offer.shift_date.split('T')[0];
+                const key = `${offer.offering_user_id}-${d}`;
+                PlanState.currentMarketOffers[key] = offer;
+            });
         }
 
-        /* --- UNIFIED BANNER STYLES (Smart Grid) --- */
-        #dhf-unified-grid {
-            display: flex;
-            width: 100%;
-            gap: 2px;
-            margin-bottom: 5px;
-            position: sticky;
-            top: 0;
-            z-index: 9999;
-            flex-wrap: wrap;
-            box-shadow: 0 3px 6px rgba(0,0,0,0.15);
-        }
+        // Change Requests (Pending)
+        PlanState.currentChangeRequests = pendingRequestsResult || [];
 
-        /* Basis-Klasse für alle Banner-Items (auch das Server-Banner wird hiermit versehen) */
-        .unified-banner-item {
-            flex: 1; /* Teilt den Platz gleichmäßig */
-            min-width: 250px;
-            padding: 10px 15px;
-            text-align: center;
-            font-weight: 700;
-            color: white !important;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            gap: 10px;
-            transition: all 0.2s ease;
-            font-size: 14px;
-            border-radius: 0;
-            margin: 0;
-            border: none;
-        }
-        .unified-banner-item:hover { filter: brightness(1.1); transform: none; }
+        // Staffing (Ist-Zustand) & Plan-Status
+        PlanState.currentStaffingActual = shiftPayload.staffing_actual || {};
+        PlanState.currentPlanStatus = shiftPayload.plan_status || {
+            year: PlanState.currentYear, month: PlanState.currentMonth,
+            status: "In Bearbeitung", is_locked: false
+        };
 
-        /* Damit Ecken unten abgerundet sind, wenn es das einzige Element ist oder am Rand */
-        #dhf-unified-grid .unified-banner-item:first-child { border-bottom-left-radius: 5px; }
-        #dhf-unified-grid .unified-banner-item:last-child { border-bottom-right-radius: 5px; }
+        // Special Dates (Vollständiger Load inkl. Training/DPO)
+        PlanState.currentSpecialDates = {};
+        await loadFullSpecialDates();
 
-        /* Farben */
-        .u-banner-red    { background-color: #c0392b; }
-        .u-banner-orange { background-color: #e67e22; }
-        .u-banner-blue   { background-color: #2980b9; }
-        .u-banner-green  { background-color: #27ae60; }
-    `;
-    document.head.appendChild(style);
-}
+        // Queries
+        PlanState.currentShiftQueries = queriesResult;
 
-// --- INNOVATIVE FUNKTION: Visualisierung von offenen Tausch-Vorgängen ---
-function markPendingTakeovers() {
-    // Liste der aktuellen Änderungsanträge nutzen
-    if (!PlanState.currentChangeRequests || PlanState.currentChangeRequests.length === 0) return;
 
-    PlanState.currentChangeRequests.forEach(req => {
-        // Wir suchen nur nach offenen Anträgen ('pending')
-        if (req.status !== 'pending') return;
+        // --- UI UPDATES ---
 
-        const myId = PlanState.loggedInUser.id;
-        const giverId = req.target_user_id; // Der ursprüngliche Besitzer (aus Backend to_dict)
-        const receiverId = req.replacement_user_id; // Der neue Besitzer
+        // 1. Status Bar aktualisieren (Sperren/Varianten Buttons)
+        PlanUIHelper.updatePlanStatusUI(PlanState.currentPlanStatus);
 
-        // Nur relevant, wenn ich beteiligt bin ODER Admin bin
-        const isRelevantForMe = (myId === giverId || myId === receiverId || PlanState.isAdmin);
-        if (!isRelevantForMe) return;
+        // 2. Grid DOM bauen
+        // Wir übergeben den Click-Handler aus dem Interaction Modul
+        PlanRenderer.buildGridDOM({
+            onCellClick: (e, user, dateStr, cell, isOwn) =>
+                PlanInteraction.handleCellClick(e, user, dateStr, cell, isOwn),
 
-        // Datum bereinigen (Zeitstempel entfernen)
-        const dateOnly = req.shift_date ? req.shift_date.split('T')[0] : null;
-        if (!dateOnly) return;
-
-        // --- 1. VISUALISIERUNG BEIM ABGEBER (GIVER) ---
-        // Wenn ich der Abgeber bin (oder Admin schaut), zeige "Ausgang"
-        const giverCell = PlanRenderer.findCellByKey(`${giverId}-${dateOnly}`);
-        if (giverCell) {
-            giverCell.classList.add('pending-outgoing');
-
-            // Icon "Ausgang" (Pfeil nach rechts oben)
-            if (!giverCell.querySelector('.icon-outgoing')) {
-                const icon = document.createElement('div');
-                icon.className = 'icon-outgoing';
-                icon.innerHTML = '<i class="fas fa-share-square"></i>'; // FontAwesome Icon
-                icon.title = `Wartet auf Übergabe an ${req.replacement_name}`;
-                giverCell.appendChild(icon);
-            }
-        }
-
-        // --- 2. VISUALISIERUNG BEIM ÜBERNEHMER (RECEIVER) ---
-        // Wenn ich der Übernehmer bin (oder Admin schaut), zeige "Eingang" (Geister-Schicht)
-        if (receiverId) {
-            const receiverCell = PlanRenderer.findCellByKey(`${receiverId}-${dateOnly}`);
-            if (receiverCell) {
-                receiverCell.classList.add('pending-incoming');
-
-                // Wir fügen das Kürzel der Schicht ein (Ghost Text), falls die Zelle leer ist
-                // req.shift_abbr kommt aus dem Backend (to_dict von ShiftChangeRequest)
-                if (req.shift_abbr && (!receiverCell.textContent || receiverCell.textContent.trim() === '')) {
-                     receiverCell.innerHTML = `<span class="ghost-text">${req.shift_abbr}</span>`;
+            onCellEnter: (user, dateStr, cell) => {
+                PlanState.hoveredCellContext = { userId: user.id, dateStr, userName: `${user.vorname} ${user.name}`, cellElement: cell };
+                if (!PlanState.isVisitor) cell.classList.add('hovered');
+            },
+            onCellLeave: () => {
+                if (PlanState.hoveredCellContext && PlanState.hoveredCellContext.cellElement) {
+                    PlanState.hoveredCellContext.cellElement.classList.remove('hovered');
                 }
-
-                // Icon "Eingang" (Pfeil nach unten/innen)
-                if (!receiverCell.querySelector('.icon-incoming')) {
-                    const icon = document.createElement('div');
-                    icon.className = 'icon-incoming';
-                    icon.innerHTML = '<i class="fas fa-download"></i>'; // FontAwesome Icon
-                    icon.title = `Wartet auf Übernahme von ${req.original_user_name}`;
-                    receiverCell.appendChild(icon);
-                }
+                PlanState.hoveredCellContext = null;
             }
+        });
+
+        // 3. Staffing Table aufbauen
+        StaffingModule.buildStaffingTable();
+
+        // 4. Highlight (falls User von "Anfragen" kam)
+        if(PlanState.pendingHighlight) {
+            setTimeout(() => {
+                PlanRenderer.highlightCells(PlanState.pendingHighlight.date, PlanState.pendingHighlight.targetUserId);
+                PlanState.pendingHighlight = null;
+            }, 300);
         }
-    });
-}
 
-// --- NEU: Socket.IO Verbindung herstellen ---
-function setupSocketConnection() {
-    if (typeof io === 'undefined') {
-        console.warn("Socket.IO client library not loaded.");
-        return;
-    }
+        // 5. Banner & Visuals (Marktplatz, Offene Anträge)
+        PlanBanner.renderUnifiedBanner();
+        PlanBanner.markPendingTakeovers();
 
-    // Verbindung zum Server herstellen
-    socket = io();
-
-    socket.on('connect', () => {
-        console.log("WebSocket verbunden: Echtzeit-Updates aktiv.");
-    });
-
-    // Event: Eine einzelne Schicht wurde geändert
-    socket.on('shift_update', (data) => {
-        if (isUpdateRelevant(data)) {
-            // isSilent = true -> Kein Blur-Effekt, "Magic Update"
-            renderGrid(true);
+        // 6. Market Badge im Header updaten
+        const badge = document.getElementById('market-badge');
+        if (badge && PlanState.currentMarketOffers) {
+             const count = Object.keys(PlanState.currentMarketOffers).length;
+             badge.textContent = count;
+             badge.style.display = count > 0 ? 'inline-block' : 'none';
         }
-    });
 
-    // Event: Schicht gesperrt/entsperrt
-    socket.on('shift_lock_update', (data) => {
-        if (isUpdateRelevant(data)) {
-            renderGrid(true);
-        }
-    });
-
-    // Event: Plan wurde geleert
-    socket.on('plan_cleared', (data) => {
-        if (data.year === PlanState.currentYear &&
-            data.month === PlanState.currentMonth &&
-            data.variant_id === PlanState.currentVariantId) {
-            renderGrid(); // Hier mit Blur, da große Änderung
-        }
-    });
-
-    // Event: Plan Status geändert (Gesperrt/Freigabe)
-    socket.on('plan_status_update', (data) => {
-        if (data.year === PlanState.currentYear && data.month === PlanState.currentMonth) {
-            PlanState.currentPlanStatus = data;
-            updatePlanStatusUI(data);
-            renderGrid(true); // Gitter neu laden, um Sperr-Optik zu aktualisieren
-        }
-    });
-}
-
-function isUpdateRelevant(data) {
-    // Prüfen, ob das Update den aktuell angezeigten Monat betrifft
-    if (!data.date) return false;
-
-    // Datum parsen (Format YYYY-MM-DD)
-    const parts = data.date.split('-');
-    const year = parseInt(parts[0]);
-    const month = parseInt(parts[1]);
-
-    // Relevanz prüfen: Gleiches Jahr, gleicher Monat, gleiche Variante
-    // Hinweis: data.variant_id kann null sein, PlanState.currentVariantId auch
-    const variantMatch = data.variant_id === PlanState.currentVariantId;
-
-    return year === PlanState.currentYear && month === PlanState.currentMonth && variantMatch;
-}
-// ---------------------------------------------
-
-function setupUIByRole() {
-    if (staffingSortToggleBtn) {
-        staffingSortToggleBtn.style.display = PlanState.isAdmin ? 'inline-block' : 'none';
-    }
-
-    if (!PlanState.isAdmin) {
-        if (openGeneratorLink) openGeneratorLink.style.display = 'none';
-        if (openGenSettingsLink) openGenSettingsLink.style.display = 'none';
-        if (deletePlanLink) deletePlanLink.style.display = 'none';
-        const settingsDropdown = document.getElementById('settings-dropdown');
-        if (settingsDropdown) settingsDropdown.style.display = 'none';
-        if (planBulkModeBtn) planBulkModeBtn.style.display = 'none';
-        if (planSendMailBtn) planSendMailBtn.style.display = 'none';
-        if (variantTabsContainer) variantTabsContainer.style.display = 'none';
-    } else {
-        if (planBulkModeBtn) planBulkModeBtn.style.display = 'inline-block';
-        if (variantTabsContainer) variantTabsContainer.style.display = 'flex';
+    } catch (error) {
+        if(grid) grid.innerHTML = `<div style="padding: 20px; text-align: center; color: red;">Fehler beim Laden des Plans: ${error.message}</div>`;
+        console.error(error);
+    } finally {
+        // Animation Ende (Blur entfernen)
+        if(grid) grid.classList.remove('blur-loading');
+        if(staffingGrid) staffingGrid.classList.remove('blur-loading');
     }
 }
 
-// --- 2. Daten laden ---
+
+// --- 3. HELPER FUNCTIONS (Startup-related) ---
+
+async function loadFullSpecialDates() {
+    try {
+        const year = PlanState.currentYear;
+        // Parallel laden aller Typen für maximale Performance
+        const [holidays, training, shooting, dpo] = await Promise.all([
+            PlanApi.fetchSpecialDates(year, 'holiday'),
+            PlanApi.fetchSpecialDates(year, 'training'),
+            PlanApi.fetchSpecialDates(year, 'shooting'),
+            PlanApi.fetchSpecialDates(year, 'dpo')
+        ]);
+
+        // In State merken
+        training.forEach(d => { if(d.date) PlanState.currentSpecialDates[d.date] = d.type; });
+        shooting.forEach(d => { if(d.date) PlanState.currentSpecialDates[d.date] = d.type; });
+        holidays.forEach(d => { if(d.date) PlanState.currentSpecialDates[d.date] = 'holiday'; });
+        dpo.forEach(d => { if(d.date) PlanState.currentSpecialDates[d.date] = 'dpo'; });
+    } catch (e) {
+        console.warn("Fehler beim Laden der Sondertermine", e);
+    }
+}
 
 async function loadColorSettings() {
     let fetchedColors = DEFAULT_COLORS;
@@ -520,7 +341,7 @@ function checkHighlights() {
             highlightData = JSON.parse(data);
             localStorage.removeItem(DHF_HIGHLIGHT_KEY);
 
-            // FIX: Datum bereinigen, falls ISO-String mit Zeit gespeichert wurde
+            // FIX: Datum bereinigen
             if (highlightData.date && highlightData.date.includes('T')) {
                 highlightData.date = highlightData.date.split('T')[0];
             }
@@ -533,1432 +354,27 @@ function checkHighlights() {
     PlanState.pendingHighlight = highlightData;
 }
 
-// --- Varianten Logic ---
-async function loadVariants() {
-    if (!PlanState.isAdmin) return;
-    try {
-        const variants = await apiFetch(`/api/variants?year=${PlanState.currentYear}&month=${PlanState.currentMonth}`);
-        PlanState.variants = variants;
-        renderVariantTabs();
-    } catch (e) {
-        PlanState.variants = [];
-        renderVariantTabs();
-    }
-}
 
-function renderVariantTabs() {
-    if (!variantTabsContainer || !PlanState.isAdmin) return;
-    variantTabsContainer.innerHTML = '';
-
-    const mainTab = document.createElement('button');
-    mainTab.className = `variant-tab ${PlanState.currentVariantId === null ? 'active' : ''}`;
-    mainTab.textContent = 'Hauptplan';
-    mainTab.onclick = () => switchVariant(null);
-    variantTabsContainer.appendChild(mainTab);
-
-    PlanState.variants.forEach(v => {
-        const tab = document.createElement('button');
-        tab.className = `variant-tab ${PlanState.currentVariantId === v.id ? 'active' : ''}`;
-        tab.textContent = v.name;
-        tab.onclick = () => switchVariant(v.id);
-        variantTabsContainer.appendChild(tab);
-    });
-
-    const addBtn = document.createElement('button');
-    addBtn.className = 'variant-tab variant-tab-add';
-    addBtn.textContent = '+';
-    addBtn.title = "Neue Variante erstellen";
-    addBtn.onclick = () => {
-        if(variantModal) {
-            document.getElementById('variant-name').value = '';
-            variantModal.style.display = 'block';
-        }
-    };
-    variantTabsContainer.appendChild(addBtn);
-}
-
-async function switchVariant(variantId) {
-    if (PlanState.currentVariantId === variantId) return;
-    PlanState.currentVariantId = variantId;
-    renderVariantTabs();
-    await renderGrid();
-}
-
-// --- MONTH PICKER LOGIC ---
-
-function toggleMonthPicker() {
-    if (!monthPickerDropdown) return;
-
-    const isVisible = monthPickerDropdown.style.display === 'block';
-
-    if (isVisible) {
-        monthPickerDropdown.style.display = 'none';
-    } else {
-        pickerYear = PlanState.currentYear;
-        renderMonthPicker();
-        monthPickerDropdown.style.display = 'block';
-    }
-}
-
-function renderMonthPicker() {
-    if (!mpYearDisplay || !mpMonthsGrid) return;
-
-    mpYearDisplay.textContent = pickerYear;
-    mpMonthsGrid.innerHTML = '';
-
-    const monthNames = ["Jan", "Feb", "Mär", "Apr", "Mai", "Jun", "Jul", "Aug", "Sep", "Okt", "Nov", "Dez"];
-
-    monthNames.forEach((name, index) => {
-        const mNum = index + 1;
-        const btn = document.createElement('div');
-        btn.className = 'mp-month-btn';
-        btn.textContent = name;
-
-        if (pickerYear === PlanState.currentYear && mNum === PlanState.currentMonth) {
-            btn.classList.add('active');
-        }
-
-        btn.onclick = () => {
-            PlanHandlers.handleYearMonthSelect(pickerYear, mNum);
-            setTimeout(loadVariants, 100);
-            monthPickerDropdown.style.display = 'none';
-        };
-
-        mpMonthsGrid.appendChild(btn);
-    });
-}
-
-// --- 3. Render Grid ---
-
-async function renderGrid(isSilent = false) { // UPDATE: isSilent Parameter hinzugefügt
-    const grid = document.getElementById('schichtplan-grid');
-    const monthLabel = document.getElementById('current-month-label');
-    const staffingGrid = document.getElementById('staffing-grid');
-
-    // --- INNOVATION: Animation Start ---
-    // Statt den Inhalt hart zu löschen, fügen wir eine Blur-Klasse hinzu.
-    // Der alte Plan bleibt sichtbar, aber verschwommen, bis die neuen Daten da sind.
-    // NEU: Nur bluren, wenn es kein Silent Update (Socket Update) ist
-    if(!isSilent) {
-        if(grid) grid.classList.add('blur-loading');
-        if(staffingGrid) staffingGrid.classList.add('blur-loading');
-        // Kleines UX-Detail: Label aktualisieren, aber Inhalt behalten
-        if(monthLabel) monthLabel.textContent = "Lade...";
-    }
-
-    const planStatusContainer = document.getElementById('plan-status-container');
-    // if (planStatusContainer) planStatusContainer.style.display = 'none'; // Flackern vermeiden
-
-    document.body.classList.remove('plan-locked');
-
-    PlanState.isStaffingSortingMode = false;
-    if (staffingSortToggleBtn) {
-        staffingSortToggleBtn.textContent = 'Besetzung sortieren';
-        staffingSortToggleBtn.classList.remove('btn-secondary');
-        staffingSortToggleBtn.classList.add('btn-primary');
-    }
-    if (PlanState.sortableStaffingInstance) {
-        PlanState.sortableStaffingInstance.destroy();
-        PlanState.sortableStaffingInstance = null;
-    }
-
-    try {
-        // --- UPDATE: Marktplatz Daten laden (Parallel) ---
-        const [shiftPayload, specialDatesResult, queriesResult, marketOffersResult, pendingRequestsResult] = await Promise.all([
-            PlanApi.fetchShiftData(PlanState.currentYear, PlanState.currentMonth, PlanState.currentVariantId),
-            PlanApi.fetchSpecialDates(PlanState.currentYear, 'holiday'),
-            // WICHTIG: Queries auch für normale User laden (für pending visualisierung)
-            (PlanState.isAdmin || PlanState.isPlanschreiber || PlanState.isHundefuehrer)
-                ? PlanApi.fetchOpenQueries(PlanState.currentYear, PlanState.currentMonth)
-                : Promise.resolve([]),
-            // NEU: Marktplatz Angebote laden
-            (PlanState.isAdmin || PlanState.isHundefuehrer)
-                ? PlanApi.fetchMarketOffers()
-                : Promise.resolve([]),
-            // NEU: Pending Requests laden (für Übernahme-Anzeige)
-            (PlanState.isAdmin || PlanState.isPlanschreiber || PlanState.isHundefuehrer)
-                ? PlanApi.fetchPendingShiftChangeRequests()
-                : Promise.resolve([])
-        ]);
-
-        PlanState.allUsers = shiftPayload.users;
-        PlanState.currentShifts = {};
-        shiftPayload.shifts.forEach(s => {
-            const key = `${s.user_id}-${s.date}`;
-            const fullShiftType = PlanState.allShiftTypes[s.shifttype_id];
-            PlanState.currentShifts[key] = { ...s, shift_type: fullShiftType };
-        });
-
-        PlanState.currentShiftsLastMonth = {};
-        if (shiftPayload.shifts_last_month) {
-            shiftPayload.shifts_last_month.forEach(s => {
-                const fullShiftType = PlanState.allShiftTypes[s.shifttype_id];
-                PlanState.currentShiftsLastMonth[s.user_id] = { ...s, shift_type: fullShiftType };
-            });
-        }
-
-        PlanState.currentTotals = shiftPayload.totals;
-        PlanState.currentViolations.clear();
-        if (shiftPayload.violations) {
-            shiftPayload.violations.forEach(v => PlanState.currentViolations.add(`${v[0]}-${v[1]}`));
-        }
-
-        // --- NEU: Marktplatz-Daten in State speichern ---
-        PlanState.currentMarketOffers = {};
-        if (marketOffersResult && Array.isArray(marketOffersResult)) {
-            marketOffersResult.forEach(offer => {
-                const d = offer.shift_date.split('T')[0];
-                const key = `${offer.offering_user_id}-${d}`;
-                PlanState.currentMarketOffers[key] = offer;
-            });
-        }
-
-        // --- NEU: Change Requests in State speichern (für Pending Visualisierung) ---
-        PlanState.currentChangeRequests = pendingRequestsResult || [];
-
-
-        PlanState.currentStaffingActual = shiftPayload.staffing_actual || {};
-        PlanState.currentPlanStatus = shiftPayload.plan_status || {
-            year: PlanState.currentYear, month: PlanState.currentMonth,
-            status: "In Bearbeitung", is_locked: false
-        };
-
-        PlanState.currentSpecialDates = {};
-        await loadFullSpecialDates();
-
-        PlanState.currentShiftQueries = queriesResult;
-
-        updatePlanStatusUI(PlanState.currentPlanStatus);
-
-        // --- DOM Update ---
-        PlanRenderer.buildGridDOM({
-            onCellClick: handleCellClick,
-            onCellEnter: (user, dateStr, cell) => {
-                PlanState.hoveredCellContext = { userId: user.id, dateStr, userName: `${user.vorname} ${user.name}`, cellElement: cell };
-                if (!PlanState.isVisitor) cell.classList.add('hovered');
-            },
-            onCellLeave: () => {
-                if (PlanState.hoveredCellContext && PlanState.hoveredCellContext.cellElement) {
-                    PlanState.hoveredCellContext.cellElement.classList.remove('hovered');
-                }
-                PlanState.hoveredCellContext = null;
-            }
-        });
-
-        StaffingModule.buildStaffingTable();
-
-        if(PlanState.pendingHighlight) {
-            setTimeout(() => {
-                PlanRenderer.highlightCells(PlanState.pendingHighlight.date, PlanState.pendingHighlight.targetUserId);
-                PlanState.pendingHighlight = null;
-            }, 300);
-        }
-
-        // --- NEU: Check auf offene Krankmeldungen & Tausch (Banner) beim Reload ---
-        renderUnifiedBanner();
-
-        // --- NEU: Marktplatz Benachrichtigungen (Badge) aktualisieren ---
-        // Hinweis: Das Banner wird jetzt von renderUnifiedBanner übernommen!
-        const badge = document.getElementById('market-badge');
-        if (badge && PlanState.currentMarketOffers) {
-             const count = Object.keys(PlanState.currentMarketOffers).length;
-             badge.textContent = count;
-             badge.style.display = count > 0 ? 'inline-block' : 'none';
-        }
-
-        // --- NEU: Pending Takeovers markieren (Sanduhr) ---
-        markPendingTakeovers();
-
-    } catch (error) {
-        if(grid) grid.innerHTML = `<div style="padding: 20px; text-align: center; color: red;">Fehler beim Laden des Plans: ${error.message}</div>`;
-        console.error(error);
-    } finally {
-        // --- INNOVATION: Animation Ende ---
-        if(grid) grid.classList.remove('blur-loading');
-        if(staffingGrid) staffingGrid.classList.remove('blur-loading');
-    }
-}
-
-async function loadFullSpecialDates() {
-    try {
-        const year = PlanState.currentYear;
-        // DPO laden
-        const [holidays, training, shooting, dpo] = await Promise.all([
-            PlanApi.fetchSpecialDates(year, 'holiday'),
-            PlanApi.fetchSpecialDates(year, 'training'),
-            PlanApi.fetchSpecialDates(year, 'shooting'),
-            PlanApi.fetchSpecialDates(year, 'dpo')
-        ]);
-        training.forEach(d => { if(d.date) PlanState.currentSpecialDates[d.date] = d.type; });
-        shooting.forEach(d => { if(d.date) PlanState.currentSpecialDates[d.date] = d.type; });
-        holidays.forEach(d => { if(d.date) PlanState.currentSpecialDates[d.date] = 'holiday'; });
-        dpo.forEach(d => { if(d.date) PlanState.currentSpecialDates[d.date] = 'dpo'; });
-    } catch (e) {}
-}
-
-function updatePlanStatusUI(statusData) {
-    const container = document.getElementById('plan-status-container');
-    if (!container) return;
-    const existingVarBtns = container.querySelectorAll('.variant-action-btn');
-    existingVarBtns.forEach(btn => btn.remove());
-
-    container.style.display = 'flex';
-    const isVariant = (PlanState.currentVariantId !== null);
-
-    if (planStatusToggleBtn) {
-        if (isVariant) {
-            planStatusToggleBtn.style.display = 'none';
-        } else {
-            planStatusToggleBtn.style.display = 'inline-block';
-            planStatusToggleBtn.textContent = statusData.status || "In Bearbeitung";
-            planStatusToggleBtn.className = '';
-            if (statusData.status === "Fertiggestellt") planStatusToggleBtn.classList.add('status-fertiggestellt');
-            else planStatusToggleBtn.classList.add('status-in-bearbeitung');
-            planStatusToggleBtn.disabled = !PlanState.isAdmin;
-        }
-    }
-
-    if (planLockBtn) {
-        if (isVariant) {
-            planLockBtn.style.display = 'none';
-        } else {
-            planLockBtn.style.display = PlanState.isAdmin ? 'inline-block' : 'none';
-            if (statusData.is_locked) {
-                planLockBtn.textContent = "Gesperrt";
-                planLockBtn.classList.add('locked');
-                document.body.classList.add('plan-locked');
-            } else {
-                planLockBtn.textContent = "Offen";
-                planLockBtn.classList.remove('locked');
-                document.body.classList.remove('plan-locked');
-            }
-        }
-    }
-
-    if (planSendMailBtn) {
-        planSendMailBtn.style.display = (PlanState.isAdmin && !isVariant && statusData.status === "Fertiggestellt" && statusData.is_locked) ? 'inline-block' : 'none';
-    }
-
-    if (isVariant && PlanState.isAdmin) {
-        const delBtn = document.createElement('button');
-        delBtn.textContent = "🗑 Variante Löschen";
-        delBtn.className = "btn-admin-action variant-action-btn";
-        delBtn.style.backgroundColor = "#e74c3c";
-        delBtn.style.color = "white";
-        delBtn.onclick = async () => {
-            if(confirm("Möchten Sie diese Variante wirklich löschen?")) {
-                try {
-                    await apiFetch(`/api/variants/${PlanState.currentVariantId}`, 'DELETE');
-                    PlanState.currentVariantId = null;
-                    await loadVariants();
-                    await renderGrid();
-                } catch(e) { alert("Fehler: " + e.message); }
-            }
-        };
-        container.appendChild(delBtn);
-
-        const pubBtn = document.createElement('button');
-        pubBtn.textContent = "🚀 Als Hauptplan übernehmen";
-        pubBtn.className = "btn-admin-action variant-action-btn";
-        pubBtn.style.backgroundColor = "#27ae60";
-        pubBtn.style.color = "white";
-        pubBtn.onclick = async () => {
-            if(confirm("ACHTUNG: Dies überschreibt den aktuellen Hauptplan mit dieser Variante. Fortfahren?")) {
-                try {
-                    await apiFetch(`/api/variants/${PlanState.currentVariantId}/publish`, 'POST');
-                    alert("Variante wurde veröffentlicht!");
-                    PlanState.currentVariantId = null;
-                    await loadVariants();
-                    await renderGrid();
-                } catch(e) { alert("Fehler: " + e.message); }
-            }
-        };
-        container.appendChild(pubBtn);
-    }
-}
-
-async function populateStaticElements() {
-    try {
-        const types = await PlanApi.fetchShiftTypes();
-        PlanState.allShiftTypesList = types;
-        PlanState.allShiftTypes = {};
-        types.forEach(st => PlanState.allShiftTypes[st.id] = st);
-    } catch(e) { return; }
-
-    const legendeArbeit = document.getElementById('legende-arbeit');
-    const legendeAbwesenheit = document.getElementById('legende-abwesenheit');
-    const legendeSonstiges = document.getElementById('legende-sonstiges');
-    const shiftSelection = document.getElementById('shift-selection');
-
-    if(legendeArbeit) legendeArbeit.innerHTML = '';
-    if(legendeAbwesenheit) legendeAbwesenheit.innerHTML = '';
-    if(legendeSonstiges) legendeSonstiges.innerHTML = '';
-    if(shiftSelection) shiftSelection.innerHTML = '';
-
-    const specialAbbreviations = ['QA', 'S', 'DPG'];
-
-    PlanState.allShiftTypesList.forEach(st => {
-        const item = document.createElement('div');
-        item.className = 'legende-item';
-        item.innerHTML = `
-            <div class="legende-color" style="background-color: ${st.color};"></div>
-            <span class="legende-name"><strong>${st.abbreviation}</strong> (${st.name})</span>
-        `;
-        if (specialAbbreviations.includes(st.abbreviation)) legendeSonstiges.appendChild(item);
-        else if (st.is_work_shift) legendeArbeit.appendChild(item);
-        else legendeAbwesenheit.appendChild(item);
-
-        if (!PlanState.isVisitor && shiftSelection) {
-            const btn = document.createElement('button');
-            btn.textContent = `${st.abbreviation} (${st.name})`;
-            btn.style.backgroundColor = st.color;
-            btn.style.color = isColorDark(st.color) ? 'white' : 'black';
-            btn.onclick = () => {
-                PlanHandlers.saveShift(st.id, PlanState.modalContext.userId, PlanState.modalContext.dateStr, () => {
-                    document.getElementById('shift-modal').style.display = 'none';
-                    if(clickActionModal) clickActionModal.style.display = 'none';
-                });
-            };
-            shiftSelection.appendChild(btn);
-        }
-    });
-}
-
-// --- 4. Event Handling ---
-function handleCellClick(e, user, dateStr, cell, isOwnRow) {
-    if (PlanState.isBulkMode) {
-        e.preventDefault();
-        PlanHandlers.handleBulkCellClick(cell);
-        const count = PlanState.selectedQueryIds.size;
-        const statusText = document.getElementById('bulk-status-text');
-        if(statusText) statusText.textContent = `${count} ausgewählt`;
-        if(bulkApproveBtn) bulkApproveBtn.disabled = count === 0;
-        if(bulkRejectBtn) bulkRejectBtn.disabled = count === 0;
-        return;
-    }
-    e.preventDefault();
-    if (PlanState.isVisitor) return;
-    showClickActionModal(e, user, dateStr, cell, isOwnRow);
-}
-
-function showClickActionModal(event, user, dateStr, cell, isCellOnOwnRow) {
-    if (PlanState.isBulkMode) return;
-    if(clickActionModal) clickActionModal.style.display = 'none';
-
-    // --- FIX ZOMBIE BUTTONS START ---
-    // Hier entfernen wir alte Tausch-Bereiche, bevor wir neue erstellen
-    const oldTradeSection = document.getElementById('cam-trade-section');
-    if (oldTradeSection) oldTradeSection.remove();
-    // --- FIX ZOMBIE BUTTONS ENDE ---
-
-    const userName = `${user.vorname} ${user.name}`;
-    const d = new Date(dateStr);
-    const dateDisplay = d.toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit' });
-
-    PlanState.clickModalContext = {
-        userId: user.id, dateStr, userName,
-        isPlanGesperrt: PlanState.currentPlanStatus.is_locked && PlanState.currentVariantId === null,
-        isCellOnOwnRow: isCellOnOwnRow // <<< WICHTIG: Speichern für Module
-    };
-
-    const camTitle = document.getElementById('cam-title');
-    const camSubtitle = document.getElementById('cam-subtitle');
-    const camAdminWunschActions = document.getElementById('cam-admin-wunsch-actions');
-    const camAdminShifts = document.getElementById('cam-admin-shifts');
-    const camHundefuehrerRequests = document.getElementById('cam-hundefuehrer-requests');
-    const camNotizActions = document.getElementById('cam-notiz-actions');
-    const camHundefuehrerDelete = document.getElementById('cam-hundefuehrer-delete');
-
-    camTitle.textContent = userName;
-    camSubtitle.textContent = dateDisplay;
-
-    [camAdminWunschActions, camAdminShifts, camHundefuehrerRequests, camNotizActions, camHundefuehrerDelete].forEach(el => el.style.display = 'none');
-
-    // --- NEU: Marktplatz Bereich dynamisch erstellen ---
-    let marketSection = document.getElementById('cam-market-actions');
-    if (!marketSection) {
-        marketSection = document.createElement('div');
-        marketSection.id = 'cam-market-actions';
-        marketSection.className = 'cam-section';
-        // Füge es vor dem Notiz-Bereich ein
-        if (camNotizActions && camNotizActions.parentNode) {
-            camNotizActions.parentNode.insertBefore(marketSection, camNotizActions);
-        } else {
-            // Fallback
-            document.getElementById('click-action-modal').appendChild(marketSection);
-        }
-    }
-    marketSection.style.display = 'none';
-    // -------------------------------------------------
-
-    // Filter
-    const queries = PlanState.currentShiftQueries.filter(q =>
-        q.shift_date === dateStr &&
-        q.status === 'offen' &&
-        (q.target_user_id === user.id || q.target_user_id === null)
-    );
-
-    const wunsch = queries.find(q => q.sender_role_name === 'Hundeführer' && q.message.startsWith("Anfrage für:"));
-    const notiz = queries.find(q => !(q.sender_role_name === 'Hundeführer' && q.message.startsWith("Anfrage für:")));
-
-    PlanState.clickModalContext.wunschQuery = wunsch;
-    PlanState.clickModalContext.notizQuery = notiz;
-
-    let hasContent = false;
-
-    // --- NEU: Marktplatz Modul einbinden ---
-    // Hier rufen wir das neue Modul auf!
-    if (MarketModule.renderModalActions(marketSection, PlanState.clickModalContext, renderGrid, () => clickActionModal.style.display = 'none')) {
-        hasContent = true;
-    }
-    // ---------------------------------------
-
-    // --- NEU: Admin Trade UI (In-Plan Genehmigung) ---
-    // Wir prüfen, ob es einen offenen Antrag für diese Zelle gibt
-    const pendingReq = PlanState.currentChangeRequests.find(req =>
-        req.status === 'pending' &&
-        (req.shift_date ? req.shift_date.split('T')[0] : null) === dateStr &&
-        (req.target_user_id === user.id || req.replacement_user_id === user.id)
-    );
-
-    if (pendingReq && (PlanState.isAdmin || PlanState.isPlanschreiber)) {
-        const tradeSection = document.createElement('div');
-        tradeSection.id = 'cam-trade-section'; // WICHTIG: ID setzen für Cleanup
-        tradeSection.className = 'cam-section';
-        tradeSection.innerHTML = `
-            <div class="cam-section-title" style="color:#f1c40f;">⚠️ Offener Tausch</div>
-            <div style="font-size:11px; margin-bottom:5px; color:#ccc;">
-                ${pendingReq.original_user_name} ➔ ${pendingReq.replacement_name}
-            </div>
-            <div style="display:grid; grid-template-columns:1fr 1fr; gap:5px;">
-                <button class="cam-button approve" onclick="window.confirmApproveTrade(${pendingReq.id})">Genehmigen</button>
-                <button class="cam-button reject" onclick="window.confirmRejectTrade(${pendingReq.id})">Ablehnen</button>
-            </div>
-        `;
-        // Einfügen ganz oben oder vor den Shifts
-        const shiftsSection = document.getElementById('cam-admin-shifts');
-        if (shiftsSection) {
-            shiftsSection.parentNode.insertBefore(tradeSection, shiftsSection);
-        } else {
-            document.getElementById('click-action-modal').appendChild(tradeSection);
-        }
-        hasContent = true;
-    }
-    // --- ENDE NEU ---
-
-    // --- NEU: Spezialfall für Planschreiber/Admin bei gesperrtem Plan ---
-    if ((PlanState.isPlanschreiber || PlanState.isAdmin) && PlanState.clickModalContext.isPlanGesperrt) {
-        // Wir nutzen den "Schicht zuweisen" Container, leeren ihn aber
-        camAdminShifts.style.display = 'block';
-        camAdminShifts.innerHTML = '';
-
-        const header = document.createElement('div');
-        header.className = 'cam-section-title';
-        header.textContent = 'Aktionen (Plan gesperrt)';
-        header.style.color = '#e74c3c';
-        camAdminShifts.appendChild(header);
-
-        // Button für Krankmeldung
-        const btn = document.createElement('button');
-        btn.className = 'cam-button reject'; // Rot
-        btn.style.width = '100%';
-        btn.textContent = '⚠️ Krankmeldung / Ersatz beantragen';
-        btn.onclick = () => {
-            clickActionModal.style.display = 'none';
-            // Wir rufen den Handler auf, der das ChangeRequest Modal öffnet
-            if (PlanHandlers.handleLockedClick) {
-                PlanHandlers.handleLockedClick(user.id, dateStr, userName);
-            } else {
-                alert("Bitte Seite neu laden (Handler nicht aktualisiert).");
-            }
-        };
-        camAdminShifts.appendChild(btn);
-        hasContent = true;
-
-        // Notizen trotzdem anzeigen
-        camNotizActions.style.display = 'block';
-        camLinkNotiz.textContent = notiz ? '❓ Text-Notiz ansehen...' : '❓ Text-Notiz erstellen...';
-        camLinkNotiz.dataset.targetQueryId = notiz ? notiz.id : "";
-        hasContent = true;
-
-    } else if (PlanState.isAdmin) {
-        // --- NORMALER ADMIN FLOW (Plan offen) ---
-        if (wunsch && !PlanState.clickModalContext.isPlanGesperrt) {
-            camAdminWunschActions.style.display = 'grid';
-            document.getElementById('cam-btn-approve').textContent = `Genehmigen (${wunsch.message.replace('Anfrage für:', '').trim()})`;
-            hasContent = true;
-        }
-        if (!PlanState.clickModalContext.isPlanGesperrt) {
-            camAdminShifts.style.display = 'grid';
-            populateAdminShiftButtons();
-            hasContent = true;
-        }
-        camNotizActions.style.display = 'block';
-        camLinkNotiz.textContent = notiz ? '❓ Text-Notiz ansehen...' : '❓ Text-Notiz erstellen...';
-        camLinkNotiz.dataset.targetQueryId = notiz ? notiz.id : "";
-        hasContent = true;
-
-    } else if (PlanState.isPlanschreiber) {
-        // --- NORMALER PLANSCHREIBER FLOW (Plan offen) ---
-        // Der Planschreiber darf auch im offenen Plan Schichten ändern (dafür reuse Admin Buttons?)
-        // Annahme: Planschreiber nutzt Admin-Flow wenn offen, sonst nur Notizen
-        // Hier: Wenn offen -> Darf schreiben
-        if (!PlanState.clickModalContext.isPlanGesperrt) {
-             camAdminShifts.style.display = 'grid';
-             populateAdminShiftButtons();
-             hasContent = true;
-        }
-
-        camNotizActions.style.display = 'block';
-        camLinkNotiz.textContent = notiz ? '❓ Text-Notiz ansehen...' : '❓ Text-Notiz erstellen...';
-        camLinkNotiz.dataset.targetQueryId = notiz ? notiz.id : "";
-        hasContent = true;
-
-    } else if (PlanState.isHundefuehrer && isCellOnOwnRow) {
-        // --- HUNDEFÜHRER FLOW ---
-        if (wunsch && wunsch.sender_user_id === PlanState.loggedInUser.id && !PlanState.clickModalContext.isPlanGesperrt) {
-            camHundefuehrerDelete.style.display = 'block';
-            camLinkDelete.textContent = 'Wunsch-Anfrage zurückziehen';
-            camLinkDelete.dataset.targetQueryId = wunsch.id;
-            hasContent = true;
-        } else if (!wunsch && !PlanState.clickModalContext.isPlanGesperrt) {
-            camHundefuehrerRequests.style.display = 'flex';
-            populateHfButtons();
-            hasContent = true;
-        }
-    }
-
-    if (!hasContent) return;
-
-    const cellRect = cell.getBoundingClientRect();
-    const modalWidth = 300;
-    let left = cellRect.left + window.scrollX;
-    let top = cellRect.bottom + window.scrollY + 5;
-    if (left + modalWidth > document.documentElement.clientWidth) left = document.documentElement.clientWidth - modalWidth - 10;
-
-    clickActionModal.style.left = `${left}px`;
-    clickActionModal.style.top = `${top}px`;
-    clickActionModal.style.display = 'block';
-}
-
-// --- NEU: Globale Funktionen für das Trade-UI ---
-window.confirmApproveTrade = async function(reqId) {
-    if (!confirm("Diesen Tausch genehmigen?")) return;
-    try {
-        await PlanApi.approveShiftChangeRequest(reqId);
-        // Hinweis: Sockets erledigen den Grid-Reload, wir schließen nur das Modal
-        document.getElementById('click-action-modal').style.display = 'none';
-    } catch (e) {
-        alert("Fehler: " + e.message);
-    }
-};
-
-window.confirmRejectTrade = async function(reqId) {
-    if (!confirm("Tausch ablehnen?")) return;
-    try {
-        await PlanApi.rejectShiftChangeRequest(reqId);
-        document.getElementById('click-action-modal').style.display = 'none';
-        // Reload Grid um Pending-Status zu entfernen
-        renderGrid();
-    } catch (e) {
-        alert("Fehler: " + e.message);
-    }
-};
-
-function populateAdminShiftButtons() {
-    const container = document.getElementById('cam-admin-shifts');
-    container.innerHTML = `<div class="cam-section-title">Schicht zuweisen</div>`;
-    const defs = [{ abbrev: 'T.', title: 'Tag' }, { abbrev: 'N.', title: 'Nacht' }, { abbrev: '6', title: 'Kurz' }, { abbrev: 'FREI', title: 'Frei' }, { abbrev: 'U', title: 'Urlaub' }, { abbrev: 'X', title: 'Wunschfrei' }, { abbrev: 'Alle...', title: 'Alle', isAll: true }];
-
-    defs.forEach(def => {
-        const btn = document.createElement('button');
-        btn.className = def.isAll ? 'cam-shift-button all' : 'cam-shift-button';
-        btn.textContent = def.abbrev;
-        btn.onclick = () => {
-            if (def.isAll) {
-                PlanState.modalContext = { userId: PlanState.clickModalContext.userId, dateStr: PlanState.clickModalContext.dateStr };
-                document.getElementById('shift-modal-title').textContent = "Alle Schichten";
-                document.getElementById('shift-modal-info').textContent = `Für: ${PlanState.clickModalContext.userName}`;
-                document.getElementById('shift-modal').style.display = 'block';
-            } else {
-                const st = PlanState.allShiftTypesList.find(s => s.abbreviation === def.abbrev);
-                if (st) {
-                    PlanHandlers.saveShift(st.id, PlanState.clickModalContext.userId, PlanState.clickModalContext.dateStr, () => {
-                        clickActionModal.style.display = 'none';
-                    });
-                }
-            }
-            clickActionModal.style.display = 'none';
-        };
-        container.appendChild(btn);
-    });
-}
-
-async function populateHfButtons() {
-    const container = document.getElementById('cam-hundefuehrer-requests');
-    container.innerHTML = '<div style="color:#bbb; font-size:12px;">Lade...</div>';
-    try {
-        const usage = await PlanApi.fetchQueryUsage(PlanState.currentYear, PlanState.currentMonth);
-        container.innerHTML = `<div class="cam-section-title">Wunsch-Anfrage</div>`;
-        const buttons = [{ label: 'T.?', abbr: 'T.' }, { label: 'N.?', abbr: 'N.' }, { label: '6?', abbr: '6' }, { label: 'X?', abbr: 'X' }];
-        buttons.forEach(def => {
-            const btn = document.createElement('button');
-            btn.className = 'cam-shift-button';
-            const limit = usage[def.abbr];
-            let disabled = false; let info = '';
-            if (limit) {
-                if (limit.remaining <= 0) { disabled = true; info = '(0)'; } else { info = `(${limit.remaining})`; }
-            }
-            if (def.abbr === '6') {
-                const d = new Date(PlanState.clickModalContext.dateStr);
-                const isFri = d.getDay() === 5;
-                const isHol = PlanState.currentSpecialDates[PlanState.clickModalContext.dateStr] === 'holiday';
-                if (!isFri || isHol) { disabled = true; info = 'Nur Fr'; }
-            }
-            btn.textContent = `${def.label} ${info}`;
-            if (disabled) { btn.disabled = true; btn.style.opacity = 0.5; }
-            else {
-                btn.onclick = () => {
-                    PlanHandlers.requestShift(def.label, PlanState.clickModalContext.userId, PlanState.clickModalContext.dateStr);
-                    clickActionModal.style.display = 'none';
-                };
-            }
-            container.appendChild(btn);
-        });
-    } catch(e) { container.innerHTML = 'Fehler beim Laden.'; }
-}
-
-// --- NEUE HELPER FUNKTION: KONVERSATION LADEN ---
-async function loadAndRenderModalConversation(queryId) {
-    const repliesList = document.getElementById('query-replies-list');
-    if (!repliesList) return;
-
-    try {
-        const replies = await apiFetch(`/api/queries/${queryId}/replies`);
-        // Bestehende Replies (außer dem initialen Element) entfernen
-        const itemsToRemove = repliesList.querySelectorAll('.reply-item:not(#initial-query-item)');
-        itemsToRemove.forEach(el => el.remove());
-
-        replies.forEach(reply => {
-            const li = document.createElement('li');
-            li.className = 'reply-item';
-            const isSelf = reply.user_id === PlanState.loggedInUser.id;
-            const formattedDate = new Date(reply.created_at).toLocaleTimeString('de-DE', {day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit'});
-
-            li.innerHTML = `
-                <div class="reply-meta" style="color: ${isSelf ? '#3498db' : '#888'};">
-                    <strong>${reply.user_name}</strong> am ${formattedDate} Uhr
-                </div>
-                <div class="reply-text">
-                    ${reply.message}
-                </div>
-            `;
-            repliesList.appendChild(li);
-        });
-    } catch (e) {
-        console.error("Fehler beim Laden der Antworten:", e);
-    }
-}
-
-// --- 5. Global Listeners ---
-
-function attachGlobalListeners() {
-    if(prevMonthBtn) prevMonthBtn.onclick = () => { PlanHandlers.handleMonthChange(-1); setTimeout(loadVariants, 100); };
-    if(nextMonthBtn) nextMonthBtn.onclick = () => { PlanHandlers.handleMonthChange(1); setTimeout(loadVariants, 100); };
-
-    // --- Month Picker Listener ---
-    if (monthLabel) {
-        monthLabel.onclick = (e) => {
-            e.stopPropagation();
-            toggleMonthPicker();
-        };
-    }
-
-    if (mpPrevYearBtn) mpPrevYearBtn.onclick = (e) => { e.stopPropagation(); pickerYear--; renderMonthPicker(); };
-    if (mpNextYearBtn) mpNextYearBtn.onclick = (e) => { e.stopPropagation(); pickerYear++; renderMonthPicker(); };
-
-    if(planLockBtn) planLockBtn.onclick = () => {
-        const newLocked = !PlanState.currentPlanStatus.is_locked;
-        PlanApi.updatePlanStatus(PlanState.currentYear, PlanState.currentMonth, PlanState.currentPlanStatus.status, newLocked)
-            .then(status => { PlanState.currentPlanStatus = status; updatePlanStatusUI(status); });
-    };
-    if(planStatusToggleBtn) planStatusToggleBtn.onclick = () => {
-        const newStatus = (PlanState.currentPlanStatus.status === "Fertiggestellt") ? "In Bearbeitung" : "Fertiggestellt";
-        PlanApi.updatePlanStatus(PlanState.currentYear, PlanState.currentMonth, newStatus, PlanState.currentPlanStatus.is_locked)
-            .then(status => { PlanState.currentPlanStatus = status; updatePlanStatusUI(status); });
-    };
-    if(planSendMailBtn) planSendMailBtn.onclick = () => {
-        if(confirm("Rundmail senden?")) {
-            PlanApi.sendCompletionNotification(PlanState.currentYear, PlanState.currentMonth)
-                .then(res => alert(res.message)).catch(e => alert("Fehler: " + e.message));
-        }
-    };
-
-    if(planBulkModeBtn) planBulkModeBtn.onclick = (e) => { e.preventDefault(); PlanHandlers.toggleBulkMode(planBulkModeBtn, bulkActionBarPlan); };
-    if(bulkCancelBtn) bulkCancelBtn.onclick = () => PlanHandlers.toggleBulkMode(planBulkModeBtn, bulkActionBarPlan);
-    if(bulkApproveBtn) bulkApproveBtn.onclick = () => PlanHandlers.performPlanBulkAction('approve');
-    if(bulkRejectBtn) bulkRejectBtn.onclick = () => PlanHandlers.performPlanBulkAction('reject');
-
-    if(staffingSortToggleBtn) staffingSortToggleBtn.onclick = () => StaffingModule.toggleStaffingSortMode();
-
-    if (deletePlanLink) {
-        deletePlanLink.onclick = async (e) => {
-            e.preventDefault();
-            const planName = PlanState.currentVariantId ? "diese Variante" : "den Hauptplan";
-            if(confirm(`Möchten Sie wirklich ${planName} für ${PlanState.currentMonth}/${PlanState.currentYear} leeren?`)) {
-                try {
-                    await PlanApi.clearShiftPlan(PlanState.currentYear, PlanState.currentMonth, PlanState.currentVariantId);
-                    await renderGrid();
-                } catch(err) { alert("Fehler: " + err.message); }
-            }
-        };
-    }
-
-    if (openGeneratorLink) {
-        openGeneratorLink.onclick = (e) => {
-            e.preventDefault();
-            if(!PlanState.isAdmin) return;
-
-            const label = document.getElementById('gen-target-month');
-            if(label) label.textContent = `${PlanState.currentMonth}/${PlanState.currentYear}`;
-
-            generateHudGrid();
-
-            const logContainer = document.getElementById('generator-log-container');
-            if(logContainer) logContainer.innerHTML = '<div class="hud-log-line">System bereit...</div>';
-
-            const progFill = document.getElementById('gen-progress-fill');
-            if(progFill) progFill.style.width = '0%';
-
-            const statusText = document.getElementById('gen-status-text');
-            if(statusText) {
-                statusText.textContent = "BEREIT";
-                statusText.style.color = "#bdc3c7";
-            }
-
-            if(startGeneratorBtn) {
-                startGeneratorBtn.disabled = false;
-                startGeneratorBtn.textContent = "INITIALISIEREN";
-            }
-
-            if(generatorModal) generatorModal.style.display = 'block';
-        };
-    }
-
-    if (startGeneratorBtn) {
-        startGeneratorBtn.onclick = async () => {
-            console.log("Start-Button geklickt. Sende Anfrage an Backend..."); // DEBUG
-
-            startGeneratorBtn.disabled = true;
-            startGeneratorBtn.textContent = "LÄUFT...";
-
-            // --- RESET ---
-            visualQueue = [];
-            processedLogCount = 0;
-
-            document.querySelectorAll('.hud-day-box').forEach(b => {
-                b.classList.remove('done', 'processing', 'warning', 'critical');
-            });
-
-            const progFill = document.getElementById('gen-progress-fill');
-            if(progFill) progFill.style.width = '0%';
-
-            const logContainer = document.getElementById('generator-log-container');
-            logContainer.innerHTML = '';
-            visualQueue.push({
-                type: 'log',
-                content: '<div class="hud-log-line highlight">> Startsequenz initiiert...</div>'
-            });
-
-            const statusText = document.getElementById('gen-status-text');
-            if(statusText) {
-                statusText.textContent = "AKTIV";
-                statusText.style.color = "#2ecc71";
-            }
-
-            if (visualInterval) clearInterval(visualInterval);
-            visualInterval = setInterval(processVisualQueue, 40);
-
-            try {
-                // WICHTIG: Sicherstellen, dass variantId null ist, wenn undefined
-                const variantIdToSend = PlanState.currentVariantId !== undefined ? PlanState.currentVariantId : null;
-                console.log(`Starte Generator für: ${PlanState.currentMonth}/${PlanState.currentYear}, Variante: ${variantIdToSend}`);
-
-                await PlanApi.startGenerator(PlanState.currentYear, PlanState.currentMonth, variantIdToSend);
-
-                // Polling starten
-                if (generatorInterval) clearInterval(generatorInterval);
-                generatorInterval = setInterval(pollGeneratorStatus, 1000);
-
-            } catch (error) {
-                console.error("Fehler beim Starten:", error);
-                visualQueue.push({
-                    type: 'log',
-                    content: `<div class="hud-log-line error">[FEHLER] ${error.message}</div>`
-                });
-                startGeneratorBtn.disabled = false;
-                startGeneratorBtn.textContent = "RETRY";
-
-                // Status zurücksetzen bei Fehler
-                if(statusText) {
-                    statusText.textContent = "FEHLER";
-                    statusText.style.color = "#e74c3c";
-                }
-            }
-        };
-    }
-
-    if (openGenSettingsLink) {
-        openGenSettingsLink.onclick = async (e) => {
-            e.preventDefault();
-            if(!PlanState.isAdmin) return;
-            const statusEl = document.getElementById('gen-settings-status');
-            if(statusEl) statusEl.textContent = "Lade...";
-            if(genSettingsModal) genSettingsModal.style.display = 'block';
-            try {
-                const config = await PlanApi.getGeneratorConfig();
-
-                // --- NEU: Lokalen Cache aktualisieren wenn Settings geöffnet werden ---
-                PlanState.generatorConfig = config;
-
-                if(document.getElementById('gen-max-consecutive')) document.getElementById('gen-max-consecutive').value = config.max_consecutive_same_shift || 4;
-                if(document.getElementById('gen-rest-days')) document.getElementById('gen-rest-days').value = config.mandatory_rest_days_after_max_shifts || 2;
-                if(document.getElementById('gen-fill-rounds')) document.getElementById('gen-fill-rounds').value = config.generator_fill_rounds || 3;
-                if(document.getElementById('gen-max-hours')) document.getElementById('gen-max-hours').value = config.max_monthly_hours || 170;
-                if(document.getElementById('gen-fairness-threshold')) document.getElementById('gen-fairness-threshold').value = config.fairness_threshold_hours || 10;
-                if(document.getElementById('gen-min-hours-bonus')) document.getElementById('gen-min-hours-bonus').value = config.min_hours_score_multiplier || 5;
-
-                // --- NEU: Checkbox für Work-Life-Balance laden ---
-                if(document.getElementById('gen-ensure-weekend')) {
-                    document.getElementById('gen-ensure-weekend').checked = config.ensure_one_weekend_free === true;
-                }
-                // -------------------------------------------------
-
-                const container = document.getElementById('gen-shifts-container');
-                if (container) {
-                    container.innerHTML = '';
-                    const activeShifts = config.shifts_to_plan || ["6", "T.", "N."];
-                    PlanState.allShiftTypesList.forEach(st => {
-                        if (!st.is_work_shift) return;
-                        const div = document.createElement('div');
-                        div.className = 'gen-shift-checkbox';
-                        const input = document.createElement('input');
-                        input.type = 'checkbox';
-                        input.value = st.abbreviation;
-                        input.id = `gen-shift-${st.id}`;
-                        if (activeShifts.includes(st.abbreviation)) input.checked = true;
-                        const label = document.createElement('label');
-                        label.htmlFor = `gen-shift-${st.id}`;
-                        label.textContent = `${st.abbreviation}`;
-                        div.appendChild(input);
-                        div.appendChild(label);
-                        container.appendChild(div);
-                    });
-                }
-                if(statusEl) statusEl.textContent = "";
-            } catch (err) { if(statusEl) statusEl.textContent = "Fehler beim Laden."; }
-        };
-    }
-
-    if (saveGenSettingsBtn) {
-        saveGenSettingsBtn.onclick = async () => {
-            saveGenSettingsBtn.disabled = true;
-            const statusEl = document.getElementById('gen-settings-status');
-            statusEl.textContent = "Speichere...";
-            const selectedShifts = [];
-            document.querySelectorAll('#gen-shifts-container input[type="checkbox"]').forEach(cb => {
-                if(cb.checked) selectedShifts.push(cb.value);
-            });
-            const payload = {
-                max_consecutive_same_shift: parseInt(document.getElementById('gen-max-consecutive').value),
-                mandatory_rest_days_after_max_shifts: parseInt(document.getElementById('gen-rest-days').value),
-                generator_fill_rounds: parseInt(document.getElementById('gen-fill-rounds').value),
-                fairness_threshold_hours: parseFloat(document.getElementById('gen-fairness-threshold').value),
-                min_hours_score_multiplier: parseFloat(document.getElementById('gen-min-hours-bonus').value),
-                max_monthly_hours: parseFloat(document.getElementById('gen-max-hours').value),
-                // --- NEU: Checkbox für Work-Life-Balance speichern ---
-                ensure_one_weekend_free: document.getElementById('gen-ensure-weekend') ? document.getElementById('gen-ensure-weekend').checked : false,
-                // ----------------------------------------------------
-                shifts_to_plan: selectedShifts
-            };
-            try {
-                await PlanApi.saveGeneratorConfig(payload);
-                // --- NEU: Lokalen Cache aktualisieren ---
-                PlanState.generatorConfig = payload;
-                statusEl.textContent = "Gespeichert!";
-                statusEl.style.color = "#2ecc71";
-                setTimeout(() => { if(genSettingsModal) genSettingsModal.style.display = 'none'; statusEl.textContent = ""; }, 1000);
-            } catch(e) { statusEl.textContent = "Fehler: " + e.message; } finally { saveGenSettingsBtn.disabled = false; }
-        };
-    }
-
-    const modals = [shiftModal, queryModal, generatorModal, genSettingsModal, variantModal];
-    modals.forEach(m => {
-        if(m) {
-            const closeBtn = m.querySelector('.close');
-            if(closeBtn) closeBtn.onclick = () => m.style.display = 'none';
-        }
-    });
-    window.onclick = (e) => {
-        if (modals.includes(e.target)) e.target.style.display = 'none';
-        if (!e.target.closest('.grid-cell') && !e.target.closest('#click-action-modal') && !e.target.closest('#bulk-action-bar-plan') && !e.target.closest('#plan-bulk-mode-btn')) {
-            if(clickActionModal) clickActionModal.style.display = 'none';
-        }
-
-        if (monthPickerDropdown && monthPickerDropdown.style.display === 'block') {
-            if (!e.target.closest('#month-picker-dropdown') && e.target !== monthLabel) {
-                monthPickerDropdown.style.display = 'none';
-            }
-        }
-    };
-
-    if(createVariantBtn) createVariantBtn.onclick = async () => {
-        const name = document.getElementById('variant-name').value;
-        if(!name) { alert("Name erforderlich"); return; }
-        createVariantBtn.disabled = true; createVariantBtn.textContent = "Erstelle...";
-        try {
-            await apiFetch('/api/variants', 'POST', { name: name, year: PlanState.currentYear, month: PlanState.currentMonth, source_variant_id: PlanState.currentVariantId });
-            if(variantModal) variantModal.style.display = 'none';
-            await loadVariants();
-            const newVar = PlanState.variants[PlanState.variants.length - 1];
-            if(newVar) await switchVariant(newVar.id);
-        } catch(e) { alert("Fehler: " + e.message); } finally { createVariantBtn.disabled = false; createVariantBtn.textContent = "Erstellen"; }
-    };
-
-    window.addEventListener('keydown', (e) => PlanHandlers.handleKeyboardShortcut(e));
-
-    // --- KORREKTUR BEIM KLICK AUF "Notiz ansehen" ---
-    if(camLinkNotiz) camLinkNotiz.onclick = () => {
-        const ctx = PlanState.clickModalContext;
-        const queryId = camLinkNotiz.dataset.targetQueryId || null;
-
-        PlanState.modalQueryContext = { userId: ctx.userId, dateStr: ctx.dateStr, userName: ctx.userName, queryId: queryId };
-
-        document.getElementById('query-modal-title').textContent = "Schicht-Notiz";
-        document.getElementById('query-modal-info').textContent = `Für: ${ctx.userName}`;
-
-        // --- HIER: Text aus dem Query-Objekt holen und setzen ---
-        if (queryId) {
-            const query = PlanState.currentShiftQueries.find(q => q.id == queryId);
-            if (query) {
-                document.getElementById('query-existing-message').textContent = query.message;
-
-                // Initiale Nachricht in den Verlauf setzen (wichtig für die Optik)
-                const initItem = document.getElementById('initial-query-item');
-                if (initItem) {
-                    const queryDate = new Date(query.created_at).toLocaleString('de-DE', {day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit'});
-                    initItem.innerHTML = `
-                        <div class="reply-meta" style="color: #3498db;">
-                            <strong>${query.sender_name} (Erstanfrage)</strong> am ${queryDate} Uhr
-                        </div>
-                        <div class="reply-text" style="font-style: italic;">
-                            ${query.message}
-                        </div>
-                    `;
-                }
-                // Konversation laden
-                loadAndRenderModalConversation(queryId);
-
-                // --- NEU: Antwortformular sichtbar machen ---
-                const replyForm = document.getElementById('query-reply-form');
-                if (replyForm) replyForm.style.display = 'block';
-            }
-        } else {
-             // Verstecke Formular bei neuer Notiz (erst speichern)
-             const replyForm = document.getElementById('query-reply-form');
-             if (replyForm) replyForm.style.display = 'none';
-        }
-
-        document.getElementById('query-existing-container').style.display = PlanState.modalQueryContext.queryId ? 'block' : 'none';
-        document.getElementById('query-new-container').style.display = PlanState.modalQueryContext.queryId ? 'none' : 'block';
-        queryModal.style.display = 'block';
-        clickActionModal.style.display = 'none';
-    };
-
-    // --- NEU: Antwort senden im Modal ---
-    if(replySubmitBtn) {
-        replySubmitBtn.onclick = async () => {
-            const msgInput = document.getElementById('reply-message-input');
-            const msg = msgInput.value.trim();
-            if (!msg) return;
-
-            const queryId = PlanState.modalQueryContext.queryId;
-            if (!queryId) return;
-
-            replySubmitBtn.disabled = true;
-            replySubmitBtn.textContent = "Sende...";
-
-            try {
-                await PlanApi.sendQueryReply(queryId, msg);
-                msgInput.value = '';
-                await loadAndRenderModalConversation(queryId);
-                // Optional: Notification Update trigger
-            } catch (e) {
-                alert("Fehler: " + e.message);
-            } finally {
-                replySubmitBtn.disabled = false;
-                replySubmitBtn.textContent = "Antwort senden";
-            }
-        };
-    }
-
-    if(camLinkDelete) camLinkDelete.onclick = () => { PlanHandlers.deleteShiftQuery(camLinkDelete.dataset.targetQueryId, () => clickActionModal.style.display = 'none'); };
-    if(camBtnApprove) camBtnApprove.onclick = () => { renderGrid(); };
-    if(querySubmitBtn) querySubmitBtn.onclick = () => { const msg = document.getElementById('query-message-input').value; PlanHandlers.saveShiftQuery(msg, () => queryModal.style.display = 'none'); };
-    if(queryResolveBtn) queryResolveBtn.onclick = () => { PlanHandlers.resolveShiftQuery(PlanState.modalQueryContext.queryId, () => queryModal.style.display = 'none'); };
-    if(queryDeleteBtn) queryDeleteBtn.onclick = () => { PlanHandlers.deleteShiftQuery(PlanState.modalQueryContext.queryId, () => queryModal.style.display = 'none'); };
-
-    // --- NEU: Listener für Reload-Events aus Modulen (z.B. ChangeRequest) ---
-    // Damit wird das Grid aktualisiert, wenn das Modul dies anfordert
-    document.addEventListener('dhf:reload-grid', () => {
-        renderGrid();
-    });
-}
-
-// --- HUD HELPER ---
-function generateHudGrid() {
-    const grid = document.getElementById('gen-day-grid');
-    if(!grid) return;
-    grid.innerHTML = '';
-    const daysInMonth = new Date(PlanState.currentYear, PlanState.currentMonth, 0).getDate();
-    for (let i = 1; i <= daysInMonth; i++) {
-        const box = document.createElement('div');
-        box.className = 'hud-day-box';
-        box.id = `day-box-${i}`;
-        box.textContent = i;
-        grid.appendChild(box);
-    }
-}
-
-// --- NEU: Hilfsfunktion zur Ermittlung des Soll-Werts ---
-function getSollForShift(day, shiftName) {
-    const year = PlanState.currentYear;
-    const month = PlanState.currentMonth;
-    const date = new Date(year, month - 1, day);
-    const dateStr = `${year}-${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-
-    // Prüfen ob Feiertag
-    let isHoliday = PlanState.currentSpecialDates[dateStr] === 'holiday';
-
-    // Schichtart finden
-    const st = PlanState.allShiftTypesList.find(s => s.abbreviation === shiftName);
-    if (!st) return 0;
-
-    // Soll zurückgeben
-    if (isHoliday) return st.min_staff_holiday || 0;
-
-    // Wochentag (0=So, 1=Mo, ...)
-    const dayIdx = date.getDay();
-    const map = [
-        st.min_staff_so, st.min_staff_mo, st.min_staff_di, st.min_staff_mi,
-        st.min_staff_do, st.min_staff_fr, st.min_staff_sa
+// --- 4. START ---
+
+// Global Keydown (Shortcuts)
+window.addEventListener('keydown', (e) => PlanHandlers.handleKeyboardShortcut(e));
+
+// Global Click (Modals schließen)
+window.addEventListener('click', (e) => {
+    // Liste der Modals, die geschlossen werden sollen bei Klick auf Hintergrund
+    const modals = [
+        document.getElementById('shift-modal'),
+        document.getElementById('query-modal'),
+        document.getElementById('generator-modal'),
+        document.getElementById('gen-settings-modal'),
+        document.getElementById('variant-modal')
     ];
-    return map[dayIdx] || 0;
-}
 
-function processVisualQueue() {
-    if (visualQueue.length === 0) return;
+    modals.forEach(m => {
+        if(m && e.target === m) m.style.display = 'none';
+    });
+});
 
-    const item = visualQueue.shift();
-
-    // Spezial-Befehle
-    if (item.type === 'finish') {
-        clearInterval(visualInterval);
-        visualInterval = null;
-
-        const statusText = document.getElementById('gen-status-text');
-        if(statusText) { statusText.textContent = "FERTIG"; statusText.style.color = "#2ecc71"; }
-
-        const startBtn = document.getElementById('start-generator-btn');
-        if(startBtn) {
-             startBtn.disabled = false;
-             startBtn.textContent = "ABGESCHLOSSEN";
-        }
-
-        // Aufräumen (Grün setzen, wenn keine Warnung/Kritisch)
-        const daysInMonth = new Date(PlanState.currentYear, PlanState.currentMonth, 0).getDate();
-        for (let i = 1; i <= daysInMonth; i++) {
-            const box = document.getElementById(`day-box-${i}`);
-            // Prüfen ob Warnung (Gelb) oder Kritisch (Rot) vorliegt
-            if(box && !box.classList.contains('warning') && !box.classList.contains('critical')) {
-                // --- NEU: Check auf ignorierte "6er" Schichten ---
-                let forceWarning = false;
-                if (PlanState.generatorConfig && PlanState.generatorConfig.shifts_to_plan) {
-                    const includes6 = PlanState.generatorConfig.shifts_to_plan.includes('6');
-                    // Wenn "6" nicht generiert wird, aber > 0 benötigt wird:
-                    if (!includes6) {
-                        const soll6 = getSollForShift(i, '6');
-                        if (soll6 > 0) forceWarning = true;
-                    }
-                }
-
-                box.classList.remove('processing');
-                if (forceWarning) {
-                    box.classList.add('warning'); // Gelb erzwingen
-                } else {
-                    box.classList.add('done'); // Grün
-                }
-            }
-        }
-
-        // Grid neu laden
-        setTimeout(() => { renderGrid(); }, 1000);
-        return;
-    }
-
-    // Normaler Text-Log
-    if (item.type === 'log') {
-        const logContainer = document.getElementById('generator-log-container');
-        const div = document.createElement('div');
-        div.innerHTML = item.content;
-        logContainer.appendChild(div);
-        logContainer.scrollTop = logContainer.scrollHeight;
-
-        const text = div.textContent;
-
-        // Visualisierung der Tage
-        const dayMatch = text.match(/Plane Tag (\d+)/);
-        if (dayMatch) {
-            const day = parseInt(dayMatch[1]);
-            // Vorherige aufräumen
-            for (let d = 1; d < day; d++) {
-                const box = document.getElementById(`day-box-${d}`);
-
-                // Vorherige Tage finalisieren
-                if (box && !box.classList.contains('warning') && !box.classList.contains('critical')) {
-                    // --- NEU: Check auch hier beim Übergang ---
-                    let forceWarning = false;
-                    if (PlanState.generatorConfig && PlanState.generatorConfig.shifts_to_plan) {
-                        const includes6 = PlanState.generatorConfig.shifts_to_plan.includes('6');
-                        if (!includes6) {
-                            const soll6 = getSollForShift(d, '6');
-                            if (soll6 > 0) forceWarning = true;
-                        }
-                    }
-
-                    if (forceWarning) {
-                        box.classList.add('warning');
-                    } else {
-                        box.classList.add('done');
-                    }
-                }
-                if (box) box.classList.remove('processing');
-            }
-            // Aktuellen markieren
-            const currentBox = document.getElementById(`day-box-${day}`);
-            if (currentBox) {
-                currentBox.classList.remove('done');
-                currentBox.classList.add('processing');
-            }
-        }
-
-        // --- Intelligente Warn-Erkennung ---
-        // Regex liest Tag, Schichtname und Fehlmenge
-        const warnMatch = text.match(/Tag (\d+): Konnte (.+) nicht voll besetzen \(Fehlen: (\d+)\)/);
-
-        if (warnMatch) {
-             const day = parseInt(warnMatch[1]);
-             const shiftName = warnMatch[2].trim(); // z.B. "T." oder "6"
-             const missingCount = parseInt(warnMatch[3]);
-
-             const box = document.getElementById(`day-box-${day}`);
-             if (box) {
-                 box.classList.remove('processing');
-                 box.classList.remove('done');
-
-                 // 1. Soll ermitteln
-                 const soll = getSollForShift(day, shiftName);
-
-                 // 2. Entscheidungslogik
-                 // "6" ist immer Gelb (Warning)
-                 if (shiftName === '6' || shiftName === '6.') {
-                     box.classList.add('warning');
-                 } else {
-                     // Bei anderen Schichten:
-                     // Wenn Missing >= Soll -> Keiner da -> Rot (Critical)
-                     // Wenn Missing < Soll -> Teilbesetzung -> Gelb (Warning)
-                     if (missingCount >= soll && soll > 0) {
-                         box.classList.add('critical');
-                     } else {
-                         box.classList.add('warning');
-                     }
-                 }
-             }
-        }
-    }
-}
-
-async function pollGeneratorStatus() {
-    try {
-        const statusData = await PlanApi.getGeneratorStatus();
-        const progFill = document.getElementById('gen-progress-fill');
-        if(progFill) progFill.style.width = `${statusData.progress || 0}%`;
-
-        if (statusData.logs && statusData.logs.length > 0) {
-            const newLogs = statusData.logs;
-            const startIdx = processedLogCount;
-
-            for (let i = startIdx; i < newLogs.length; i++) {
-                const logMsg = newLogs[i];
-                let className = 'hud-log-line';
-                if (logMsg.includes('[FEHLER]')) className += ' error';
-                else if (logMsg.includes('[WARN]')) className += ' highlight';
-                else if (logMsg.includes('erfolgreich')) className += ' success';
-
-                visualQueue.push({
-                    type: 'log',
-                    content: `<div class="${className}">&gt; ${logMsg}</div>`
-                });
-            }
-
-            processedLogCount = newLogs.length;
-        }
-
-        if (statusData.status === 'finished' || statusData.status === 'error') {
-            if (generatorInterval) clearInterval(generatorInterval);
-            generatorInterval = null;
-
-            if (statusData.status === 'finished') {
-                visualQueue.push({
-                    type: 'log',
-                    content: '<div class="hud-log-line success">> VORGANG ABGESCHLOSSEN.</div>'
-                });
-                visualQueue.push({ type: 'finish' });
-
-            } else {
-                const statusText = document.getElementById('gen-status-text');
-                if(statusText) { statusText.textContent = "ABBRUCH"; statusText.style.color = "#e74c3c"; }
-                const startBtn = document.getElementById('start-generator-btn');
-                if(startBtn) { startBtn.disabled = false; startBtn.textContent = "FEHLER"; }
-            }
-        }
-    } catch (e) { console.error("Poll Error:", e); }
-}
-
-// --- NEU: BroadcastChannel für Auto-Reload ---
-const planUpdateChannel = new BroadcastChannel('dhf_plan_update');
-planUpdateChannel.onmessage = (event) => {
-    if (event.data && event.data.type === 'PLAN_UPDATED') {
-        console.log("Plan-Update signal received. Reloading grid...");
-        renderGrid();
-    }
-};
-
-// =========================================================
-// === DIE ENTSCHEIDENDE FUNKTION (THE AGGRESSIVE MERGER) ===
-// =========================================================
-
-async function renderUnifiedBanner() {
-    // Nur für Admins / Planschreiber / Hundeführer relevant
-    if (!PlanState.isAdmin && !PlanState.isPlanschreiber && !PlanState.isHundefuehrer) return;
-
-    try {
-        const gridId = 'dhf-unified-grid';
-
-        // 1. AUFRÄUMEN: Suche nach alten Containern und lösche sie
-        // Damit verhindern wir Dopplungen, egal wie oft renderGrid aufgerufen wird
-        const existingGrid = document.getElementById(gridId);
-        if (existingGrid) existingGrid.remove();
-
-        // 2. SERVER-BANNER KAPERN (The Hijack)
-        // Wir suchen nach Containern, die typische Flask-Flash-Klassen haben
-        // oder den Text "Meldungen" enthalten.
-        let serverMessage = null;
-        let serverAction = null;
-        let serverType = 'u-banner-red'; // Default Red
-
-        // Selektoren für mögliche Server-Banner (pass auf deine Template-Struktur an)
-        const possibleBanners = document.querySelectorAll('.alert, .flash, .flashes div, .alert-danger, .alert-success');
-
-        possibleBanners.forEach(el => {
-            // Nur wenn das Element sichtbar ist und Text hat
-            if (el.offsetParent !== null && el.innerText.trim().length > 0) {
-                // Check: Ist es das "Meldungen"-Banner?
-                if (el.innerText.includes('Meldung') || el.innerText.includes('Krankmeldung')) {
-                    serverMessage = el.innerText.trim();
-
-                    // Hat es einen Link?
-                    const link = el.querySelector('a');
-                    if (link) {
-                        serverAction = () => window.location.href = link.href;
-                    } else {
-                        // Fallback Action für Meldungen
-                        serverAction = () => window.location.href = 'meldungen.html'; // Oder wo auch immer das hin soll
-                    }
-
-                    // WICHTIG: Das Original-Element aus dem DOM entfernen!
-                    el.remove();
-                }
-            }
-        });
-
-        // 3. API DATEN HOLEN (Client-Side State)
-        let pendingRequests = [];
-        if (PlanState.isAdmin || PlanState.isPlanschreiber) {
-             pendingRequests = await PlanApi.fetchPendingShiftChangeRequests();
-        }
-        let marketOffers = [];
-        if (PlanState.currentMarketOffers) {
-             marketOffers = Object.values(PlanState.currentMarketOffers).filter(o => !o.is_my_offer);
-        }
-
-        // 4. DATEN ANALYSIEREN
-        const tradeReqs = pendingRequests.filter(r => r.reason_type === 'trade');
-        const otherReqs = pendingRequests.filter(r => r.reason_type !== 'trade');
-
-        const countTrade = tradeReqs.length;
-        const countSick = otherReqs.length;
-        const countMarket = marketOffers.length;
-
-        // Wenn gar nichts da ist -> Abbruch
-        if (!serverMessage && countTrade === 0 && countSick === 0 && countMarket === 0) return;
-
-        // 5. GRID BAUEN (Der neue, saubere Container)
-        const grid = document.createElement('div');
-        grid.id = gridId;
-
-        // Helper zum Bauen der Kacheln
-        const addTile = (text, typeClass, iconClass, onClick) => {
-            const div = document.createElement('div');
-            div.className = `unified-banner-item ${typeClass}`;
-            div.innerHTML = `<i class="fas ${iconClass}"></i> <span>${text}</span>`;
-            if (onClick) div.onclick = onClick;
-            grid.appendChild(div);
-        };
-
-        // Kachel 1: System / Server Nachricht (Rot)
-        if (serverMessage) {
-            addTile(serverMessage, 'u-banner-red', 'fa-bell', serverAction);
-        }
-
-        // Kachel 2: Krankmeldungen (Orange)
-        if (countSick > 0) {
-            addTile(`${countSick} Krankmeldung(en)`, 'u-banner-orange', 'fa-exclamation-triangle', () => window.location.href='anfragen.html');
-        }
-
-        // Kachel 3: Tausch-Genehmigungen (Blau)
-        if (countTrade > 0) {
-            addTile(`${countTrade} Tausch-Genehmigung(en)`, 'u-banner-blue', 'fa-exchange-alt', () => window.location.href='anfragen.html');
-        }
-
-        // Kachel 4: Markt-Angebote (Grün)
-        if (countMarket > 0 && PlanState.isHundefuehrer) {
-            addTile(`${countMarket} neue(s) Angebot(e)`, 'u-banner-green', 'fa-tags', () => window.location.href='market.html');
-        }
-
-        // 6. INJECT (Ganz oben einfügen)
-        const mainContainer = document.querySelector('.main-content') || document.body;
-        // Wir fügen es VOR allem anderen ein, damit es ganz oben klebt
-        if (mainContainer.firstChild) {
-            mainContainer.insertBefore(grid, mainContainer.firstChild);
-        } else {
-            mainContainer.appendChild(grid);
-        }
-
-    } catch (e) {
-        console.warn("Banner Render Error:", e);
-    }
-}
-
-// Start
+// App Start
 initialize();

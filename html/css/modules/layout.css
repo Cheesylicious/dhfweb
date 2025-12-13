@@ -1,0 +1,88 @@
+/* html/css/modules/layout.css */
+
+/* Header (Glas-Effekt) */
+header {
+    background: rgba(255, 255, 255, 0.05);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    padding: 15px 30px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+header h1 { margin: 0; color: #ffffff; font-size: 24px; }
+header nav { display: flex; gap: 20px; align-items: center; }
+header nav a {
+    text-decoration: none; color: #bdc3c7; font-weight: 500; font-size: 16px;
+    padding: 10px; border-radius: 5px; transition: background-color 0.3s, color 0.3s;
+    display: inline-flex;
+    align-items: center;
+}
+header nav a.active, header nav a:hover {
+    background-color: rgba(255, 255, 255, 0.1); color: #ffffff;
+}
+#user-info { display: flex; align-items: center; gap: 15px; color: #bdc3c7; }
+
+.nav-badge {
+    background: #e74c3c;
+    color: white;
+    font-size: 10px;
+    font-weight: 600;
+    padding: 2px 5px;
+    border-radius: 5px;
+    margin-left: 8px;
+    display: none;
+}
+
+/* Main Wrapper */
+main {
+    padding: 30px;
+    max-width: 100%;
+    box-sizing: border-box;
+    position: relative;
+    z-index: 1;
+}
+
+/* Card Container */
+.card {
+    background: #fff;
+    color: #333;
+    border-radius: 8px;
+    box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+    overflow: hidden;
+}
+
+/* Sub-Nav (Glas-Effekt) */
+.sub-nav {
+    background: rgba(255, 255, 255, 0.05);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    padding: 0 30px;
+    margin-bottom: 30px;
+    margin-top: -1px;
+    display: flex;
+    align-items: center;
+    position: relative;
+    z-index: 100000;
+}
+.sub-nav a {
+    display: inline-block; padding: 15px 20px; text-decoration: none;
+    color: #bdc3c7; font-weight: 500; border-bottom: 3px solid transparent;
+    transition: color 0.3s;
+}
+.sub-nav a.active, .sub-nav a:hover {
+    color: #ffffff;
+    border-bottom-color: #3498db;
+}
+
+/* NEUER STYLE: Lottie Container im Header */
+#active-pet-container {
+    width: 160px;
+    height: 160px;
+    cursor: pointer;
+    margin-right: -5px;
+    margin-bottom: -80px;
+    display: none;
+}

@@ -1,0 +1,20 @@
+/* html/css/schichtplan.css */
+/* DER CSS-DIRIGENT */
+
+/* 1. Basis & Variablen */
+@import url('modules/variables.css');
+
+/* 2. Animationen */
+@import url('modules/animations.css');
+
+/* 3. Layout (Header, Nav, Wrapper) */
+@import url('modules/layout.css');
+
+/* 4. UI Komponenten (Buttons, Modals, Forms) */
+@import url('modules/components.css');
+
+/* 5. Das Schichtplan-Raster (Core Feature) */
+@import url('modules/grid.css');
+
+/* 6. Generator HUD (Spezial-Modul) */
+@import url('modules/generator.css');
