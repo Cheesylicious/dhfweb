@@ -77,12 +77,14 @@ export const PlanHandlers = {
                 } else {
                     // Leere Zelle -> (Optional: Hier könnte man Logik für "Nachträgliches Einspringen" einbauen)
                     // Aktuell: Standard Blockade-Meldung für leere Zellen
-                    alert("Plan ist gesperrt. (Krankmeldungen können nur für bestehende Dienste erstellt werden)");
+                    // NEU: Stylischer Alert
+                    window.dhfAlert("Aktion nicht möglich", "Der Plan ist gesperrt.\nKrankmeldungen können nur für bestehende Dienste erstellt werden.", "warning");
                     return true;
                 }
             } else {
                 // Keine Berechtigung (normaler User)
-                alert(`Aktion blockiert: Der Schichtplan für ${PlanState.currentMonth}/${PlanState.currentYear} ist gesperrt.`);
+                // NEU: Stylischer Alert
+                window.dhfAlert("Plan Gesperrt", `Der Schichtplan für ${PlanState.currentMonth}/${PlanState.currentYear} ist gesperrt.`, "error");
                 return true;
             }
         }
@@ -96,7 +98,7 @@ export const PlanHandlers = {
 
         // Sperr-Prüfung: Gilt nur für Hauptplan (variantId === null)
         if (PlanState.currentVariantId === null && PlanState.currentPlanStatus.is_locked) {
-            alert(`Aktion blockiert: Der Schichtplan für ${PlanState.currentMonth}/${PlanState.currentYear} ist gesperrt.`);
+            window.dhfAlert("Blockiert", `Der Schichtplan für ${PlanState.currentMonth}/${PlanState.currentYear} ist gesperrt.`, "error");
             return;
         }
 
@@ -207,7 +209,7 @@ export const PlanHandlers = {
         } catch (error) {
             // Bei Fehler Zustand zurücksetzen (visuell)
             PlanRenderer.refreshSingleCell(userId, dateStr);
-            alert(`Fehler beim Speichern: ${error.message}`);
+            window.dhfAlert("Speicherfehler", error.message, "error");
         }
     },
 
@@ -216,7 +218,7 @@ export const PlanHandlers = {
 
         // Sperre nur relevant für Hauptplan
         if (PlanState.currentVariantId === null && PlanState.currentPlanStatus.is_locked) {
-            alert("Globaler Plan ist gesperrt.");
+            window.dhfAlert("Blockiert", "Globaler Plan ist gesperrt.", "error");
             return;
         }
 
@@ -235,7 +237,7 @@ export const PlanHandlers = {
 
         } catch (e) {
             console.error(e);
-            alert("Fehler beim Sperren: " + e.message);
+            window.dhfAlert("Fehler", e.message, "error");
         }
     },
 
@@ -275,7 +277,7 @@ export const PlanHandlers = {
             triggerNotificationUpdate();
 
         } catch (e) {
-            alert(`Fehler bei Anfrage: ${e.message}`);
+            window.dhfAlert("Fehler bei Anfrage", e.message, "error");
         }
     },
 
@@ -320,37 +322,40 @@ export const PlanHandlers = {
         // Kontext für Optimistic Update sichern
         const queryToDelete = PlanState.currentShiftQueries.find(q => q.id == queryId);
 
-        try {
-            await PlanApi.deleteQuery(queryId);
+        // NEU: Custom Confirm (Callback-Struktur!)
+        window.dhfConfirm("Löschen", "Möchten Sie diese Anfrage wirklich löschen?", async () => {
+            try {
+                await PlanApi.deleteQuery(queryId);
 
-            // Daten neu laden
-            const queries = await PlanApi.fetchOpenQueries(PlanState.currentYear, PlanState.currentMonth);
-            PlanState.currentShiftQueries = queries;
+                // Daten neu laden
+                const queries = await PlanApi.fetchOpenQueries(PlanState.currentYear, PlanState.currentMonth);
+                PlanState.currentShiftQueries = queries;
 
-            // Zelle & Stats updaten
-            if (queryToDelete) {
-                if (queryToDelete.target_user_id) {
-                    PlanRenderer.refreshSingleCell(queryToDelete.target_user_id, queryToDelete.shift_date);
+                // Zelle & Stats updaten
+                if (queryToDelete) {
+                    if (queryToDelete.target_user_id) {
+                        PlanRenderer.refreshSingleCell(queryToDelete.target_user_id, queryToDelete.shift_date);
 
-                    // Stunden abziehen falls Wunsch
-                    if (queryToDelete.message.startsWith("Anfrage für:")) {
-                        const abbr = queryToDelete.message.substring("Anfrage für:".length).trim().replace('?', '');
-                        const st = PlanState.allShiftTypesList.find(s => s.abbreviation === abbr);
-                        if (st) {
-                            PlanRenderer.updateUserTotalHours(queryToDelete.target_user_id, -st.hours);
-                            StaffingModule.updateLocalStaffing(abbr, queryToDelete.shift_date, -1);
-                            StaffingModule.refreshStaffingGrid();
+                        // Stunden abziehen falls Wunsch
+                        if (queryToDelete.message.startsWith("Anfrage für:")) {
+                            const abbr = queryToDelete.message.substring("Anfrage für:".length).trim().replace('?', '');
+                            const st = PlanState.allShiftTypesList.find(s => s.abbreviation === abbr);
+                            if (st) {
+                                PlanRenderer.updateUserTotalHours(queryToDelete.target_user_id, -st.hours);
+                                StaffingModule.updateLocalStaffing(abbr, queryToDelete.shift_date, -1);
+                                StaffingModule.refreshStaffingGrid();
+                            }
                         }
                     }
                 }
+
+                triggerNotificationUpdate();
+                if(closeModalsFn) closeModalsFn();
+
+            } catch (e) {
+                window.dhfAlert("Fehler", e.message, "error");
             }
-
-            triggerNotificationUpdate();
-            if(closeModalsFn) closeModalsFn();
-
-        } catch (e) {
-            alert(`Fehler beim Löschen: ${e.message}`);
-        }
+        });
     },
 
     async resolveShiftQuery(queryId, closeModalsFn) {
@@ -368,7 +373,7 @@ export const PlanHandlers = {
             if(closeModalsFn) closeModalsFn();
 
         } catch (e) {
-            alert(`Fehler beim Status-Update: ${e.message}`);
+            window.dhfAlert("Fehler", e.message, "error");
         }
     },
 
@@ -443,27 +448,30 @@ export const PlanHandlers = {
         if (PlanState.selectedQueryIds.size === 0) return;
 
         const actionName = actionType === 'approve' ? 'Genehmigen' : 'Ablehnen';
-        if (!confirm(`${PlanState.selectedQueryIds.size} Anfragen ${actionName}?`)) return;
 
-        try {
-            const ids = Array.from(PlanState.selectedQueryIds);
-            let response;
-            if (actionType === 'approve') {
-                response = await PlanApi.bulkApproveQueries(ids);
-            } else {
-                response = await PlanApi.bulkDeleteQueries(ids);
+        // NEU: Custom Confirm statt nativem confirm()
+        // WICHTIG: Die Logik verschiebt sich in den Callback, da wir nicht blockieren können
+        window.dhfConfirm(actionName, `${PlanState.selectedQueryIds.size} Anfragen ${actionName}?`, async () => {
+            try {
+                const ids = Array.from(PlanState.selectedQueryIds);
+                let response;
+                if (actionType === 'approve') {
+                    response = await PlanApi.bulkApproveQueries(ids);
+                } else {
+                    response = await PlanApi.bulkDeleteQueries(ids);
+                }
+
+                window.dhfAlert("Erfolg", response.message, "success");
+
+                // Reload ist hier sicherer, da viele Änderungen
+                if (this.reloadGridCallback) this.reloadGridCallback();
+
+                triggerNotificationUpdate();
+                if (onCompleteFn) onCompleteFn();
+
+            } catch (error) {
+                window.dhfAlert("Fehler", error.message, "error");
             }
-
-            alert(response.message);
-
-            // Reload ist hier sicherer, da viele Änderungen
-            if (this.reloadGridCallback) this.reloadGridCallback();
-
-            triggerNotificationUpdate();
-            if (onCompleteFn) onCompleteFn();
-
-        } catch (error) {
-            alert("Fehler: " + error.message);
-        }
+        });
     }
 };

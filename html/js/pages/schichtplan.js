@@ -362,8 +362,8 @@ window.addEventListener('keydown', (e) => PlanHandlers.handleKeyboardShortcut(e)
 
 // Global Click (Modals schließen)
 window.addEventListener('click', (e) => {
-    // Liste der Modals, die geschlossen werden sollen bei Klick auf Hintergrund
-    const modals = [
+    // Liste der Modals, die geschlossen werden sollen bei Klick auf Hintergrund (Overlay)
+    const overlayModals = [
         document.getElementById('shift-modal'),
         document.getElementById('query-modal'),
         document.getElementById('generator-modal'),
@@ -371,9 +371,18 @@ window.addEventListener('click', (e) => {
         document.getElementById('variant-modal')
     ];
 
-    modals.forEach(m => {
+    overlayModals.forEach(m => {
         if(m && e.target === m) m.style.display = 'none';
     });
+
+    // --- NEU: Spezialbehandlung für das Kontext-Menü (kein Overlay) ---
+    const clickActionModal = document.getElementById('click-action-modal');
+    // Wenn das Modal offen ist UND der Klick NICHT im Modal war UND NICHT auf einer Grid-Zelle
+    if (clickActionModal && clickActionModal.style.display === 'block') {
+        if (!clickActionModal.contains(e.target) && !e.target.closest('.grid-cell')) {
+            clickActionModal.style.display = 'none';
+        }
+    }
 });
 
 // App Start

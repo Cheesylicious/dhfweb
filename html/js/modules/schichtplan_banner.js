@@ -11,60 +11,57 @@ export const PlanBanner = {
 
     /**
      * Rendert das kombinierte Benachrichtigungs-Banner (Systemnachrichten + Aufgaben).
-     * Führt einen "Aggressive Merge" durch, um Server-Flash-Messages und API-Status zu vereinen.
+     * NEU: Integriert sich in den #notification-container von shared_notifications.js.
      */
     async renderUnifiedBanner() {
         // Nur für Admins / Planschreiber / Hundeführer relevant
         if (!PlanState.isAdmin && !PlanState.isPlanschreiber && !PlanState.isHundefuehrer) return;
 
         try {
-            const gridId = 'dhf-unified-grid';
+            // 1. ZIEL-CONTAINER FINDEN (Shared Container)
+            let mainContainer = document.getElementById('notification-container');
 
-            // 1. AUFRÄUMEN: Suche nach alten Containern und lösche sie
-            const existingGrid = document.getElementById(gridId);
-            if (existingGrid) existingGrid.remove();
+            // Fallback: Falls shared_notifications.js noch nicht lief, erstellen wir den Container
+            if (!mainContainer) {
+                mainContainer = document.createElement('div');
+                mainContainer.id = 'notification-container';
+                // Styles werden durch shared_notifications.js oder schichtplan_ui_helper gesetzt
+                // Wir fügen ihn nach dem Header ein
+                const header = document.querySelector('header');
+                if (header) header.insertAdjacentElement('afterend', mainContainer);
+            }
 
-            // 2. SERVER-BANNER KAPERN (The Hijack)
-            // Wir suchen nach Containern, die typische Flask-Flash-Klassen haben
+            // 2. EIGENEN SLOT FINDEN ODER ERSTELLEN
+            let slot = document.getElementById('plan-notifications-slot');
+            if (!slot) {
+                slot = document.createElement('div');
+                slot.id = 'plan-notifications-slot';
+                slot.className = 'notification-slot'; // Nutzt CSS von shared_notifications
+                mainContainer.appendChild(slot);
+            }
+
+            // Slot leeren (nur die Plan-spezifischen Banner neu bauen)
+            slot.innerHTML = '';
+
+            // 3. SERVER-BANNER KAPERN (Optional: Wenn Server-Flash-Messages da sind)
             let serverMessage = null;
             let serverAction = null;
-
-            // Selektoren für mögliche Server-Banner
             const possibleBanners = document.querySelectorAll('.alert, .flash, .flashes div, .alert-danger, .alert-success');
-
             possibleBanners.forEach(el => {
-                // Nur wenn das Element sichtbar ist und Text hat
                 if (el.offsetParent !== null && el.innerText.trim().length > 0) {
-                    // Check: Ist es das "Meldungen"-Banner?
                     if (el.innerText.includes('Meldung') || el.innerText.includes('Krankmeldung')) {
                         serverMessage = el.innerText.trim();
-
-                        // Hat es einen Link?
                         const link = el.querySelector('a');
-                        if (link) {
-                            serverAction = () => window.location.href = link.href;
-                        } else {
-                            // Fallback Action für Meldungen
-                            serverAction = () => window.location.href = 'meldungen.html';
-                        }
-
-                        // WICHTIG: Das Original-Element aus dem DOM entfernen!
+                        serverAction = link ? () => window.location.href = link.href : () => window.location.href = 'feedback.html';
                         el.remove();
                     }
                 }
             });
 
-            // 3. API DATEN HOLEN (Client-Side State)
-            // Hinweis: Wir nutzen die im State gecacheten Daten, falls vorhanden,
-            // oder holen sie frisch, falls PlanState leer ist (beim ersten Load).
-            // Idealweise hat renderGrid() den State bereits gefüllt.
-
+            // 4. API DATEN HOLEN (Client-Side State)
             let pendingRequests = PlanState.currentChangeRequests || [];
             if ((PlanState.isAdmin || PlanState.isPlanschreiber) && pendingRequests.length === 0) {
-                 // Fallback fetch, falls State leer (selten)
-                 try {
-                     pendingRequests = await PlanApi.fetchPendingShiftChangeRequests();
-                 } catch(e) {}
+                 try { pendingRequests = await PlanApi.fetchPendingShiftChangeRequests(); } catch(e) {}
             }
 
             let marketOffers = [];
@@ -72,7 +69,7 @@ export const PlanBanner = {
                  marketOffers = Object.values(PlanState.currentMarketOffers).filter(o => !o.is_my_offer);
             }
 
-            // 4. DATEN ANALYSIEREN
+            // DATEN ANALYSIEREN
             const tradeReqs = pendingRequests.filter(r => r.reason_type === 'trade');
             const otherReqs = pendingRequests.filter(r => r.reason_type !== 'trade');
 
@@ -80,49 +77,48 @@ export const PlanBanner = {
             const countSick = otherReqs.length;
             const countMarket = marketOffers.length;
 
-            // Wenn gar nichts da ist -> Abbruch
             if (!serverMessage && countTrade === 0 && countSick === 0 && countMarket === 0) return;
 
-            // 5. GRID BAUEN (Der neue, saubere Container)
-            const grid = document.createElement('div');
-            grid.id = gridId;
+            // 5. BANNER RENDERN (in den Slot)
 
-            // Helper zum Bauen der Kacheln
-            const addTile = (text, typeClass, iconClass, onClick) => {
+            // Helper: Nutzt die CSS-Klassen von shared_notifications für einheitlichen Look
+            const addTile = (text, colorClass, iconClass, onClick) => {
                 const div = document.createElement('div');
-                div.className = `unified-banner-item ${typeClass}`;
-                div.innerHTML = `<i class="fas ${iconClass}"></i> <span>${text}</span>`;
+                div.className = `notification-banner`; // Nutzt Shared Styles
+                // Manuelle Farbe setzen, da die Klassen leicht abweichen können
+                div.style.backgroundColor = colorClass;
+
+                div.innerHTML = `
+                    <div class="banner-link">
+                        <div class="notification-content">
+                            <i class="fas ${iconClass}" style="margin-right:8px;"></i>
+                            <span>${text}</span>
+                        </div>
+                    </div>
+                `;
                 if (onClick) div.onclick = onClick;
-                grid.appendChild(div);
+                slot.appendChild(div);
             };
 
-            // Kachel 1: System / Server Nachricht (Rot)
+            // Kachel 1: System Nachricht (Rot)
             if (serverMessage) {
-                addTile(serverMessage, 'u-banner-red', 'fa-bell', serverAction);
+                addTile(serverMessage, '#c0392b', 'fa-bell', serverAction);
             }
 
-            // Kachel 2: Krankmeldungen (Orange)
-            if (countSick > 0) {
-                addTile(`${countSick} Krankmeldung(en)`, 'u-banner-orange', 'fa-exclamation-triangle', () => window.location.href='anfragen.html');
+            // Kachel 2: Krankmeldungen (Orange) - Für Admin & Planschreiber
+            if (countSick > 0 && (PlanState.isAdmin || PlanState.isPlanschreiber)) {
+                addTile(`${countSick} Krankmeldung(en)`, '#e67e22', 'fa-exclamation-triangle', () => window.location.href='anfragen.html');
             }
 
-            // Kachel 3: Tausch-Genehmigungen (Blau)
-            if (countTrade > 0) {
-                addTile(`${countTrade} Tausch-Genehmigung(en)`, 'u-banner-blue', 'fa-exchange-alt', () => window.location.href='anfragen.html');
+            // Kachel 3: Tausch-Genehmigungen (Blau) - NUR FÜR ADMIN
+            // --- HIER IST DIE WICHTIGE PRÜFUNG ---
+            if (countTrade > 0 && PlanState.isAdmin) {
+                addTile(`${countTrade} Tausch-Genehmigung(en)`, '#2980b9', 'fa-exchange-alt', () => window.location.href='anfragen.html');
             }
 
-            // Kachel 4: Markt-Angebote (Grün)
+            // Kachel 4: Markt-Angebote (Grün) - Für Hundeführer
             if (countMarket > 0 && PlanState.isHundefuehrer) {
-                addTile(`${countMarket} neue(s) Angebot(e)`, 'u-banner-green', 'fa-tags', () => window.location.href='market.html');
-            }
-
-            // 6. INJECT (Ganz oben einfügen)
-            const mainContainer = document.querySelector('.main-content') || document.body;
-            // Wir fügen es VOR allem anderen ein, damit es ganz oben klebt
-            if (mainContainer.firstChild) {
-                mainContainer.insertBefore(grid, mainContainer.firstChild);
-            } else {
-                mainContainer.appendChild(grid);
+                addTile(`${countMarket} neue(s) Angebot(e)`, '#27ae60', 'fa-tags', () => window.location.href='market.html');
             }
 
         } catch (e) {
@@ -132,34 +128,27 @@ export const PlanBanner = {
 
     /**
      * Markiert offene Tausch-Vorgänge (Sanduhr-Effekt) im Grid.
-     * Visualisiert "Ausgang" (Abgeber) und "Eingang" (Empfänger).
      */
     markPendingTakeovers() {
-        // Liste der aktuellen Änderungsanträge nutzen
         if (!PlanState.currentChangeRequests || PlanState.currentChangeRequests.length === 0) return;
 
         PlanState.currentChangeRequests.forEach(req => {
-            // Wir suchen nur nach offenen Anträgen ('pending')
             if (req.status !== 'pending') return;
 
             const myId = PlanState.loggedInUser.id;
-            const giverId = req.target_user_id; // Der ursprüngliche Besitzer (aus Backend to_dict)
-            const receiverId = req.replacement_user_id; // Der neue Besitzer
+            const giverId = req.target_user_id;
+            const receiverId = req.replacement_user_id;
 
-            // Nur relevant, wenn ich beteiligt bin ODER Admin bin
             const isRelevantForMe = (myId === giverId || myId === receiverId || PlanState.isAdmin);
             if (!isRelevantForMe) return;
 
-            // Datum bereinigen (Zeitstempel entfernen)
             const dateOnly = req.shift_date ? req.shift_date.split('T')[0] : null;
             if (!dateOnly) return;
 
-            // --- 1. VISUALISIERUNG BEIM ABGEBER (GIVER) ---
+            // 1. GIVER
             const giverCell = PlanRenderer.findCellByKey(`${giverId}-${dateOnly}`);
             if (giverCell) {
                 giverCell.classList.add('pending-outgoing');
-
-                // Icon "Ausgang" (Pfeil nach rechts oben)
                 if (!giverCell.querySelector('.icon-outgoing')) {
                     const icon = document.createElement('div');
                     icon.className = 'icon-outgoing';
@@ -169,18 +158,14 @@ export const PlanBanner = {
                 }
             }
 
-            // --- 2. VISUALISIERUNG BEIM ÜBERNEHMER (RECEIVER) ---
+            // 2. RECEIVER
             if (receiverId) {
                 const receiverCell = PlanRenderer.findCellByKey(`${receiverId}-${dateOnly}`);
                 if (receiverCell) {
                     receiverCell.classList.add('pending-incoming');
-
-                    // Wir fügen das Kürzel der Schicht ein (Ghost Text), falls die Zelle leer ist
                     if (req.shift_abbr && (!receiverCell.textContent || receiverCell.textContent.trim() === '')) {
                          receiverCell.innerHTML = `<span class="ghost-text">${req.shift_abbr}</span>`;
                     }
-
-                    // Icon "Eingang" (Pfeil nach unten/innen)
                     if (!receiverCell.querySelector('.icon-incoming')) {
                         const icon = document.createElement('div');
                         icon.className = 'icon-incoming';

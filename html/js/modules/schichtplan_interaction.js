@@ -24,6 +24,17 @@ export const PlanInteraction = {
         // Globale Funktionen für Inline-HTML Events registrieren
         window.confirmApproveTrade = this.confirmApproveTrade.bind(this);
         window.confirmRejectTrade = this.confirmRejectTrade.bind(this);
+
+        // --- NEU: Modal schließen bei Klick außerhalb ---
+        window.addEventListener('click', (e) => {
+            const modal = document.getElementById('click-action-modal');
+            // Prüfen ob Modal offen ist und der Klick NICHT im Modal war
+            if (modal && modal.style.display === 'block') {
+                if (!modal.contains(e.target) && !e.target.closest('.grid-cell')) {
+                    modal.style.display = 'none';
+                }
+            }
+        });
     },
 
     /**
@@ -131,7 +142,7 @@ export const PlanInteraction = {
             hasContent = true;
         }
 
-        // 2. Offene Tausch-Anträge prüfen (Admin/Planschreiber)
+        // 2. Offene Tausch-Anträge prüfen (Pending Request für diese Zelle)
         const pendingReq = PlanState.currentChangeRequests.find(req =>
             req.status === 'pending' &&
             (req.shift_date ? req.shift_date.split('T')[0] : null) === dateStr &&
@@ -188,17 +199,46 @@ export const PlanInteraction = {
                     const delLink = document.getElementById('cam-link-delete');
                     if(delLink) {
                         delLink.textContent = 'Wunsch-Anfrage zurückziehen';
-                        delLink.dataset.targetQueryId = wunsch.id;
+
+                        // --- FIX: Event Listener korrekt setzen ---
+                        delLink.onclick = (e) => {
+                            if(e) e.stopPropagation();
+                            // Modal schließen
+                            document.getElementById('click-action-modal').style.display = 'none';
+                            // Löschen via PlanHandlers
+                            PlanHandlers.deleteShiftQuery(wunsch.id);
+                        };
+                        // ---------------------------------------
                     }
                 }
                 hasContent = true;
             } else if (!wunsch) {
-                // Kein Wunsch -> Neuen erstellen
-                if(sections.hfRequests) {
-                    sections.hfRequests.style.display = 'flex';
-                    this.populateHfButtons();
+
+                // --- NEU: PRÜFUNG AUF LAUFENDEN TAUSCH ---
+                // Verhindert Überschreiben durch Wunschanfrage
+                if (pendingReq) {
+                     if (sections.hfRequests) {
+                         sections.hfRequests.style.display = 'block';
+                         // Info Text statt Buttons
+                         sections.hfRequests.innerHTML = `
+                            <div style="background: rgba(243, 156, 18, 0.1); border: 1px solid #f39c12; color: #f39c12; padding: 10px; border-radius: 5px; text-align: center; font-size: 13px;">
+                                <i class="fas fa-sync fa-spin"></i> Tausch in Bearbeitung.<br>
+                                Keine Wunschanfrage möglich.
+                            </div>
+                         `;
+                     }
+                     hasContent = true;
+                } else {
+                    // Kein Wunsch & Kein Tausch -> Neuen erstellen
+                    if(sections.hfRequests) {
+                        sections.hfRequests.style.display = 'flex';
+                        // Sicherstellen, dass das Grid sauber ist (falls vorher überschrieben)
+                        sections.hfRequests.innerHTML = '';
+                        this.populateHfButtons();
+                    }
+                    hasContent = true;
                 }
-                hasContent = true;
+                // --- ENDE NEU ---
             }
         }
 
