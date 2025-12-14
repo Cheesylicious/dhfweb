@@ -220,7 +220,8 @@ class ShiftChangeService:
     @staticmethod
     def reject_request(request_id, admin_user_id):
         """
-        Lehnt einen Antrag ab ODER wickelt ihn rück ab (Rollback).
+        Lehnt einen Antrag ab ODER wickelt ihn rück ab (Rollback), falls er schon genehmigt war.
+        FIX: Strikte Löschung beim Receiver und Wiederherstellung beim Giver.
         """
         req = ShiftChangeRequest.query.get(request_id)
         if not req:
@@ -235,11 +236,12 @@ class ShiftChangeService:
             if not req.replacement_user_id:
                 return {"error": "Rollback nicht möglich: Kein Ersatz-User gespeichert."}, 500
 
-            # --- DATUM ERMITTELN ---
-            target_date = req.shift_date  # 1. Priorität: Das fest gespeicherte Datum
+            # --- 1. DATUM ERMITTELN ---
+            target_date = req.shift_date  # Das fest gespeicherte Datum (Priorität 1)
 
-            # Fallback 1: Archivierte Angebotsdaten
+            # Fallbacks falls alte Datenstruktur
             if not target_date:
+                # Versuch über Market Offer
                 offer = ShiftMarketOffer.query.filter_by(
                     offering_user_id=req.requester_id,
                     accepted_by_id=req.replacement_user_id,
@@ -254,8 +256,8 @@ class ShiftChangeService:
                     except:
                         pass
 
-            # Fallback 2: Suche beim Receiver
             if not target_date:
+                # Letzter Versuch: Suche beim Receiver nach einer Schicht mit dem Typ
                 receiver_shifts = Shift.query.filter_by(
                     user_id=req.replacement_user_id,
                     shifttype_id=req.backup_shifttype_id,
@@ -267,71 +269,93 @@ class ShiftChangeService:
             if not target_date:
                 return {"error": "Rollback fehlgeschlagen: Datum konnte nicht ermittelt werden."}, 400
 
-            # --- DURCHFÜHRUNG ROLLBACK ---
-            # 1. Receiver Schicht löschen
-            target_shift = Shift.query.filter_by(user_id=req.replacement_user_id, date=target_date).first()
-            if target_shift:
-                db.session.delete(target_shift)
-                socket_updates.append({
-                    'user_id': req.replacement_user_id,
-                    'date': target_date.isoformat(),
-                    'shifttype_id': None, 'variant_id': None,
-                    'is_deleted': True, 'is_trade': False
-                })
+            # --- 2. DURCHFÜHRUNG ROLLBACK ---
 
-            # 2. Giver Schicht wiederherstellen (FIXED: Auch wenn schon eine da ist)
-            check_giver = Shift.query.filter_by(user_id=req.requester_id, date=target_date).first()
+            # SCHRITT A: Schicht beim aktuellen Besitzer (Receiver) LÖSCHEN
+            # Wir nutzen Shift.query.filter für präzise Suche
+            shifts_to_delete = Shift.query.filter(
+                Shift.user_id == req.replacement_user_id,
+                Shift.date == target_date,
+                Shift.variant_id == None  # Rollback nur im Hauptplan
+            ).all()
+
+            for s in shifts_to_delete:
+                db.session.delete(s)
+
+            # Socket: Receiver-Zelle leeren
+            socket_updates.append({
+                'user_id': req.replacement_user_id,
+                'date': target_date.isoformat(),
+                'shifttype_id': None, 'variant_id': None,
+                'is_deleted': True, 'is_trade': False
+            })
+
+            # Flush um Löschung sicherzustellen
+            db.session.flush()
+
+            # SCHRITT B: Schicht beim ursprünglichen Besitzer (Giver) WIEDERHERSTELLEN
+            check_giver = Shift.query.filter(
+                Shift.user_id == req.requester_id,
+                Shift.date == target_date,
+                Shift.variant_id == None
+            ).first()
 
             if check_giver:
-                # Update existing (vielleicht war es "Frei" oder Dummy)
+                # Falls dort schon was steht (z.B. Frei oder Dummy), überschreiben wir es
                 check_giver.shifttype_id = req.backup_shifttype_id
-                check_giver.is_locked = False
+                check_giver.is_locked = True  # FIX: Gesperrt lassen, damit es fest steht
                 check_giver.is_trade = False
-                # Socket für Update
-                socket_updates.append({
-                    'user_id': req.requester_id,
-                    'date': target_date.isoformat(),
-                    'shifttype_id': req.backup_shifttype_id, 'variant_id': None,
-                    'is_deleted': False, 'is_trade': False
-                })
             else:
                 # Neu erstellen
                 new_giver_shift = Shift(
                     user_id=req.requester_id,
                     date=target_date,
                     shifttype_id=req.backup_shifttype_id,
-                    is_locked=False,
-                    is_trade=False
+                    is_locked=True,  # FIX: Gesperrt lassen
+                    is_trade=False,
+                    variant_id=None
                 )
                 db.session.add(new_giver_shift)
-                socket_updates.append({
-                    'user_id': req.requester_id,
-                    'date': target_date.isoformat(),
-                    'shifttype_id': req.backup_shifttype_id, 'variant_id': None,
-                    'is_deleted': False, 'is_trade': False
-                })
 
+            # Socket: Giver-Zelle füllen
+            socket_updates.append({
+                'user_id': req.requester_id,
+                'date': target_date.isoformat(),
+                'shifttype_id': req.backup_shifttype_id, 'variant_id': None,
+                'is_deleted': False, 'is_trade': False
+            })
+
+            # Status Update
             req.status = 'rejected'
 
-            # 4. Market Offer Status ändern
+            # 4. Market Offer Status zurücksetzen (auf 'rejected' oder 'cancelled')
+            # Wir suchen das zugehörige Angebot
             offer = ShiftMarketOffer.query.filter_by(
                 offering_user_id=req.requester_id,
                 accepted_by_id=req.replacement_user_id,
                 status='done'
             ).first()
+
             if offer:
                 offer.status = 'rejected'
+                # Optional: Verknüpfung lösen
                 offer.accepted_by_id = None
 
         # --- FALL B: NORMALES ABLEHNEN (noch pending) ---
         else:
+            # Wenn es noch pending war, müssen wir nur den Status ändern
+            # und das Market Offer wieder freigeben
             if req.original_shift_id and req.reason_type == 'trade':
-                market_offer = ShiftMarketOffer.query.filter_by(shift_id=req.original_shift_id,
-                                                                status='pending').first()
+                market_offer = ShiftMarketOffer.query.filter_by(
+                    shift_id=req.original_shift_id,
+                    status='pending'
+                ).first()
+
                 if market_offer:
                     market_offer.status = 'active'
                     market_offer.accepted_by_id = None
                     market_offer.accepted_at = None
+
             req.status = 'rejected'
 
         req.processed_at = datetime.utcnow()
@@ -339,6 +363,8 @@ class ShiftChangeService:
 
         try:
             db.session.commit()
+
+            # Sockets senden
             for update in socket_updates:
                 payload = {
                     'type': 'single',
@@ -348,9 +374,10 @@ class ShiftChangeService:
                     'data': {'new_total_hours': 0, 'violations': [], 'is_trade': update['is_trade']}
                 }
                 socketio.emit('shift_update', payload)
+
         except Exception as e:
             db.session.rollback()
             return {"error": f"DB Fehler: {str(e)}"}, 500
 
-        return {"status": "success", "message": "Antrag abgelehnt (bzw. rückabgewickelt).",
+        return {"status": "success", "message": "Antrag wurde abgelehnt / rückgängig gemacht.",
                 "request": req.to_dict()}, 200

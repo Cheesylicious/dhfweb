@@ -31,6 +31,7 @@ def get_market_offers():
     Liefert Angebote zurück.
     Führt vorher einen Cleanup alter Angebote durch.
     Enthält Zusatzinfos: Hat der User bereits reagiert? Wie viele Interessenten (für Owner)?
+    NEU: 'leading_candidate_id' für die Geister-Animation beim ersten Interessenten.
     """
     if not _is_allowed():
         return jsonify({"message": "Zugriff verweigert."}), 403
@@ -65,11 +66,26 @@ def get_market_offers():
         data = offer.to_dict()
         data['is_my_offer'] = (offer.offering_user_id == current_user.id)
 
-        # NEU: Meine Reaktion hinzufügen (falls ich Kandidat bin)
+        # NEU: Leading Candidate ermitteln (Timer läuft)
+        # Wenn Deadline gesetzt ist, ist der älteste Interessent der "Leader"
+        data['leading_candidate_id'] = None
+
+        if offer.auto_accept_deadline:
+            # Wir suchen den ersten Interessenten (FIFO Prinzip)
+            # Nutze die relationship 'responses'
+            first_interested = ShiftMarketResponse.query.filter_by(
+                offer_id=offer.id,
+                response_type='interested'
+            ).order_by(ShiftMarketResponse.created_at.asc()).first()
+
+            if first_interested:
+                data['leading_candidate_id'] = first_interested.user_id
+
+        # Meine Reaktion hinzufügen (falls ich Kandidat bin)
         my_response = ShiftMarketResponse.query.filter_by(offer_id=offer.id, user_id=current_user.id).first()
         data['my_response'] = my_response.response_type if my_response else None
 
-        # NEU: Für den Owner: Anzahl Interessenten zählen (für Badge im Frontend)
+        # Für den Owner: Anzahl Interessenten zählen (für Badge im Frontend)
         if data['is_my_offer']:
             interested_count = ShiftMarketResponse.query.filter_by(offer_id=offer.id,
                                                                    response_type='interested').count()
@@ -107,7 +123,7 @@ def react_to_offer(offer_id):
     if response_type not in ['interested', 'declined']:
         return jsonify({"message": "Ungültiger Status."}), 400
 
-    # --- NEU: CHECK AUF DOPPELBELEGUNG ---
+    # CHECK AUF DOPPELBELEGUNG
     if response_type == 'interested':
         # Prüfen, ob der aktuelle User am Tag des Angebots bereits eine Schicht hat
         # (Nur Hauptplan beachten, variant_id == None)
@@ -120,19 +136,19 @@ def react_to_offer(offer_id):
         # Wenn Schicht existiert UND nicht explizit "FREI" ist (shifttype_id nicht NULL)
         if existing_shift and existing_shift.shifttype_id is not None:
             # Optionale Prüfung: Ist es eine "Arbeitsschicht"?
-            # Hier streng: Jede eingetragene Schicht blockiert, außer es ist ein Dummy.
+            # Hier streng: Jede eingetragene Schicht blockiert.
             st = ShiftType.query.get(existing_shift.shifttype_id)
             if st and st.is_work_shift:
                 return jsonify({
                     "message": f"Nicht möglich: Du hast am {offer.shift.date.strftime('%d.%m.')} bereits Dienst ({st.abbreviation})."
                 }), 400
-    # -------------------------------------
 
     # Bestehende Antwort prüfen/aktualisieren
     existing = ShiftMarketResponse.query.filter_by(offer_id=offer_id, user_id=current_user.id).first()
     if existing:
         existing.response_type = response_type
         existing.note = note
+        # WICHTIG: Timestamp aktualisieren, falls er seine Meinung ändert/erneuert
         existing.created_at = datetime.utcnow()
     else:
         new_resp = ShiftMarketResponse(
@@ -145,7 +161,7 @@ def react_to_offer(offer_id):
 
     db.session.commit()
 
-    # Timer Logik auslösen
+    # Timer Logik auslösen (Prüft, ob Timer gestartet werden muss)
     MarketService.check_and_set_deadline(offer_id)
 
     # Check: Wenn abgelehnt, prüfen ob alle abgelehnt haben -> Archivieren
@@ -160,7 +176,7 @@ def react_to_offer(offer_id):
 def get_offer_responses(offer_id):
     """
     Für den Besitzer: Liste der Reaktionen laden.
-    NEU: Nutzt den erweiterten Service für Stunden und Zeitstempel.
+    Nutzt den erweiterten Service für Stunden und Zeitstempel.
     """
     offer = db.session.get(ShiftMarketOffer, offer_id)
     if not offer:
@@ -170,13 +186,11 @@ def get_offer_responses(offer_id):
     if offer.offering_user_id != current_user.id and current_user.role.name != 'admin':
         return jsonify({"message": "Zugriff verweigert"}), 403
 
-    # --- KORREKTUR: Nutze den neuen Service für angereicherte Daten ---
     try:
         enriched_data = MarketService.get_enriched_responses(offer_id)
         return jsonify(enriched_data), 200
     except Exception as e:
         return jsonify({"message": f"Fehler beim Laden der Details: {str(e)}"}), 500
-    # ----------------------------------------------------------------
 
 
 @market_bp.route('/offer/<int:offer_id>/select_candidate', methods=['POST'])
@@ -206,7 +220,7 @@ def select_candidate(offer_id):
     offer.accepted_by_id = candidate_id
     offer.accepted_at = datetime.utcnow()
 
-    # Change Request erstellen
+    # Change Request erstellen (mit reason_type='trade')
     res, code = ShiftChangeService.create_request(
         shift_id=offer.shift_id,
         requester_id=offer.offering_user_id,
