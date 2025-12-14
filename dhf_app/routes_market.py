@@ -52,12 +52,16 @@ def _check_overlap(st1, st2):
 def get_market_offers():
     """
     Liefert alle AKTIVEN Angebote.
+    NEU: Filtert strikt auf den HAUPTPLAN (variant_id IS NULL).
     """
     if not _is_allowed():
         return jsonify({"message": "Zugriff verweigert."}), 403
 
-    offers = ShiftMarketOffer.query.filter_by(status='active') \
-        .order_by(ShiftMarketOffer.created_at.desc()).all()
+    # Join mit Shift, um auf variant_id zu prüfen
+    offers = ShiftMarketOffer.query.join(Shift).filter(
+        ShiftMarketOffer.status == 'active',
+        Shift.variant_id == None  # <--- NUR HAUPTPLAN
+    ).order_by(ShiftMarketOffer.created_at.desc()).all()
 
     results = []
     for offer in offers:
@@ -73,6 +77,7 @@ def get_market_offers():
 def create_market_offer():
     """
     Erstellt ein neues Angebot (Schicht in die Börse stellen).
+    NEU: Verhindert Erstellung für Varianten.
     """
     if not _is_allowed():
         return jsonify({"message": "Nur Hundeführer können die Tauschbörse nutzen."}), 403
@@ -88,11 +93,16 @@ def create_market_offer():
     if not shift:
         return jsonify({"message": "Schicht nicht gefunden."}), 404
 
-    # --- 1. Zeit-Check (Vergangenheit blockieren) ---
+    # --- WICHTIG: Tauschbörse nur für Hauptplan ---
+    if shift.variant_id is not None:
+        return jsonify(
+            {"message": "Schichten aus Varianten/Entwürfen können nicht in der Tauschbörse angeboten werden."}), 400
+
+    # --- 1. Zeit-Check ---
     if shift.date < date.today():
         return jsonify({"message": "Vergangene Schichten können nicht getauscht werden."}), 400
 
-    # --- 2. Whitelist-Check (Nur bestimmte Schichten erlauben) ---
+    # --- 2. Whitelist-Check ---
     ALLOWED_MARKET_SHIFTS = ['T.', 'N.', '6', '24']
 
     if not shift.shift_type:
@@ -152,6 +162,7 @@ def accept_market_offer(offer_id):
     """
     Ein anderer User nimmt das Angebot an.
     Führt Konfliktprüfungen durch (Ruhezeiten, Hundedopperlung).
+    WICHTIG: Prüft NUR im Kontext der aktuellen Variante (meistens Hauptplan).
     """
     if not _is_allowed():
         return jsonify({"message": "Zugriff verweigert."}), 403
@@ -172,15 +183,23 @@ def accept_market_offer(offer_id):
     target_date = offer.shift.date
     target_shift_type = offer.shift.shift_type
 
-    # --- 1. Doppelbelegungs-Check (User hat schon was) ---
+    # --- WICHTIG: Wir holen uns die Variante der angebotenen Schicht ---
+    # Wenn die Schicht im Hauptplan ist, ist variant_id None.
+    # Wir prüfen Konflikte NUR gegen Schichten mit derselben variant_id.
+    target_variant_id = offer.shift.variant_id
+
+    if target_variant_id is not None:
+        # Sollte durch create_market_offer verhindert sein, aber sicher ist sicher.
+        return jsonify({"message": "Fehler: Angebot gehört zu einer Variante."}), 400
+
+    # --- 1. Doppelbelegungs-Check (User hat schon was im HAUPTPLAN?) ---
     existing_shift = Shift.query.filter_by(
         user_id=current_user.id,
         date=target_date,
-        variant_id=offer.shift.variant_id
+        variant_id=target_variant_id  # <--- FIX: Nur im gleichen Plan prüfen (None)
     ).first()
 
     if existing_shift and existing_shift.shifttype_id is not None:
-        # Prüfen ob es "Frei" ist (optional, hier gehen wir davon aus, dass DB-Eintrag = Belegt)
         return jsonify({
             "message": f"Nicht möglich: Sie haben am {target_date.strftime('%d.%m.%Y')} bereits einen Dienst eingetragen!"
         }), 409
@@ -188,7 +207,13 @@ def accept_market_offer(offer_id):
     # --- 2. Ruhezeit-Check (N. -> T.) ---
     # Prüfe den Tag DAVOR
     prev_date = target_date - timedelta(days=1)
-    prev_shift = Shift.query.filter_by(user_id=current_user.id, date=prev_date).first()
+
+    # <--- FIX: Nur im gleichen Plan prüfen
+    prev_shift = Shift.query.filter_by(
+        user_id=current_user.id,
+        date=prev_date,
+        variant_id=target_variant_id
+    ).first()
 
     if prev_shift and prev_shift.shift_type and target_shift_type:
         # Wenn Gestern = Nacht und Heute = Tag
@@ -200,11 +225,13 @@ def accept_market_offer(offer_id):
     # --- 3. Diensthund-Check (Doppelbelegung des Hundes) ---
     if current_user.diensthund and current_user.diensthund != '---' and target_shift_type:
         # Suche alle Schichten am Zieltag, wo der User denselben Hund hat (außer mir selbst)
+        # <--- FIX: Nur im gleichen Plan prüfen (variant_id)
         same_dog_shifts = db.session.query(Shift).join(User).filter(
             Shift.date == target_date,
             User.diensthund == current_user.diensthund,
             User.id != current_user.id,
-            Shift.shifttype_id != None  # Nur echte Schichten
+            Shift.shifttype_id != None,
+            Shift.variant_id == target_variant_id  # <--- HIER WERDEN DIE GEISTER-SCHICHTEN RAUSGEFILTERT
         ).all()
 
         for other_s in same_dog_shifts:
