@@ -184,6 +184,10 @@ class Shift(db.Model):
     # --- Sperr-Flag ---
     is_locked = db.Column(db.Boolean, default=False, nullable=False)
 
+    # --- NEU: Tausch-Flag (Visualisierung Handschlag) ---
+    is_trade = db.Column(db.Boolean, default=False, nullable=False)
+    # --- ENDE NEU ---
+
     # --- NEU: Verknüpfung zur Variante ---
     # Wenn NULL: Gehört zum Hauptplan (öffentlich sichtbar).
     # Wenn gesetzt: Gehört zu einer spezifischen Entwurfs-Variante.
@@ -213,6 +217,7 @@ class Shift(db.Model):
             "shifttype_id": self.shifttype_id,
             "shifttype_abbreviation": abbr,
             "is_locked": self.is_locked,
+            "is_trade": self.is_trade,  # <<< HIER ÜBERGEBEN
             "variant_id": self.variant_id
         }
 

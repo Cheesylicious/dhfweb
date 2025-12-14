@@ -91,13 +91,15 @@ class ShiftChangeService:
 
             original_shift.shifttype_id = sick_type.id
             original_shift.is_locked = True
+            original_shift.is_trade = False  # Sicherstellen
 
             socket_updates.append({
                 'user_id': giver_user_id,
                 'date': target_date.isoformat(),
                 'shifttype_id': sick_type.id,
                 'variant_id': target_variant,
-                'is_deleted': False
+                'is_deleted': False,
+                'is_trade': False
             })
 
         elif req.reason_type == 'trade':
@@ -110,7 +112,8 @@ class ShiftChangeService:
                 'date': target_date.isoformat(),
                 'shifttype_id': None,
                 'variant_id': target_variant,
-                'is_deleted': True
+                'is_deleted': True,
+                'is_trade': False
             })
 
         # --- 3. ERSATZ (RECEIVER) EINTRAGEN ---
@@ -124,16 +127,22 @@ class ShiftChangeService:
                 variant_id=target_variant
             ).first()
 
+            # --- NEU: Handshake-Flag setzen wenn es ein Tausch war ---
+            is_trade_flag = (req.reason_type == 'trade')
+            # ---------------------------------------------------------
+
             if existing_shift:
                 existing_shift.shifttype_id = shift_type_id
                 existing_shift.is_locked = True
+                existing_shift.is_trade = is_trade_flag  # <<< NEU
 
                 socket_updates.append({
                     'user_id': receiver_id,
                     'date': target_date.isoformat(),
                     'shifttype_id': shift_type_id,
                     'variant_id': target_variant,
-                    'is_deleted': False
+                    'is_deleted': False,
+                    'is_trade': is_trade_flag # <<< NEU
                 })
             else:
                 new_shift = Shift(
@@ -141,7 +150,8 @@ class ShiftChangeService:
                     date=target_date,
                     shifttype_id=shift_type_id,
                     variant_id=target_variant,
-                    is_locked=True
+                    is_locked=True,
+                    is_trade=is_trade_flag  # <<< NEU
                 )
                 db.session.add(new_shift)
                 db.session.flush()
@@ -151,7 +161,8 @@ class ShiftChangeService:
                     'date': target_date.isoformat(),
                     'shifttype_id': shift_type_id,
                     'variant_id': target_variant,
-                    'is_deleted': False
+                    'is_deleted': False,
+                    'is_trade': is_trade_flag # <<< NEU
                 })
 
         # --- 4. ABSCHLUSS ---
@@ -178,7 +189,13 @@ class ShiftChangeService:
                     'shifttype_id': update['shifttype_id'],
                     'variant_id': update['variant_id'],
                     'is_deleted': update['is_deleted'],
-                    'data': {'new_total_hours': 0, 'violations': []}
+                    # NEU: Das Flag übergeben (innerhalb von data oder direkt, je nach Client)
+                    # Wir packen es in 'data' für Konsistenz mit routes_shifts.save_shift
+                    'data': {
+                        'new_total_hours': 0,
+                        'violations': [],
+                        'is_trade': update['is_trade'] # <<< WICHTIG
+                    }
                 }
                 socketio.emit('shift_update', payload)
         except Exception as e:
