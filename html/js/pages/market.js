@@ -3,21 +3,26 @@
 import { apiFetch } from '../utils/api.js';
 import { initAuthCheck } from '../utils/auth.js';
 
-// Konstante für den Highlight-Key (muss mit schichtplan.js übereinstimmen)
-const DHF_HIGHLIGHT_KEY = 'dhf_highlight_goto';
-
 let user;
+let isAdmin = false;
 
 // DOM Elemente
 const marketList = document.getElementById('market-offers-list');
 const myList = document.getElementById('my-offers-list');
+const pendingList = document.getElementById('pending-offers-list');
+const pendingCard = document.getElementById('pending-card');
 
-// 1. Initialisierung
+// Modal Elemente
+const candidateModal = document.getElementById('candidate-modal');
+const candidateListUl = document.getElementById('candidate-list-ul');
+
+// --- 1. Initialisierung ---
 try {
     const authData = initAuthCheck();
     user = authData.user;
+    isAdmin = authData.isAdmin;
 
-    // Sicherheitscheck: Nur Hundeführer oder Admin
+    // Sicherheitscheck
     const role = user.role ? user.role.name : '';
     if (role !== 'Hundeführer' && role !== 'admin') {
         document.querySelector('main').innerHTML = `
@@ -30,139 +35,171 @@ try {
         throw new Error("Kein Zugriff auf Tauschbörse");
     }
 
-    // --- NEU: Custom Modal Initialisieren (falls nicht via ui_helper geladen, hier manuell) ---
-    // Da market.js keine Module aus schichtplan_* importiert, müssen wir sicherstellen,
-    // dass die Funktionen da sind. Normalerweise über plan_ui_helper.
-    // Aber da dies eine eigene Seite ist, importieren wir den UI Helper hier NICHT (um Abhängigkeiten klein zu halten),
-    // SONDERN verlassen uns darauf, dass er bereits GLOBAL verfügbar ist ODER wir kopieren die Init-Logik.
-    // BESSER: Wir importieren den Helper auch hier.
+    if (isAdmin) {
+        document.body.classList.add('admin-mode');
+    }
 
-    // Wir nutzen hier dynamischen Import, falls er verfügbar ist, oder implementieren die Globals.
-    // DA WIR ABER OBEN KEINEN IMPORT HABEN -> Wir fügen ihn hinzu!
+    // Globale Funktionen registrieren (für HTML OnClick)
+    window.loadHistory = loadHistory;
+    window.deleteHistoryItem = deleteHistoryItem;
+    window.showCandidates = showCandidates;
 
-    import('../modules/schichtplan_ui_helper.js').then(module => {
-        // Init nur für Modal-Styles
-        module.PlanUIHelper.initCustomModal();
-    });
-
-    // Daten laden
-    loadOffers();
+    // Start: Daten laden
+    loadMarketView();
 
 } catch (e) {
     console.error("Market Init Error:", e);
 }
 
-// 2. Daten laden
-async function loadOffers() {
+// --- 2. Haupt-View (Markt) ---
+
+async function loadMarketView() {
     setLoadingState();
 
     try {
-        const offers = await apiFetch('/api/market/offers');
-        renderOffers(offers);
+        // Parallel alle relevanten Listen abrufen
+        const [activeOffers, myOffers, pendingOffers] = await Promise.all([
+            apiFetch('/api/market/offers?status=active'),
+            apiFetch('/api/market/offers?status=own'),
+            apiFetch('/api/market/offers?status=pending')
+        ]);
+
+        renderActiveOffers(activeOffers);
+        renderMyOffers(myOffers);
+        renderPendingOffers(pendingOffers);
+
     } catch (e) {
-        showError(e.message);
+        console.error(e);
+        if(marketList) marketList.innerHTML = `<li class="empty-state" style="color:#e74c3c;">Fehler: ${e.message}</li>`;
     }
 }
 
 function setLoadingState() {
     if (marketList) marketList.innerHTML = '<li class="empty-state"><i class="fas fa-spinner fa-spin"></i> Lade Markt...</li>';
     if (myList) myList.innerHTML = '<li class="empty-state"><i class="fas fa-spinner fa-spin"></i> Lade eigene...</li>';
+    if (pendingList) pendingList.innerHTML = '<li class="empty-state"><i class="fas fa-spinner fa-spin"></i> Lade Status...</li>';
 }
 
-function showError(msg) {
-    if (marketList) marketList.innerHTML = `<li class="empty-state" style="color:#e74c3c;">Fehler: ${msg}</li>`;
-}
+// --- Render Funktionen ---
 
-// 3. Rendering
-function renderOffers(offers) {
-    const myOffers = [];
-    const marketOffers = [];
-
-    // Sortierung: Neueste zuerst
-    offers.sort((a, b) => new Date(b.created_at) - new Date(a.created_at));
-
-    offers.forEach(o => {
-        if (o.is_my_offer) {
-            myOffers.push(o);
-        } else {
-            marketOffers.push(o);
-        }
-    });
-
-    // --- Markt-Angebote rendern ---
+function renderActiveOffers(offers) {
+    if(!marketList) return;
     marketList.innerHTML = '';
-    if (marketOffers.length === 0) {
+
+    // Filtere eigene raus (die sind rechts)
+    const othersOffers = offers.filter(o => !o.is_my_offer);
+
+    if (othersOffers.length === 0) {
         marketList.innerHTML = '<li class="empty-state">Derzeit keine Angebote verfügbar.</li>';
-    } else {
-        marketOffers.forEach(offer => {
-            const el = createOfferElement(offer, false);
-            marketList.appendChild(el);
-        });
+        return;
     }
 
-    // --- Eigene Angebote rendern ---
-    myList.innerHTML = '';
-    if (myOffers.length === 0) {
-        myList.innerHTML = '<li class="empty-state">Du hast keine Schichten eingestellt.</li>';
-    } else {
-        myOffers.forEach(offer => {
-            const el = createOfferElement(offer, true);
-            myList.appendChild(el);
-        });
-    }
+    othersOffers.forEach(offer => {
+        const el = createOfferElement(offer, 'market');
+        marketList.appendChild(el);
+    });
 }
 
-function createOfferElement(offer, isMine) {
+function renderMyOffers(offers) {
+    if(!myList) return;
+    myList.innerHTML = '';
+
+    // Nur aktive anzeigen
+    const myActive = offers.filter(o => o.status === 'active');
+
+    if (myActive.length === 0) {
+        myList.innerHTML = '<li class="empty-state">Keine eigenen Angebote aktiv.</li>';
+        return;
+    }
+
+    myActive.forEach(offer => {
+        const el = createOfferElement(offer, 'mine');
+        myList.appendChild(el);
+    });
+}
+
+function renderPendingOffers(offers) {
+    if(!pendingList) return;
+    pendingList.innerHTML = '';
+
+    if (!offers || offers.length === 0) {
+        if(pendingCard) pendingCard.style.display = 'none';
+        return;
+    }
+
+    if(pendingCard) pendingCard.style.display = 'flex';
+
+    offers.forEach(offer => {
+        const el = createOfferElement(offer, 'pending');
+        pendingList.appendChild(el);
+    });
+}
+
+function createOfferElement(offer, type) {
     const li = document.createElement('li');
     li.className = 'offer-item';
-
-    // "Neu"-Effekt für Angebote jünger als 24h
-    const created = new Date(offer.created_at);
-    const now = new Date();
-    const isNew = (now - created) < (24 * 60 * 60 * 1000); // 24h
-    if (isNew && !isMine) li.classList.add('new');
+    if(type === 'pending') li.classList.add('pending-row');
 
     // Datum formatieren
     const shiftDate = new Date(offer.shift_date);
     const dayName = shiftDate.toLocaleDateString('de-DE', { weekday: 'short' });
     const dayDate = shiftDate.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' });
 
-    // HTML zusammenbauen
-    const noteHtml = offer.note
-        ? `<div class="offer-note"><i class="fas fa-quote-left"></i> ${escapeHtml(offer.note)}</div>`
-        : '';
+    // Notiz
+    const noteHtml = offer.note ? `<div class="offer-note"><i class="fas fa-quote-left"></i> ${escapeHtml(offer.note)}</div>` : '';
 
-    const userLine = isMine
-        ? `<div class="offer-user" style="color:#3498db;">Dein Angebot</div>`
-        : `<div class="offer-user">Von: <strong>${escapeHtml(offer.offering_user_name)}</strong></div>`;
+    let userLine = '';
+    if (type === 'mine') {
+        userLine = `<div class="offer-user" style="color:#3498db;">Dein Angebot</div>`;
+    } else if (type === 'pending') {
+        const from = offer.is_my_offer ? "Du" : escapeHtml(offer.offering_user_name);
+        const to = offer.accepted_by_name ? `an <strong>${escapeHtml(offer.accepted_by_name)}</strong>` : "wartet...";
+        userLine = `<div class="offer-user">${from} ➔ ${to}</div>`;
+    } else {
+        userLine = `<div class="offer-user">Von: <strong>${escapeHtml(offer.offering_user_name)}</strong></div>`;
+    }
 
-
-    // --- KORREKTUR: Datum bereinigen (Nur YYYY-MM-DD) für Jump Funktion ---
-    const rawDate = offer.shift_date; // z.B. "2025-05-12T00:00:00"
+    // Jump-Button (Lupe)
+    const rawDate = offer.shift_date;
     const dateOnly = rawDate.includes('T') ? rawDate.split('T')[0] : rawDate;
-
-    // Jump-Button HTML
     const jumpBtnHtml = `
-        <button class="btn-jump" title="Im Plan anzeigen" onclick="window.jumpToOffer('${dateOnly}', ${offer.offering_user_id})">
+        <button class="btn-mini btn-jump" title="Im Plan anzeigen" onclick="window.jumpToOffer('${dateOnly}', ${offer.offering_user_id})">
             <i class="fas fa-search"></i>
         </button>
     `;
 
-    // Buttons zusammensetzen
-    let actionBtn = '';
-    if (isMine) {
-        actionBtn = `
-            ${jumpBtnHtml}
-            <button class="btn-cancel" onclick="window.cancelOffer(${offer.id})">
-                <i class="fas fa-trash"></i> Zurückziehen
+    // Action Buttons
+    let actionsHtml = '';
+
+    if (type === 'market') {
+        // Fremdes Angebot
+        actionsHtml = `
+            <button class="btn-mini btn-candidates" onclick="window.showCandidates(${offer.id})" title="Kandidaten anzeigen">
+                <i class="fas fa-users"></i>
             </button>
-        `;
-    } else {
-        actionBtn = `
             ${jumpBtnHtml}
-            <button class="btn-accept" onclick="window.acceptOffer(${offer.id}, '${offer.shift_date}', '${offer.shift_type_abbr}')">
+            <button class="btn-mini btn-accept" onclick="window.acceptOffer(${offer.id}, '${offer.shift_date}', '${offer.shift_type_abbr}')">
                 <i class="fas fa-check"></i> Übernehmen
             </button>
+        `;
+    } else if (type === 'mine') {
+        // Eigenes Angebot (JETZT MIT KANDIDATEN BUTTON)
+        actionsHtml = `
+            <button class="btn-mini btn-candidates" onclick="window.showCandidates(${offer.id})" title="Wer könnte das übernehmen?">
+                <i class="fas fa-users"></i>
+            </button>
+            ${jumpBtnHtml}
+            <button class="btn-mini btn-cancel" onclick="window.cancelOffer(${offer.id})" title="Zurückziehen">
+                <i class="fas fa-trash"></i>
+            </button>
+        `;
+    } else if (type === 'pending') {
+        // Wartend
+        actionsHtml = `
+            <span style="font-size:0.8rem; color:#f39c12; margin-right:10px; font-style:italic;">
+                <i class="fas fa-clock"></i> Prüfung...
+            </span>
+            ${jumpBtnHtml}
         `;
     }
 
@@ -172,7 +209,6 @@ function createOfferElement(offer, isMine) {
                 <span class="offer-day">${dayName}</span>
                 <span class="offer-date">${dayDate}</span>
             </div>
-
             <div class="offer-details">
                 <span class="offer-shift-badge" style="background-color: ${offer.shift_type_color};">
                     ${offer.shift_type_abbr}
@@ -180,75 +216,145 @@ function createOfferElement(offer, isMine) {
                 ${userLine}
                 ${noteHtml}
             </div>
-
             <div class="offer-actions">
-                ${actionBtn}
+                ${actionsHtml}
             </div>
         </div>
     `;
-
     return li;
 }
 
-// 4. Global Functions (für OnClick)
+// --- 3. Feature: Kandidaten anzeigen ---
 
-// --- Funktion zum Springen in den Schichtplan ---
-window.jumpToOffer = function(dateStr, userId) {
-    // 1. Daten für den Schichtplan vorbereiten
-    const highlightData = {
-        date: dateStr,          // Muss "YYYY-MM-DD" sein
-        targetUserId: userId    // Die ID des Users, dessen Zeile wir suchen
-    };
+async function showCandidates(offerId) {
+    if (!candidateModal || !candidateListUl) return;
 
-    // 2. Im LocalStorage speichern, damit der Schichtplan es beim Laden findet
+    candidateModal.style.display = 'block';
+    candidateListUl.innerHTML = '<li class="empty-state"><i class="fas fa-spinner fa-spin"></i> Prüfe Regeln & Dienstpläne...</li>';
+
     try {
-        localStorage.setItem(DHF_HIGHLIGHT_KEY, JSON.stringify(highlightData));
-        // 3. Weiterleitung
-        window.location.href = 'schichtplan.html';
+        const candidates = await apiFetch(`/api/market/offer/${offerId}/candidates`);
+
+        candidateListUl.innerHTML = '';
+        if (candidates.length === 0) {
+            candidateListUl.innerHTML = '<li class="empty-state">Keine passenden Kandidaten gefunden.<br><small>(Alle anderen haben Dienst, Ruhezeit oder Hundekonflikt)</small></li>';
+            return;
+        }
+
+        candidates.forEach(c => {
+            const li = document.createElement('li');
+            li.className = 'candidate-item';
+
+            const dogInfo = c.dog ? `<span class="candidate-dog"><i class="fas fa-paw"></i> ${c.dog}</span>` : '';
+
+            li.innerHTML = `
+                <span class="candidate-name">${c.name}</span>
+                ${dogInfo}
+            `;
+            candidateListUl.appendChild(li);
+        });
+
     } catch (e) {
-        console.error("Fehler beim Speichern des Sprungziels:", e);
-        window.dhfAlert("Fehler", "Konnte Sprungziel nicht speichern.", "error");
+        candidateListUl.innerHTML = `<li class="empty-state" style="color:#e74c3c;">Fehler: ${e.message}</li>`;
     }
+}
+
+// --- 4. Historie Logik ---
+
+async function loadHistory() {
+    const tbody = document.getElementById('history-table-body');
+    if(!tbody) return;
+
+    tbody.innerHTML = '<tr><td colspan="6" class="empty-state"><i class="fas fa-spinner fa-spin"></i> Lade Chronik...</td></tr>';
+
+    try {
+        const history = await apiFetch('/api/market/history?limit=50');
+
+        tbody.innerHTML = '';
+        if (history.length === 0) {
+            tbody.innerHTML = '<tr><td colspan="6" class="empty-state">Keine Einträge vorhanden.</td></tr>';
+            return;
+        }
+
+        history.forEach(entry => {
+            const tr = document.createElement('tr');
+            const dateStr = new Date(entry.created_at).toLocaleDateString('de-DE');
+
+            let statusBadge = `<span class="status-badge status-${entry.status}">${entry.status}</span>`;
+            if(entry.status === 'done') statusBadge = `<span class="status-badge status-done">Getauscht</span>`;
+            if(entry.status === 'cancelled') statusBadge = `<span class="status-badge status-cancelled">Zurückgezogen</span>`;
+            if(entry.status === 'rejected') statusBadge = `<span class="status-badge status-rejected">Abgelehnt</span>`;
+
+            let actionHtml = '';
+            if (isAdmin) {
+                actionHtml = `<button class="btn-mini btn-cancel" onclick="window.deleteHistoryItem(${entry.id})" title="Eintrag löschen">×</button>`;
+            } else {
+                actionHtml = '-';
+            }
+
+            tr.innerHTML = `
+                <td>${dateStr}</td>
+                <td>${entry.shift_info}</td>
+                <td>${entry.offering_user}</td>
+                <td>${entry.accepted_by}</td>
+                <td>${statusBadge}</td>
+                <td class="admin-only">${actionHtml}</td>
+            `;
+            tbody.appendChild(tr);
+        });
+
+        if (isAdmin) {
+            document.querySelectorAll('.admin-only').forEach(el => el.style.display = 'table-cell');
+        }
+
+    } catch (e) {
+        tbody.innerHTML = `<tr><td colspan="6" style="color:#e74c3c;">Fehler: ${e.message}</td></tr>`;
+    }
+}
+
+async function deleteHistoryItem(id) {
+    if(!confirm("Eintrag endgültig aus der Chronik löschen?")) return;
+    try {
+        await apiFetch(`/api/market/history/${id}`, 'DELETE');
+        loadHistory();
+    } catch(e) {
+        alert("Fehler: " + e.message);
+    }
+}
+
+
+// --- 5. Global Actions (Standard) ---
+
+window.jumpToOffer = function(dateStr, userId) {
+    const highlightData = { date: dateStr, targetUserId: userId };
+    localStorage.setItem('dhf_highlight_goto', JSON.stringify(highlightData));
+    window.location.href = 'schichtplan.html';
 };
 
 window.acceptOffer = async function(offerId, dateStr, type) {
     const formattedDate = new Date(dateStr).toLocaleDateString('de-DE');
-    const msg = `Möchtest du die Schicht ${type} am ${formattedDate} wirklich übernehmen?\n\nDies erstellt einen Antrag, den der Admin noch genehmigen muss.`;
+    if(!confirm(`Möchtest du die Schicht ${type} am ${formattedDate} übernehmen?`)) return;
 
-    // FIX: dhfConfirm
-    window.dhfConfirm("Schicht übernehmen", msg, async () => {
-        try {
-            const res = await apiFetch(`/api/market/accept/${offerId}`, 'POST');
-            window.dhfAlert("Erfolg", res.message || "Erfolgreich beantragt!", "success");
-            loadOffers(); // Reload UI
-            // Event feuern für Notifications Update
-            window.dispatchEvent(new CustomEvent('dhf:notification_update'));
-        } catch (e) {
-            window.dhfAlert("Fehler", e.message, "error");
-        }
-    });
+    try {
+        const res = await apiFetch(`/api/market/accept/${offerId}`, 'POST');
+        alert(res.message || "Erfolg!");
+        loadMarketView();
+    } catch (e) {
+        alert("Fehler: " + e.message);
+    }
 };
 
 window.cancelOffer = async function(offerId) {
-    // FIX: dhfConfirm
-    window.dhfConfirm("Angebot zurückziehen", "Möchtest du dieses Angebot wirklich aus der Tauschbörse entfernen?", async () => {
-        try {
-            const res = await apiFetch(`/api/market/offer/${offerId}`, 'DELETE');
-            // Keine Meldung bei Erfolg, nur Reload, ist flüssiger
-            loadOffers();
-        } catch (e) {
-            window.dhfAlert("Fehler", e.message, "error");
-        }
-    });
+    if(!confirm("Angebot zurückziehen?")) return;
+    try {
+        await apiFetch(`/api/market/offer/${offerId}`, 'DELETE');
+        loadMarketView();
+    } catch (e) {
+        alert("Fehler: " + e.message);
+    }
 };
 
-// Helper
 function escapeHtml(text) {
     if (!text) return '';
-    return text
-        .replace(/&/g, "&amp;")
-        .replace(/</g, "&lt;")
-        .replace(/>/g, "&gt;")
-        .replace(/"/g, "&quot;")
-        .replace(/'/g, "&#039;");
+    return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
 }

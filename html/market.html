@@ -5,14 +5,14 @@
     <title>Tauschbörse - DHF-Planer</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <style>
+    <link rel="stylesheet" href="css/themes.css"> <style>
         @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap');
 
         body {
             font-family: 'Poppins', sans-serif;
             margin: 0;
-            background: #1a1a1a;
-            color: #ffffff;
+            background: var(--bg-body, #1a1a1a);
+            color: var(--text-main, #ffffff);
             overflow-x: hidden;
         }
 
@@ -20,133 +20,109 @@
             position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: -1;
         }
 
-        /* --- Header & Nav (Standard) --- */
+        /* --- Header & Nav --- */
         header {
-            background: rgba(255, 255, 255, 0.05);
-            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            background: var(--bg-card, rgba(255, 255, 255, 0.05));
+            border-bottom: 1px solid var(--border-color, rgba(255, 255, 255, 0.1));
             backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
             padding: 15px 30px; display: flex; justify-content: space-between; align-items: center;
         }
-        header h1 { margin: 0; color: #ffffff; font-size: 24px; }
+        header h1 { margin: 0; font-size: 24px; }
         header nav { display: flex; gap: 20px; align-items: center; }
         header nav a {
-            text-decoration: none; color: #bdc3c7; font-weight: 500; font-size: 16px;
+            text-decoration: none; color: var(--text-muted, #bdc3c7); font-weight: 500; font-size: 16px;
             padding: 10px; border-radius: 5px; transition: background-color 0.3s, color 0.3s;
             display: inline-flex; align-items: center;
         }
         header nav a.active, header nav a:hover {
-            background-color: rgba(255, 255, 255, 0.1); color: #ffffff;
+            background-color: rgba(255, 255, 255, 0.1); color: var(--text-main, #ffffff);
         }
-        #user-info { display: flex; align-items: center; gap: 15px; color: #bdc3c7; }
+        #user-info { display: flex; align-items: center; gap: 15px; color: var(--text-muted, #bdc3c7); }
         #logout-btn {
             background: #e74c3c; color: white; padding: 8px 15px; border: none;
             border-radius: 5px; cursor: pointer; font-size: 14px; transition: background-color 0.3s;
         }
         #logout-btn:hover { background: #c0392b; }
-
-        .nav-badge {
-            background: #e74c3c; color: white; font-size: 10px; font-weight: 600;
-            padding: 2px 5px; border-radius: 5px; margin-left: 8px; display: none;
+        .report-btn {
+            background: #3498db; color: white; padding: 8px 15px; border: none;
+            border-radius: 5px; cursor: pointer; font-size: 14px; margin-right: 15px;
         }
 
         /* --- Sub-Nav --- */
         .sub-nav {
-            background: rgba(255, 255, 255, 0.05);
-            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            background: var(--bg-card, rgba(255, 255, 255, 0.05));
+            border-bottom: 1px solid var(--border-color, rgba(255, 255, 255, 0.1));
             backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
             padding: 0 30px; margin-bottom: 30px; margin-top: -1px;
-            display: flex; align-items: center;
-            /* Z-Index erhöht, damit Dropdowns über dem Content liegen */
-            position: relative;
-            z-index: 100;
+            display: flex; align-items: center; position: relative; z-index: 100;
         }
         .sub-nav a {
             display: inline-block; padding: 15px 20px; text-decoration: none;
-            color: #bdc3c7; font-weight: 500; border-bottom: 3px solid transparent;
+            color: var(--text-muted, #bdc3c7); font-weight: 500; border-bottom: 3px solid transparent;
             transition: color 0.3s;
         }
         .sub-nav a.active, .sub-nav a:hover {
-            color: #ffffff; border-bottom-color: #3498db;
-        }
-
-        /* --- Dropdown-Menü --- */
-        .dropdown { position: relative; display: inline-block; }
-        .dropdown .dropbtn {
-            font-family: 'Poppins', sans-serif;
-            text-decoration: none; color: #bdc3c7; font-weight: 500; font-size: 16px;
-            padding: 15px 20px;
-            background: none; border: none; cursor: pointer;
-            border-bottom: 3px solid transparent;
-            transition: color 0.3s;
-        }
-        .dropdown-content {
-            display: none;
-            position: absolute;
-            background: rgba(30, 30, 30, 0.9);
-            backdrop-filter: blur(10px);
-            -webkit-backdrop-filter: blur(10px);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            min-width: 200px;
-            box-shadow: 0px 8px 16px 0px rgba(0,0,0,0.2);
-            z-index: 101;
-            border-radius: 5px;
-            margin-top: -1px;
-        }
-        .dropdown-content a {
-            color: #bdc3c7;
-            padding: 12px 16px;
-            text-decoration: none;
-            display: block;
-            font-size: 15px;
-            border-bottom: none;
-            transition: background-color 0.3s, color 0.3s;
-        }
-        .dropdown-content a:hover {
-            background-color: rgba(255, 255, 255, 0.05);
-            color: #ffffff;
-        }
-        .dropdown:hover .dropdown-content { display: block; }
-        .dropdown:hover .dropbtn, .dropbtn.active {
-            color: #ffffff;
-            border-bottom-color: #3498db;
+            color: var(--text-main, #ffffff); border-bottom-color: #3498db;
         }
 
         /* Helper für Admin-Links */
         .admin-only { display: none; }
         body.admin-mode .admin-only { display: block; }
 
-
         main { padding: 30px; max-width: 1200px; margin: auto; }
+
+        /* --- TABS --- */
+        .market-tabs {
+            display: flex; gap: 10px; margin-bottom: 20px;
+        }
+        .market-tab-btn {
+            background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1);
+            color: #bdc3c7; padding: 10px 20px; border-radius: 5px; cursor: pointer;
+            font-size: 14px; font-weight: 500; transition: all 0.3s;
+        }
+        .market-tab-btn.active {
+            background: #f39c12; color: #1a1a1a; border-color: #f39c12; font-weight: 600;
+        }
+        .market-tab-btn:hover:not(.active) {
+            background: rgba(255,255,255,0.1); color: #fff;
+        }
+
+        .tab-content { display: none; animation: fadeIn 0.3s ease; }
+        .tab-content.active { display: block; }
+
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
 
         /* --- Market Grid --- */
         .market-grid {
             display: grid; grid-template-columns: 1fr 1fr; gap: 30px;
+            align-items: start; /* Wichtig, damit Spalten nicht stretchen */
         }
         @media (max-width: 900px) {
             .market-grid { grid-template-columns: 1fr; }
         }
 
         .card {
-            background: rgba(255, 255, 255, 0.05);
-            border: 1px solid rgba(255, 255, 255, 0.1);
+            background: var(--bg-card, rgba(255, 255, 255, 0.05));
+            border: 1px solid var(--border-color, rgba(255, 255, 255, 0.1));
             backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
             box-shadow: 0 4px 30px rgba(0, 0, 0, 0.2);
-            border-radius: 10px; overflow: hidden; height: 100%; display: flex; flex-direction: column;
+            border-radius: 10px; overflow: hidden; display: flex; flex-direction: column;
+            margin-bottom: 30px;
         }
 
         .card-header {
-            padding: 20px 25px; border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            padding: 15px 20px; border-bottom: 1px solid rgba(255, 255, 255, 0.1);
             display: flex; justify-content: space-between; align-items: center;
         }
-        .card-header h2 { margin: 0; font-size: 1.2rem; font-weight: 600; color: #fff; }
+        .card-header h2 { margin: 0; font-size: 1.1rem; font-weight: 600; color: #fff; }
 
-        .card-body { padding: 0; flex-grow: 1; overflow-y: auto; max-height: 600px; }
+        .card-body { padding: 0; }
 
         /* --- Offer List Items --- */
         .offer-list { list-style: none; padding: 0; margin: 0; }
 
         .offer-item {
-            padding: 20px;
+            padding: 15px 20px;
             border-bottom: 1px solid rgba(255,255,255,0.05);
             display: flex; justify-content: space-between; align-items: center;
             transition: background 0.2s;
@@ -154,65 +130,83 @@
         .offer-item:last-child { border-bottom: none; }
         .offer-item:hover { background: rgba(255,255,255,0.02); }
 
+        /* Date Box Styles */
         .offer-date-box {
-            background: rgba(255,255,255,0.1);
-            border-radius: 8px;
-            padding: 10px;
-            text-align: center;
-            min-width: 60px;
-            margin-right: 15px;
+            background: rgba(255,255,255,0.08); border-radius: 6px;
+            padding: 8px; text-align: center; min-width: 50px; margin-right: 15px;
             border: 1px solid rgba(255,255,255,0.1);
         }
-        .offer-day { display: block; font-size: 0.8rem; color: #aaa; text-transform: uppercase; }
-        .offer-date { display: block; font-size: 1.1rem; font-weight: bold; color: #fff; }
+        .offer-day { display: block; font-size: 0.75rem; color: #aaa; text-transform: uppercase; }
+        .offer-date { display: block; font-size: 1rem; font-weight: bold; color: #fff; }
 
         .offer-details { flex-grow: 1; }
         .offer-shift-badge {
             display: inline-block; padding: 2px 6px; border-radius: 4px;
-            font-size: 0.85rem; font-weight: 600; color: #000; text-shadow: none;
-            margin-bottom: 5px;
+            font-size: 0.8rem; font-weight: 600; color: #000;
+            margin-bottom: 3px;
         }
-        .offer-user { font-size: 0.9rem; color: #ccc; margin-bottom: 3px; }
-        .offer-note { font-size: 0.85rem; color: #f39c12; font-style: italic; }
+        .offer-user { font-size: 0.85rem; color: #ccc; }
+        .offer-note { font-size: 0.8rem; color: #f39c12; font-style: italic; margin-top: 2px; }
 
-        .offer-actions { margin-left: 15px; display: flex; gap: 10px; }
+        .offer-actions { margin-left: 10px; display: flex; gap: 8px; }
 
-        .btn-accept {
-            background: #27ae60; color: white; border: none; padding: 8px 15px;
-            border-radius: 5px; cursor: pointer; font-weight: 600; font-size: 0.9rem;
-            transition: transform 0.2s; display: flex; align-items: center; gap: 5px;
+        /* Buttons */
+        .btn-mini {
+            border: none; padding: 6px 10px; border-radius: 4px; cursor: pointer;
+            font-size: 0.85rem; transition: opacity 0.2s, transform 0.2s; display: flex; align-items: center; gap: 5px; color: white;
         }
-        .btn-accept:hover { background: #2ecc71; transform: scale(1.05); }
+        .btn-mini:hover { opacity: 0.9; transform: scale(1.05); }
+        .btn-accept { background: #27ae60; }
+        .btn-jump { background: #3498db; }
+        .btn-cancel { background: #c0392b; }
+        .btn-candidates { background: #8e44ad; } /* Lila für Kandidaten */
 
-        /* --- NEU: Jump Button (Lupe) --- */
-        .btn-jump {
-            background: #3498db; color: white; border: none; padding: 8px 12px;
-            border-radius: 5px; cursor: pointer; font-size: 0.9rem;
-            transition: opacity 0.2s; display: flex; align-items: center; justify-content: center;
-        }
-        .btn-jump:hover { opacity: 0.8; transform: scale(1.05); }
-        /* --- ENDE NEU --- */
+        .empty-state { padding: 30px; text-align: center; color: #7f8c8d; font-style: italic; font-size: 0.9rem; }
 
-        .btn-cancel {
-            background: #c0392b; color: white; border: none; padding: 8px 12px;
-            border-radius: 5px; cursor: pointer; font-size: 0.9rem;
-            transition: opacity 0.2s;
+        /* --- History Table --- */
+        .history-table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+        .history-table th, .history-table td {
+            text-align: left; padding: 12px 15px; border-bottom: 1px solid rgba(255,255,255,0.05); color: #bdc3c7;
         }
-        .btn-cancel:hover { opacity: 0.8; }
+        .history-table th { background: rgba(255,255,255,0.05); color: #fff; font-weight: 600; }
+        .history-table tr:last-child td { border-bottom: none; }
 
-        .empty-state {
-            padding: 40px; text-align: center; color: #7f8c8d; font-style: italic;
+        .status-badge {
+            padding: 2px 6px; border-radius: 4px; font-size: 0.75rem; text-transform: uppercase; font-weight: bold;
         }
+        .status-done { background: rgba(46, 204, 113, 0.2); color: #2ecc71; border: 1px solid #2ecc71; }
+        .status-cancelled { background: rgba(231, 76, 60, 0.2); color: #e74c3c; border: 1px solid #e74c3c; }
+        .status-rejected { background: rgba(231, 76, 60, 0.2); color: #e74c3c; border: 1px solid #e74c3c; }
 
-        /* --- Animation für neue Angebote --- */
-        @keyframes pulse-green {
-            0% { box-shadow: 0 0 0 0 rgba(46, 204, 113, 0.4); }
-            70% { box-shadow: 0 0 0 10px rgba(46, 204, 113, 0); }
-            100% { box-shadow: 0 0 0 0 rgba(46, 204, 113, 0); }
+        /* --- Kandidaten Modal --- */
+        .candidate-list { list-style: none; padding: 0; max-height: 400px; overflow-y: auto; }
+        .candidate-item {
+            padding: 10px; border-bottom: 1px solid rgba(255,255,255,0.1);
+            display: flex; justify-content: space-between; align-items: center;
         }
-        .offer-item.new {
-            animation: pulse-green 2s infinite;
+        .candidate-item:last-child { border-bottom: none; }
+        .candidate-name { font-weight: 600; color: #fff; }
+        .candidate-dog { font-size: 0.8rem; color: #aaa; background: rgba(255,255,255,0.1); padding: 2px 5px; border-radius: 3px; }
+
+        /* --- Modal Styles (Wiederverwendung) --- */
+        .modal {
+            display: none; position: fixed; z-index: 2000; left: 0; top: 0; width: 100%; height: 100%;
+            overflow: auto; background-color: rgba(0,0,0,0.7); backdrop-filter: blur(5px);
         }
+        .modal-content {
+            background: #1e1e1e; border: 1px solid #444; margin: 10% auto; padding: 0;
+            width: 90%; max-width: 500px; border-radius: 8px; box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+        }
+        .modal-header {
+            padding: 15px 20px; border-bottom: 1px solid #333; display: flex; justify-content: space-between; align-items: center;
+            background: #252525; border-radius: 8px 8px 0 0;
+        }
+        .modal-header h2 { margin: 0; color: #fff; font-size: 1.1rem; }
+        .close { color: #aaa; font-size: 24px; font-weight: bold; cursor: pointer; }
+        .modal-body { padding: 20px; color: #ddd; }
+
+        /* Pending Animation */
+        .pending-row { background: rgba(243, 156, 18, 0.1); border-left: 3px solid #f39c12; }
 
     </style>
 </head>
@@ -220,7 +214,10 @@
     <canvas id="particle-canvas"></canvas>
 
     <header>
-        <h1>DHF-Planer</h1>
+        <div style="display:flex; align-items:center; gap:15px;">
+            <div id="active-pet-container" style="width:50px; height:50px; display:none;"></div>
+            <h1>DHF-Planer</h1>
+        </div>
         <nav id="main-nav">
             <a href="dashboard.html" id="nav-dashboard">Dashboard</a>
             <a href="users.html" id="nav-users" style="display: none;">Benutzer</a>
@@ -244,56 +241,148 @@
         <a href="market.html" class="active" style="color: #f39c12; border-bottom-color: #f39c12;">
             <i class="fas fa-exchange-alt"></i> Tauschbörse
         </a>
-        <div class="dropdown">
-            <button class="dropbtn">Einstellungen &raquo;</button>
-            <div class="dropdown-content">
-                <a href="einstellungen.html" class="admin-only">Mitarbeiter Sortierung</a>
-                <a href="schichtarten.html" class="admin-only">Schichtarten</a>
-                <a href="shortcuts.html" class="admin-only">Shortcuts</a>
-                <a href="feiertage.html" class="admin-only">Feiertage & Sondertermine</a>
-                <a href="farbeeinstellungen.html" class="admin-only">Farbeinstellungen</a>
+    </div>
+
+    <main>
+        <div class="market-tabs">
+            <button class="market-tab-btn active" onclick="switchTab('market')">
+                <i class="fas fa-store"></i> Aktive Angebote
+            </button>
+            <button class="market-tab-btn" onclick="switchTab('history')">
+                <i class="fas fa-history"></i> Chronik
+            </button>
+        </div>
+
+        <div id="tab-market" class="tab-content active">
+            <div class="market-grid">
+
+                <div class="col-left">
+                    <div class="card" id="pending-card" style="border-color: #f39c12; display: none;">
+                         <div class="card-header" style="background: rgba(243, 156, 18, 0.1);">
+                            <h2 style="color: #f39c12;"><i class="fas fa-hourglass-half"></i> Wartet auf Genehmigung</h2>
+                        </div>
+                        <div class="card-body">
+                            <ul class="offer-list" id="pending-offers-list"></ul>
+                        </div>
+                    </div>
+
+                    <div class="card">
+                        <div class="card-header" style="border-bottom-color: #27ae60;">
+                            <h2 style="color: #2ecc71;"><i class="fas fa-cart-plus"></i> Verfügbare Angebote</h2>
+                            <button class="btn-mini btn-cancel" style="background:transparent; border:1px solid #555; font-size:0.8rem;" onclick="location.reload()">
+                                <i class="fas fa-sync"></i>
+                            </button>
+                        </div>
+                        <div class="card-body">
+                            <ul class="offer-list" id="market-offers-list">
+                                <li class="empty-state">Lade Angebote...</li>
+                            </ul>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="col-right">
+                    <div class="card">
+                        <div class="card-header" style="border-bottom-color: #3498db;">
+                            <h2 style="color: #3498db;"><i class="fas fa-user-tag"></i> Meine Angebote</h2>
+                            <a href="schichtplan.html" style="font-size:0.8rem; color:#bdc3c7; text-decoration:none;">
+                                + Neu erstellen
+                            </a>
+                        </div>
+                        <div class="card-body">
+                            <ul class="offer-list" id="my-offers-list">
+                                <li class="empty-state">Lade...</li>
+                            </ul>
+                            <div style="padding: 15px; font-size: 0.8rem; color: #7f8c8d; border-top: 1px solid rgba(255,255,255,0.05);">
+                                <i class="fas fa-info-circle"></i> Klicke im Schichtplan auf deine Schicht, um sie hier anzubieten.
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+        </div>
+
+        <div id="tab-history" class="tab-content">
+            <div class="card">
+                <div class="card-header">
+                    <h2><i class="fas fa-history"></i> Tausch-Historie</h2>
+                    <button class="btn-mini btn-jump" onclick="loadHistory()">Aktualisieren</button>
+                </div>
+                <div class="card-body" style="overflow-x: auto;">
+                    <table class="history-table">
+                        <thead>
+                            <tr>
+                                <th>Datum</th>
+                                <th>Schicht</th>
+                                <th>Von</th>
+                                <th>An</th>
+                                <th>Status</th>
+                                <th class="admin-only">Aktion</th>
+                            </tr>
+                        </thead>
+                        <tbody id="history-table-body">
+                            <tr><td colspan="6" class="empty-state">Lade Daten...</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            </div>
+        </div>
+
+    </main>
+
+    <div id="candidate-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2>Potenzielle Kandidaten</h2>
+                <span class="close" onclick="closeCandidateModal()">&times;</span>
+            </div>
+            <div class="modal-body">
+                <p style="font-size: 0.85rem; color: #bbb; margin-bottom: 15px;">
+                    Folgende Kollegen sind an diesem Tag verfügbar (kein Dienst, keine Ruhezeitverletzung, kein Hundekonflikt).
+                </p>
+                <ul class="candidate-list" id="candidate-list-ul">
+                    <li class="empty-state">Lade...</li>
+                </ul>
             </div>
         </div>
     </div>
 
-    <main>
-        <div class="market-grid">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/lottie-web/5.12.2/lottie.min.js"></script>
 
-            <div class="card">
-                <div class="card-header" style="border-bottom-color: #27ae60;">
-                    <h2 style="color: #2ecc71;"><i class="fas fa-cart-plus"></i> Verfügbare Angebote</h2>
-                    <button class="btn-cancel" style="background:transparent; border:1px solid #555; font-size:0.8rem;" onclick="location.reload()">
-                        <i class="fas fa-sync"></i>
-                    </button>
-                </div>
-                <div class="card-body">
-                    <ul class="offer-list" id="market-offers-list">
-                        <li class="empty-state">Lade Angebote...</li>
-                    </ul>
-                </div>
-            </div>
+    <script>
+        // --- Tab Switching Logic (Inline für Schnelligkeit) ---
+        function switchTab(tabId) {
+            document.querySelectorAll('.tab-content').forEach(el => el.classList.remove('active'));
+            document.querySelectorAll('.market-tab-btn').forEach(el => el.classList.remove('active'));
 
-            <div class="card">
-                <div class="card-header" style="border-bottom-color: #f39c12;">
-                    <h2 style="color: #f39c12;"><i class="fas fa-user-tag"></i> Meine aktiven Angebote</h2>
-                    <a href="schichtplan.html" style="font-size:0.8rem; color:#bdc3c7; text-decoration:none;">
-                        + Neu erstellen im Plan
-                    </a>
-                </div>
-                <div class="card-body">
-                    <ul class="offer-list" id="my-offers-list">
-                        <li class="empty-state">Keine eigenen Angebote aktiv.</li>
-                    </ul>
-                    <div style="padding: 20px; font-size: 0.85rem; color: #7f8c8d; border-top: 1px solid rgba(255,255,255,0.05);">
-                        <i class="fas fa-info-circle"></i> <strong>So funktioniert's:</strong><br>
-                        Gehe in den Schichtplan, klicke auf deine Schicht und wähle "In Tauschbörse stellen".
-                        Sobald ein Kollege annimmt, muss der Admin den Tausch final genehmigen.
-                    </div>
-                </div>
-            </div>
+            document.getElementById('tab-' + tabId).classList.add('active');
+            // Finde den Button, der geklickt wurde (etwas hacky via Event wäre besser, aber so gehts auch)
+            const btns = document.querySelectorAll('.market-tab-btn');
+            if(tabId === 'market') btns[0].classList.add('active');
+            if(tabId === 'history') {
+                btns[1].classList.add('active');
+                // Lazy Load History
+                if(window.loadHistory) window.loadHistory();
+            }
+        }
 
-        </div>
-    </main>
+        // Modal Funktionen global verfügbar machen
+        window.closeCandidateModal = function() {
+            document.getElementById('candidate-modal').style.display = 'none';
+        }
+
+        // Klick außerhalb schließt Modal
+        window.onclick = function(event) {
+            const m = document.getElementById('candidate-modal');
+            if (event.target == m) m.style.display = "none";
+        }
+    </script>
+
+    <script type="module" src="js/utils/pet_renderer.js"></script>
+    <script type="module" src="js/pages/market.js"></script>
+    <script type="module" src="shared_feedback.js"></script>
+    <script type="module" src="shared_notifications.js"></script>
 
     <script>
         const canvas = document.getElementById('particle-canvas');
@@ -304,36 +393,33 @@
         function setCanvasSize() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; }
         setCanvasSize();
         class Particle {
-            constructor(x, y, directionX, directionY, size) { this.x = x; this.y = y; this.directionX = directionX; this.directionY = directionY; this.size = size; }
-            draw() { ctx.beginPath(); ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2, false); ctx.fillStyle = nodeColor; ctx.fill(); }
-            update() { if (this.x > canvas.width || this.x < 0) { this.directionX = -this.directionX; } if (this.y > canvas.height || this.y < 0) { this.directionY = -this.directionY; } this.x += this.directionX; this.y += this.directionY; this.draw(); }
-        }
-        function init() {
-            particlesArray = []; let numberOfParticles = (canvas.height * canvas.width) / 9000; if (numberOfParticles > 100) numberOfParticles = 100;
-            for (let i = 0; i < numberOfParticles; i++) {
-                let size = (Math.random() * 2) + 1; let x = (Math.random() * ((canvas.width - size * 2) - (size * 2)) + size * 2);
-                let y = (Math.random() * ((canvas.height - size * 2) - (size * 2)) + size * 2);
-                let directionX = (Math.random() * 0.4) - 0.2; let directionY = (Math.random() * 0.4) - 0.2;
-                particlesArray.push(new Particle(x, y, directionX, directionY, size));
+            constructor(x, y, size) { this.x = x; this.y = y; this.size = size; this.dx = Math.random()*0.4 - 0.2; this.dy = Math.random()*0.4 - 0.2; }
+            draw() { ctx.beginPath(); ctx.arc(this.x, this.y, this.size, 0, Math.PI*2); ctx.fillStyle = nodeColor; ctx.fill(); }
+            update() {
+                if(this.x>canvas.width||this.x<0) this.dx*=-1; if(this.y>canvas.height||this.y<0) this.dy*=-1;
+                this.x+=this.dx; this.y+=this.dy; this.draw();
             }
         }
-        function connect() {
-            let maxDistance = 150; ctx.strokeStyle = lineColor;
-            for (let a = 0; a < particlesArray.length; a++) {
-                for (let b = a; b < particlesArray.length; b++) {
-                    let distance = ((particlesArray[a].x - particlesArray[b].x) * (particlesArray[a].x - particlesArray[b].x)) + ((particlesArray[a].y - particlesArray[b].y) * (particlesArray[a].y - particlesArray[b].y));
-                    if (distance < (maxDistance * maxDistance)) { let opacity = 1 - (distance / (maxDistance * maxDistance)); ctx.globalAlpha = opacity; ctx.beginPath(); ctx.moveTo(particlesArray[a].x, particlesArray[a].y); ctx.lineTo(particlesArray[b].x, particlesArray[b].y); ctx.stroke(); }
+        function init() { particlesArray = []; for(let i=0; i<100; i++) particlesArray.push(new Particle(Math.random()*canvas.width, Math.random()*canvas.height, Math.random()*2+1)); }
+        function animate() {
+            ctx.clearRect(0,0,canvas.width,canvas.height);
+            particlesArray.forEach(p => p.update());
+            // Connections
+            for(let a=0; a<particlesArray.length; a++){
+                for(let b=a; b<particlesArray.length; b++){
+                    let dx = particlesArray[a].x - particlesArray[b].x;
+                    let dy = particlesArray[a].y - particlesArray[b].y;
+                    let dist = Math.sqrt(dx*dx + dy*dy);
+                    if(dist<150){
+                        ctx.beginPath(); ctx.strokeStyle = lineColor; ctx.globalAlpha = 1 - dist/150;
+                        ctx.moveTo(particlesArray[a].x, particlesArray[a].y); ctx.lineTo(particlesArray[b].x, particlesArray[b].y);
+                        ctx.stroke(); ctx.globalAlpha = 1;
+                    }
                 }
             }
-            ctx.globalAlpha = 1.0;
+            requestAnimationFrame(animate);
         }
-        function animate() { requestAnimationFrame(animate); ctx.clearRect(0, 0, canvas.width, canvas.height); for (let i = 0; i < particlesArray.length; i++) { particlesArray[i].update(); } connect(); }
-        window.addEventListener('resize', () => { setCanvasSize(); init(); });
-        init(); animate();
+        init(); animate(); window.addEventListener('resize', () => { setCanvasSize(); init(); });
     </script>
-
-    <script type="module" src="js/pages/market.js"></script>
-    <script type="module" src="shared_feedback.js"></script>
-    <script type="module" src="shared_notifications.js"></script>
 </body>
 </html>

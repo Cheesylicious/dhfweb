@@ -4,7 +4,6 @@ import { PlanState } from './schichtplan_state.js';
 import { PlanApi } from './schichtplan_api.js';
 import { PlanHandlers } from './schichtplan_handlers.js';
 import { isColorDark } from '../utils/helpers.js';
-import { apiFetch } from '../utils/api.js';
 
 /**
  * Modul für UI-Hilfsfunktionen, Styling und statische Elemente.
@@ -25,8 +24,102 @@ export const PlanUIHelper = {
         this.callbacks.loadVariants = loadVariantsFn;
         this.callbacks.renderGrid = renderGridFn;
 
-        // NEU: Custom Modal initialisieren (ersetzt alert/confirm)
+        // Custom Modal initialisieren
         this.initCustomModal();
+
+        // WICHTIG: Event-Listener für die Status-Buttons binden
+        this._bindStatusEvents();
+    },
+
+    /**
+     * Bindet die Klick-Events für die Status-Leiste (Sperren, Status, Mail, Bulk).
+     */
+    _bindStatusEvents() {
+        const statusBtn = document.getElementById('plan-status-toggle-btn');
+        const lockBtn = document.getElementById('plan-lock-btn');
+        const mailBtn = document.getElementById('plan-send-mail-btn');
+        const bulkBtn = document.getElementById('plan-bulk-mode-btn');
+
+        // 1. Status Toggle (In Bearbeitung <-> Fertiggestellt)
+        if (statusBtn) {
+            statusBtn.onclick = async () => {
+                if (!PlanState.isAdmin) return;
+                const currentStatus = PlanState.currentPlanStatus.status;
+                const newStatus = currentStatus === "Fertiggestellt" ? "In Bearbeitung" : "Fertiggestellt";
+
+                try {
+                    await PlanApi.updatePlanStatus(
+                        PlanState.currentYear,
+                        PlanState.currentMonth,
+                        newStatus,
+                        PlanState.currentPlanStatus.is_locked
+                    );
+                } catch (e) {
+                    window.dhfAlert("Fehler", e.message, "error");
+                }
+            };
+        }
+
+        // 2. Sperren Toggle (Schloss)
+        if (lockBtn) {
+            lockBtn.onclick = async () => {
+                if (!PlanState.isAdmin) return;
+                const newLockState = !PlanState.currentPlanStatus.is_locked;
+                try {
+                    await PlanApi.updatePlanStatus(
+                        PlanState.currentYear,
+                        PlanState.currentMonth,
+                        PlanState.currentPlanStatus.status,
+                        newLockState
+                    );
+                } catch (e) {
+                    window.dhfAlert("Fehler", e.message, "error");
+                }
+            };
+        }
+
+        // 3. Rundmail Senden
+        if (mailBtn) {
+            mailBtn.onclick = async () => {
+                if (!PlanState.isAdmin) return;
+                window.dhfConfirm("Rundmail senden", "Möchten Sie alle Mitarbeiter über die Fertigstellung dieses Plans informieren?", async () => {
+                     try {
+                        const res = await PlanApi.sendCompletionNotification(PlanState.currentYear, PlanState.currentMonth);
+                        window.dhfAlert("Versand gestartet", res.message, "success");
+                    } catch (e) {
+                        window.dhfAlert("Fehler", e.message, "error");
+                    }
+                });
+            };
+        }
+
+        // 4. Bulk Mode (Anfragen verwalten)
+        if (bulkBtn) {
+            bulkBtn.onclick = () => {
+                 const actionBar = document.getElementById('bulk-action-bar-plan');
+                 PlanHandlers.toggleBulkMode(bulkBtn, actionBar);
+            };
+        }
+
+        // --- Bulk Action Bar Buttons ---
+        const bulkApprove = document.getElementById('bulk-approve-btn');
+        const bulkReject = document.getElementById('bulk-reject-btn');
+        const bulkCancel = document.getElementById('bulk-cancel-btn');
+
+        if (bulkApprove) bulkApprove.onclick = () => PlanHandlers.performPlanBulkAction('approve', () => {
+             const actionBar = document.getElementById('bulk-action-bar-plan');
+             PlanHandlers.toggleBulkMode(bulkBtn, actionBar);
+        });
+
+        if (bulkReject) bulkReject.onclick = () => PlanHandlers.performPlanBulkAction('reject', () => {
+             const actionBar = document.getElementById('bulk-action-bar-plan');
+             PlanHandlers.toggleBulkMode(bulkBtn, actionBar);
+        });
+
+        if (bulkCancel) bulkCancel.onclick = () => {
+             const actionBar = document.getElementById('bulk-action-bar-plan');
+             PlanHandlers.toggleBulkMode(bulkBtn, actionBar);
+        };
     },
 
     /**
@@ -148,7 +241,7 @@ export const PlanUIHelper = {
         content.classList.remove('type-info', 'type-success', 'type-error', 'type-warning');
 
         let cssType = type;
-        if (type === 'prompt') cssType = 'info'; // Prompts sehen aus wie Info/Standard
+        if (type === 'prompt') cssType = 'info';
         content.classList.add('type-' + cssType);
 
         // Icon setzen
@@ -183,8 +276,8 @@ export const PlanUIHelper = {
             btnYes.onclick = () => {
                 this.closeModal();
                 if (callback) {
-                    if (type === 'prompt') callback(inputEl.value); // Wert übergeben
-                    else callback(); // Einfach ausführen
+                    if (type === 'prompt') callback(inputEl.value);
+                    else callback();
                 }
             };
 
@@ -376,7 +469,6 @@ export const PlanUIHelper = {
             delBtn.style.backgroundColor = "#e74c3c";
             delBtn.style.color = "white";
             delBtn.onclick = async () => {
-                // NEU: Custom Confirm
                 window.dhfConfirm("Variante Löschen", "Möchten Sie diese Variante wirklich löschen?", async () => {
                     try {
                         await apiFetch(`/api/variants/${PlanState.currentVariantId}`, 'DELETE');
@@ -394,7 +486,6 @@ export const PlanUIHelper = {
             pubBtn.style.backgroundColor = "#27ae60";
             pubBtn.style.color = "white";
             pubBtn.onclick = async () => {
-                // NEU: Custom Confirm
                 window.dhfConfirm("Veröffentlichen", "ACHTUNG: Dies überschreibt den aktuellen Hauptplan mit dieser Variante. Fortfahren?", async () => {
                     try {
                         await apiFetch(`/api/variants/${PlanState.currentVariantId}/publish`, 'POST');

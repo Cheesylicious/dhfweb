@@ -113,12 +113,12 @@ export const PlanBanner = {
             // Kachel 3: Tausch-Genehmigungen (Blau) - NUR FÜR ADMIN
             // --- HIER IST DIE WICHTIGE PRÜFUNG ---
             if (countTrade > 0 && PlanState.isAdmin) {
-                addTile(`${countTrade} Tausch-Genehmigung(en)`, '#2980b9', 'fa-exchange-alt', () => window.location.href='anfragen.html');
+                addTile(`${countTrade} Schicht(en) wurde getuascht`, '#2980b9', 'fa-exchange-alt', () => window.location.href='anfragen.html');
             }
 
             // Kachel 4: Markt-Angebote (Grün) - Für Hundeführer
             if (countMarket > 0 && PlanState.isHundefuehrer) {
-                addTile(`${countMarket} neue(s) Angebot(e)`, '#27ae60', 'fa-tags', () => window.location.href='market.html');
+                addTile(`${countMarket} Schicht(en) möchte(m) getauscht werden`, '#27ae60', 'fa-tags', () => window.location.href='market.html');
             }
 
         } catch (e) {
