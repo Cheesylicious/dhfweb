@@ -105,3 +105,14 @@ def reject_request(request_id):
     # Der Service prüft nun, ob es 'pending' (Ablehnen) oder 'approved' (Rollback) ist
     result, status_code = ShiftChangeService.reject_request(request_id, current_user.id)
     return jsonify(result), status_code
+
+
+# --- 5. NEU: Antrag ENDGÜLTIG LÖSCHEN ---
+@shift_change_bp.route('/<int:request_id>', methods=['DELETE'])
+@login_required
+def delete_request(request_id):
+    if current_user.role.name not in ['admin', 'Planschreiber']:
+        return jsonify({"error": "Keine Berechtigung"}), 403
+
+    result, status_code = ShiftChangeService.delete_request(request_id)
+    return jsonify(result), status_code

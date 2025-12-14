@@ -221,7 +221,6 @@ class ShiftChangeService:
     def reject_request(request_id, admin_user_id):
         """
         Lehnt einen Antrag ab ODER wickelt ihn rück ab (Rollback), falls er schon genehmigt war.
-        FIX: Strikte Löschung beim Receiver und Wiederherstellung beim Giver.
         """
         req = ShiftChangeRequest.query.get(request_id)
         if not req:
@@ -272,7 +271,6 @@ class ShiftChangeService:
             # --- 2. DURCHFÜHRUNG ROLLBACK ---
 
             # SCHRITT A: Schicht beim aktuellen Besitzer (Receiver) LÖSCHEN
-            # Wir nutzen Shift.query.filter für präzise Suche
             shifts_to_delete = Shift.query.filter(
                 Shift.user_id == req.replacement_user_id,
                 Shift.date == target_date,
@@ -282,7 +280,6 @@ class ShiftChangeService:
             for s in shifts_to_delete:
                 db.session.delete(s)
 
-            # Socket: Receiver-Zelle leeren
             socket_updates.append({
                 'user_id': req.replacement_user_id,
                 'date': target_date.isoformat(),
@@ -290,7 +287,6 @@ class ShiftChangeService:
                 'is_deleted': True, 'is_trade': False
             })
 
-            # Flush um Löschung sicherzustellen
             db.session.flush()
 
             # SCHRITT B: Schicht beim ursprünglichen Besitzer (Giver) WIEDERHERSTELLEN
@@ -303,7 +299,7 @@ class ShiftChangeService:
             if check_giver:
                 # Falls dort schon was steht (z.B. Frei oder Dummy), überschreiben wir es
                 check_giver.shifttype_id = req.backup_shifttype_id
-                check_giver.is_locked = True  # FIX: Gesperrt lassen, damit es fest steht
+                check_giver.is_locked = True
                 check_giver.is_trade = False
             else:
                 # Neu erstellen
@@ -311,13 +307,12 @@ class ShiftChangeService:
                     user_id=req.requester_id,
                     date=target_date,
                     shifttype_id=req.backup_shifttype_id,
-                    is_locked=True,  # FIX: Gesperrt lassen
+                    is_locked=True,
                     is_trade=False,
                     variant_id=None
                 )
                 db.session.add(new_giver_shift)
 
-            # Socket: Giver-Zelle füllen
             socket_updates.append({
                 'user_id': req.requester_id,
                 'date': target_date.isoformat(),
@@ -328,8 +323,7 @@ class ShiftChangeService:
             # Status Update
             req.status = 'rejected'
 
-            # 4. Market Offer Status zurücksetzen (auf 'rejected' oder 'cancelled')
-            # Wir suchen das zugehörige Angebot
+            # 4. Market Offer Status zurücksetzen
             offer = ShiftMarketOffer.query.filter_by(
                 offering_user_id=req.requester_id,
                 accepted_by_id=req.replacement_user_id,
@@ -338,13 +332,10 @@ class ShiftChangeService:
 
             if offer:
                 offer.status = 'rejected'
-                # Optional: Verknüpfung lösen
                 offer.accepted_by_id = None
 
         # --- FALL B: NORMALES ABLEHNEN (noch pending) ---
         else:
-            # Wenn es noch pending war, müssen wir nur den Status ändern
-            # und das Market Offer wieder freigeben
             if req.original_shift_id and req.reason_type == 'trade':
                 market_offer = ShiftMarketOffer.query.filter_by(
                     shift_id=req.original_shift_id,
@@ -364,7 +355,6 @@ class ShiftChangeService:
         try:
             db.session.commit()
 
-            # Sockets senden
             for update in socket_updates:
                 payload = {
                     'type': 'single',
@@ -381,3 +371,21 @@ class ShiftChangeService:
 
         return {"status": "success", "message": "Antrag wurde abgelehnt / rückgängig gemacht.",
                 "request": req.to_dict()}, 200
+
+    @staticmethod
+    def delete_request(request_id):
+        """
+        Löscht einen Antrag endgültig aus der Datenbank.
+        Nur für Aufräum-Zwecke (Admin).
+        """
+        req = db.session.get(ShiftChangeRequest, request_id)
+        if not req:
+            return {"error": "Antrag nicht gefunden"}, 404
+
+        try:
+            db.session.delete(req)
+            db.session.commit()
+            return {"status": "success", "message": "Eintrag endgültig gelöscht."}, 200
+        except Exception as e:
+            db.session.rollback()
+            return {"error": f"Fehler beim Löschen: {str(e)}"}, 500
