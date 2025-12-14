@@ -60,7 +60,16 @@ export const PlanUIHelper = {
 
             .oracle-icon { font-size: 48px; margin-bottom: 20px; filter: drop-shadow(0 0 10px currentColor); animation: floatIcon 3s ease-in-out infinite; }
             .oracle-title { font-size: 1.4rem; font-weight: 600; margin-bottom: 10px; color: #ecf0f1; font-family: 'Poppins', sans-serif; }
-            .oracle-text { font-size: 1rem; color: #bdc3c7; margin-bottom: 30px; line-height: 1.6; }
+            .oracle-text { font-size: 1rem; color: #bdc3c7; margin-bottom: 20px; line-height: 1.6; }
+
+            /* Input Feld für Prompts */
+            .oracle-input {
+                width: 100%; padding: 10px; margin-bottom: 20px;
+                background: rgba(0,0,0,0.3); border: 1px solid #9b59b6;
+                color: #fff; border-radius: 5px; box-sizing: border-box;
+                font-family: 'Poppins', sans-serif; display: none;
+            }
+            .oracle-input:focus { outline: none; box-shadow: 0 0 10px rgba(155, 89, 182, 0.5); }
 
             .oracle-buttons { display: flex; gap: 15px; justify-content: center; }
             .oracle-btn {
@@ -100,6 +109,7 @@ export const PlanUIHelper = {
                     <div id="dhf-oracle-icon" class="oracle-icon"><i class="fas fa-info-circle"></i></div>
                     <div id="dhf-oracle-title" class="oracle-title">Hinweis</div>
                     <div id="dhf-oracle-text" class="oracle-text">...</div>
+                    <input type="text" id="dhf-oracle-input" class="oracle-input" placeholder="Eingabe...">
                     <div id="dhf-oracle-buttons" class="oracle-buttons">
                         <button class="oracle-btn" id="dhf-oracle-ok">OK</button>
                     </div>
@@ -111,48 +121,71 @@ export const PlanUIHelper = {
         // 3. Globale Funktionen bereitstellen
         window.dhfAlert = (title, text, type='info') => this.openModal(title, text, type, null);
         window.dhfConfirm = (title, text, onYes) => this.openModal(title, text, 'warning', onYes);
+        // NEU: Prompt Funktion
+        window.dhfPrompt = (title, text, defaultValue, onYes) => this.openModal(title, text, 'prompt', onYes, defaultValue);
 
         // Klick außerhalb schließt Modal (User Request)
         const overlay = document.getElementById('dhf-oracle-modal');
         overlay.onclick = (e) => {
-            if (e.target === overlay) this.closeModal();
+            // Bei Prompt schließen wir nicht einfach so, um Datenverlust zu vermeiden
+            const isPrompt = document.getElementById('dhf-oracle-input').style.display === 'block';
+            if (e.target === overlay && !isPrompt) this.closeModal();
         };
     },
 
-    openModal(title, text, type, callback) {
+    openModal(title, text, type, callback, defaultValue = '') {
         const overlay = document.getElementById('dhf-oracle-modal');
         const content = document.getElementById('dhf-oracle-content');
         const titleEl = document.getElementById('dhf-oracle-title');
         const textEl = document.getElementById('dhf-oracle-text');
         const iconEl = document.getElementById('dhf-oracle-icon');
+        const inputEl = document.getElementById('dhf-oracle-input');
         const btnContainer = document.getElementById('dhf-oracle-buttons');
 
         if (!overlay) return;
 
-        // Reset & Set Type
-        content.className = 'oracle-modal-content type-' + type;
+        // Reset Styles
+        content.classList.remove('type-info', 'type-success', 'type-error', 'type-warning');
 
-        // Icon
+        let cssType = type;
+        if (type === 'prompt') cssType = 'info'; // Prompts sehen aus wie Info/Standard
+        content.classList.add('type-' + cssType);
+
+        // Icon setzen
         let iconClass = 'fa-info-circle';
         if (type === 'error') iconClass = 'fa-exclamation-circle';
         if (type === 'success') iconClass = 'fa-check-circle';
-        if (type === 'warning') iconClass = 'fa-question-circle'; // Für Confirms
+        if (type === 'warning' || type === 'prompt') iconClass = 'fa-question-circle';
         iconEl.innerHTML = `<i class="fas ${iconClass}"></i>`;
 
         titleEl.textContent = title;
-        // Einfaches HTML erlauben (z.B. <br>)
         textEl.innerHTML = text.replace(/\n/g, '<br>');
+
+        // Input Feld Logik
+        if (type === 'prompt') {
+            inputEl.style.display = 'block';
+            inputEl.value = defaultValue || '';
+            setTimeout(() => inputEl.focus(), 100); // Fokus setzen nach Animation
+        } else {
+            inputEl.style.display = 'none';
+            inputEl.value = '';
+        }
 
         btnContainer.innerHTML = '';
 
-        if (callback) {
-            // CONFIRM MODUS
+        if (type === 'warning' || type === 'prompt') {
+            // CONFIRM / PROMPT MODUS
             const btnYes = document.createElement('button');
             btnYes.className = 'oracle-btn confirm';
-            btnYes.textContent = 'Ja, fortfahren';
+            btnYes.textContent = (type === 'prompt') ? 'OK' : 'Ja, fortfahren';
+
+            // Callback Logik
             btnYes.onclick = () => {
                 this.closeModal();
-                callback();
+                if (callback) {
+                    if (type === 'prompt') callback(inputEl.value); // Wert übergeben
+                    else callback(); // Einfach ausführen
+                }
             };
 
             const btnNo = document.createElement('button');
@@ -160,14 +193,25 @@ export const PlanUIHelper = {
             btnNo.textContent = 'Abbrechen';
             btnNo.onclick = () => this.closeModal();
 
-            btnContainer.appendChild(btnNo); // Nein links
-            btnContainer.appendChild(btnYes); // Ja rechts
+            btnContainer.appendChild(btnNo);
+            btnContainer.appendChild(btnYes);
+
+            // Enter-Taste im Input
+            if (type === 'prompt') {
+                inputEl.onkeydown = (e) => {
+                    if(e.key === 'Enter') btnYes.click();
+                };
+            }
+
         } else {
-            // ALERT MODUS
+            // ALERT MODUS (Info, Error, Success)
             const btnOk = document.createElement('button');
             btnOk.className = 'oracle-btn';
             btnOk.textContent = 'Verstanden';
-            btnOk.onclick = () => this.closeModal();
+            btnOk.onclick = () => {
+                this.closeModal();
+                if (callback) callback();
+            };
             btnContainer.appendChild(btnOk);
         }
 

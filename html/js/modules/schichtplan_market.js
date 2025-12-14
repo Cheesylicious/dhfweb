@@ -123,17 +123,18 @@ export const MarketModule = {
         btn.style.width = '100%';
         btn.innerHTML = '<i class="fas fa-undo"></i> Angebot zurückziehen';
 
-        btn.onclick = async () => {
-             if(confirm("Möchtest du dieses Angebot wirklich aus der Tauschbörse entfernen?")) {
+        btn.onclick = () => {
+             // FIX: dhfConfirm statt nativem confirm
+             window.dhfConfirm("Zurückziehen", "Möchtest du dieses Angebot wirklich aus der Tauschbörse entfernen?", async () => {
                  try {
                     // DIREKTER API CALL
                     await apiFetch(`/api/market/offer/${offer.id}`, 'DELETE');
                     if(reloadCallback) reloadCallback();
                     if(closeCallback) closeCallback();
                  } catch(e) {
-                     alert("Fehler: " + e.message);
+                     window.dhfAlert("Fehler", e.message, "error");
                  }
-             }
+             });
         };
         container.appendChild(btn);
     },
@@ -144,18 +145,19 @@ export const MarketModule = {
         btn.style.width = '100%';
         btn.innerHTML = '<i class="fas fa-share-alt"></i> In Tauschbörse anbieten';
 
-        btn.onclick = async () => {
-             const note = prompt("Notiz für Kollegen (optional, z.B. 'Suche Wochenende'):", "");
-             if (note !== null) {
+        btn.onclick = () => {
+             // FIX: dhfPrompt statt nativem prompt
+             window.dhfPrompt("Anbieten", "Notiz für Kollegen (optional):", "", async (note) => {
+                 // Note kann leer sein, das ist ok
                  try {
                     // DIREKTER API CALL
                     await apiFetch('/api/market/offer', 'POST', { shift_id: shift.id, note: note });
                     if(reloadCallback) reloadCallback();
                     if(closeCallback) closeCallback();
                  } catch(e) {
-                     alert("Fehler: " + e.message);
+                     window.dhfAlert("Fehler", e.message, "error");
                  }
-             }
+             });
         };
         container.appendChild(btn);
     },
@@ -166,22 +168,23 @@ export const MarketModule = {
         btn.style.width = '100%';
         btn.innerHTML = `<i class="fas fa-hand-holding-heart"></i> Übernehmen (${offer.shift_type_abbr})`;
 
-        btn.onclick = async () => {
+        btn.onclick = () => {
             const dateDisplay = new Date(dateStr).toLocaleDateString('de-DE');
             const msg = `Möchtest du die Schicht (${offer.shift_type_abbr}) am ${dateDisplay} von ${offer.offering_user_name} wirklich übernehmen?\n\nDies erstellt einen Antrag, der noch genehmigt werden muss (oder sofort wirksam wird, falls du Admin bist).`;
 
-            if (confirm(msg)) {
+            // FIX: dhfConfirm statt nativem confirm
+            window.dhfConfirm("Übernehmen", msg, async () => {
                 try {
                     // DIREKTER API CALL
                     const res = await apiFetch(`/api/market/accept/${offer.id}`, 'POST');
-                    alert(res.message || "Erfolgreich beantragt!");
+                    window.dhfAlert("Erfolg", res.message || "Erfolgreich beantragt!", "success");
 
                     if(reloadCallback) reloadCallback();
                     if(closeCallback) closeCallback();
                 } catch (e) {
-                    alert("Fehler: " + e.message);
+                    window.dhfAlert("Fehler", e.message, "error");
                 }
-            }
+            });
         };
         container.appendChild(btn);
     },

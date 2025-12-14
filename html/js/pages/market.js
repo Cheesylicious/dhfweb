@@ -30,6 +30,21 @@ try {
         throw new Error("Kein Zugriff auf Tauschbörse");
     }
 
+    // --- NEU: Custom Modal Initialisieren (falls nicht via ui_helper geladen, hier manuell) ---
+    // Da market.js keine Module aus schichtplan_* importiert, müssen wir sicherstellen,
+    // dass die Funktionen da sind. Normalerweise über plan_ui_helper.
+    // Aber da dies eine eigene Seite ist, importieren wir den UI Helper hier NICHT (um Abhängigkeiten klein zu halten),
+    // SONDERN verlassen uns darauf, dass er bereits GLOBAL verfügbar ist ODER wir kopieren die Init-Logik.
+    // BESSER: Wir importieren den Helper auch hier.
+
+    // Wir nutzen hier dynamischen Import, falls er verfügbar ist, oder implementieren die Globals.
+    // DA WIR ABER OBEN KEINEN IMPORT HABEN -> Wir fügen ihn hinzu!
+
+    import('../modules/schichtplan_ui_helper.js').then(module => {
+        // Init nur für Modal-Styles
+        module.PlanUIHelper.initCustomModal();
+    });
+
     // Daten laden
     loadOffers();
 
@@ -192,40 +207,39 @@ window.jumpToOffer = function(dateStr, userId) {
         window.location.href = 'schichtplan.html';
     } catch (e) {
         console.error("Fehler beim Speichern des Sprungziels:", e);
-        alert("Fehler: Konnte Sprungziel nicht speichern.");
+        window.dhfAlert("Fehler", "Konnte Sprungziel nicht speichern.", "error");
     }
 };
 
 window.acceptOffer = async function(offerId, dateStr, type) {
     const formattedDate = new Date(dateStr).toLocaleDateString('de-DE');
+    const msg = `Möchtest du die Schicht ${type} am ${formattedDate} wirklich übernehmen?\n\nDies erstellt einen Antrag, den der Admin noch genehmigen muss.`;
 
-    if (!confirm(`Möchtest du die Schicht ${type} am ${formattedDate} wirklich übernehmen?\n\nDies erstellt einen Antrag, den der Admin noch genehmigen muss.`)) {
-        return;
-    }
-
-    try {
-        const res = await apiFetch(`/api/market/accept/${offerId}`, 'POST');
-        alert(res.message || "Erfolgreich beantragt!");
-        loadOffers(); // Reload UI
-        // Event feuern für Notifications Update
-        window.dispatchEvent(new CustomEvent('dhf:notification_update'));
-    } catch (e) {
-        alert("Fehler: " + e.message);
-    }
+    // FIX: dhfConfirm
+    window.dhfConfirm("Schicht übernehmen", msg, async () => {
+        try {
+            const res = await apiFetch(`/api/market/accept/${offerId}`, 'POST');
+            window.dhfAlert("Erfolg", res.message || "Erfolgreich beantragt!", "success");
+            loadOffers(); // Reload UI
+            // Event feuern für Notifications Update
+            window.dispatchEvent(new CustomEvent('dhf:notification_update'));
+        } catch (e) {
+            window.dhfAlert("Fehler", e.message, "error");
+        }
+    });
 };
 
 window.cancelOffer = async function(offerId) {
-    if (!confirm("Möchtest du dieses Angebot wirklich aus der Tauschbörse entfernen?")) {
-        return;
-    }
-
-    try {
-        const res = await apiFetch(`/api/market/offer/${offerId}`, 'DELETE');
-        alert(res.message);
-        loadOffers();
-    } catch (e) {
-        alert("Fehler: " + e.message);
-    }
+    // FIX: dhfConfirm
+    window.dhfConfirm("Angebot zurückziehen", "Möchtest du dieses Angebot wirklich aus der Tauschbörse entfernen?", async () => {
+        try {
+            const res = await apiFetch(`/api/market/offer/${offerId}`, 'DELETE');
+            // Keine Meldung bei Erfolg, nur Reload, ist flüssiger
+            loadOffers();
+        } catch (e) {
+            window.dhfAlert("Fehler", e.message, "error");
+        }
+    });
 };
 
 // Helper

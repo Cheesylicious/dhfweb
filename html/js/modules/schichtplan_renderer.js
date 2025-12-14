@@ -55,12 +55,15 @@ export const PlanRenderer = {
         const shiftType = shift ? shift.shift_type : null;
         const violationKey = `${userId}-${day}`;
 
-        // --- MARKTPLATZ CHECK (NEU) ---
-        // Wir prüfen, ob diese Schicht in der Tauschbörse ist
-        // Struktur von currentMarketOffers: { "userId-dateStr": OfferObject }
+        // --- MARKTPLATZ CHECK ---
         const marketOffer = (PlanState.currentMarketOffers || {})[key];
-        // Nur anzeigen für Admin oder Hundeführer
-        const showMarket = marketOffer && (PlanState.isAdmin || PlanState.isHundefuehrer);
+
+        // WICHTIG: Marktplatz-Angebote NUR im Hauptplan anzeigen!
+        // Wenn wir in einer Variante sind (currentVariantId !== null), ignorieren wir Angebote.
+        const isMainPlan = (PlanState.currentVariantId === null);
+
+        // Nur anzeigen, wenn Hauptplan UND Angebot existiert UND Rolle passt
+        const showMarket = isMainPlan && marketOffer && (PlanState.isAdmin || PlanState.isHundefuehrer);
 
         // --- Check ob heute ---
         const today = new Date();
@@ -76,7 +79,6 @@ export const PlanRenderer = {
         // Marktplatz-Klasse (für Blinken)
         if (showMarket) {
             cellClasses += ' market-offer-active';
-            // Eigene Angebote anders markieren? Optional via CSS über data-Attribute
         }
 
         // Klasse hinzufügen, wenn es heute ist
@@ -92,13 +94,11 @@ export const PlanRenderer = {
         delete cell.dataset.queryId;
         delete cell.dataset.marketOfferId; // Aufräumen
 
-        // --- KORREKTUR START: Filter angepasst für "Thema des Tages" ---
         const queriesForCell = PlanState.currentShiftQueries.filter(q =>
             q.shift_date === dateStr &&
             q.status === 'offen' &&
             (q.target_user_id === userId || q.target_user_id === null)
         );
-        // --- KORREKTUR ENDE ---
 
         const wunschQuery = queriesForCell.find(q => isWunschAnfrage(q));
         const notizQuery = queriesForCell.find(q => !isWunschAnfrage(q));

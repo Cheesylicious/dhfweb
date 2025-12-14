@@ -429,26 +429,30 @@ export const PlanInteraction = {
     // --- Actions (Tausch) ---
 
     async confirmApproveTrade(reqId) {
-        if (!confirm("Diesen Tausch genehmigen?")) return;
-        try {
-            await PlanApi.approveShiftChangeRequest(reqId);
-            // Modal schließen (Socket macht Refresh)
-            document.getElementById('click-action-modal').style.display = 'none';
-        } catch (e) {
-            alert("Fehler: " + e.message);
-        }
+        // FIX: dhfConfirm statt nativem confirm
+        window.dhfConfirm("Genehmigen", "Diesen Tausch genehmigen?", async () => {
+            try {
+                await PlanApi.approveShiftChangeRequest(reqId);
+                // Modal schließen (Socket macht Refresh)
+                document.getElementById('click-action-modal').style.display = 'none';
+            } catch (e) {
+                window.dhfAlert("Fehler", e.message, "error");
+            }
+        });
     },
 
     async confirmRejectTrade(reqId) {
-        if (!confirm("Tausch ablehnen?")) return;
-        try {
-            await PlanApi.rejectShiftChangeRequest(reqId);
-            document.getElementById('click-action-modal').style.display = 'none';
-            // Manueller Reload um Pending-Status wegzubekommen
-            if (this.renderGrid) this.renderGrid();
-        } catch (e) {
-            alert("Fehler: " + e.message);
-        }
+        // FIX: dhfConfirm statt nativem confirm
+        window.dhfConfirm("Ablehnen", "Tausch ablehnen?", async () => {
+            try {
+                await PlanApi.rejectShiftChangeRequest(reqId);
+                document.getElementById('click-action-modal').style.display = 'none';
+                // Manueller Reload um Pending-Status wegzubekommen
+                if (this.renderGrid) this.renderGrid();
+            } catch (e) {
+                window.dhfAlert("Fehler", e.message, "error");
+            }
+        });
     },
 
     // --- Konversation ---
