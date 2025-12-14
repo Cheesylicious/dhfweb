@@ -17,6 +17,9 @@ const responseModal = document.getElementById('response-modal');
 const candidatesModal = document.getElementById('candidates-modal');
 const candidatesListUl = document.getElementById('candidates-list-ul');
 
+// Timer Variable für das Modal
+let modalTimerInterval = null;
+
 // --- 1. Initialisierung ---
 try {
     const authData = initAuthCheck();
@@ -210,8 +213,12 @@ function createOfferElement(offer, type) {
             interestBadge = `<span class="nav-badge" style="display:inline-block; position:relative; top:0; margin-left:5px; background:#2ecc71;">${offer.interested_count}</span>`;
         }
 
+        // Deadline auslesen (falls vorhanden)
+        const deadlineStr = offer.auto_accept_deadline || '';
+
+        // NEU: Deadline übergeben
         actionsHtml = `
-            <button class="btn-mini btn-candidates" onclick="window.openCandidatesModalMarket(${offer.id})" title="Interessenten verwalten">
+            <button class="btn-mini btn-candidates" onclick="window.openCandidatesModalMarket(${offer.id}, '${deadlineStr}')" title="Interessenten verwalten">
                 <i class="fas fa-users"></i> ${interestBadge}
             </button>
             ${jumpBtnHtml}
@@ -307,8 +314,14 @@ if (submitRespBtn) {
 
 // --- 4. KANDIDATEN VERWALTEN (Anbieter) - ERWEITERT ---
 
-async function openCandidatesModal(offerId) {
+async function openCandidatesModal(offerId, deadlineIso) {
     if (!candidatesModal || !candidatesListUl) return;
+
+    // Interval aufräumen
+    if (modalTimerInterval) {
+        clearInterval(modalTimerInterval);
+        modalTimerInterval = null;
+    }
 
     candidatesModal.style.display = 'block';
     candidatesListUl.innerHTML = '<li class="empty-state"><i class="fas fa-spinner fa-spin"></i> Lade Daten...</li>';
@@ -324,10 +337,15 @@ async function openCandidatesModal(offerId) {
 
         // A. Interessenten (Mit Zusatzinfos)
         const interested = responses.filter(r => r.response_type === 'interested');
+
+        // --- TIMER LOGIK ---
+        // Wenn es Interessenten gibt UND eine Deadline existiert, zeigen wir den Timer beim ERSTEN (ältesten) an.
+        // `interested` ist bereits sortiert (FIFO) durch das Backend.
+
         if (interested.length > 0) {
             candidatesListUl.innerHTML += '<li class="group-header" style="color:#2ecc71; font-weight:bold; margin-top:5px; padding:5px; border-bottom:1px solid rgba(46, 204, 113, 0.3);">Interessiert:</li>';
 
-            interested.forEach(r => {
+            interested.forEach((r, index) => {
                 const li = document.createElement('li');
                 li.className = 'candidate-item';
 
@@ -336,8 +354,6 @@ async function openCandidatesModal(offerId) {
                 const dateStr = dateObj.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' });
                 const timeStr = dateObj.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
 
-                // Stunden-Badge Farbe (wenn Stunden steigen -> eher rot/gelb, sonst grün)
-                // Einfache Logik: Wir zeigen einfach den Anstieg.
                 const hoursHtml = `
                     <div style="font-size:0.8rem; margin-top:2px; color:#bbb;">
                         <i class="fas fa-clock"></i> ${r.current_hours}h
@@ -345,6 +361,37 @@ async function openCandidatesModal(offerId) {
                         <span style="font-weight:bold; color:#fff;">${r.new_hours}h</span>
                     </div>
                 `;
+
+                // --- TIMER ELEMENT ---
+                let timerHtml = '';
+                if (index === 0 && deadlineIso) {
+                    const deadline = new Date(deadlineIso);
+                    const now = new Date();
+
+                    if (deadline > now) {
+                        timerHtml = `<div id="auto-accept-timer" style="font-size:0.8rem; color:#e74c3c; font-weight:bold; margin-top:5px; border:1px solid #e74c3c; padding:2px 5px; border-radius:4px; display:inline-block;">
+                            <i class="fas fa-hourglass-half"></i> Auto-Akzeptiert in: <span id="timer-val">...</span>
+                        </div>`;
+
+                        // Start Timer
+                        modalTimerInterval = setInterval(() => {
+                            const nowLoop = new Date();
+                            const diff = deadline - nowLoop;
+                            if (diff <= 0) {
+                                if(document.getElementById('timer-val')) document.getElementById('timer-val').textContent = "Wird verarbeitet...";
+                                clearInterval(modalTimerInterval);
+                                // Optional: reloadMarketView() um das Ergebnis zu sehen
+                            } else {
+                                const hours = Math.floor(diff / (1000 * 60 * 60));
+                                const minutes = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+                                const seconds = Math.floor((diff % (1000 * 60)) / 1000);
+                                const tStr = `${hours}h ${minutes}m ${seconds}s`;
+                                if(document.getElementById('timer-val')) document.getElementById('timer-val').textContent = tStr;
+                            }
+                        }, 1000);
+                    }
+                }
+                // -------------------
 
                 li.innerHTML = `
                     <div style="flex-grow:1;">
@@ -356,6 +403,7 @@ async function openCandidatesModal(offerId) {
                         </div>
                         ${hoursHtml}
                         <div style="font-size:0.8rem; color:#f1c40f; margin-top:2px;">"${escapeHtml(r.note || '-')}"</div>
+                        ${timerHtml}
                     </div>
                     <div style="margin-left:10px;">
                         <button class="btn-mini btn-accept" onclick="window.selectCandidate(${offerId}, ${r.user_id}, '${escapeHtml(r.user_name)}')">
@@ -419,6 +467,7 @@ async function selectCandidate(offerId, candidateId, candidateName) {
     try {
         await apiFetch(`/api/market/offer/${offerId}/select_candidate`, 'POST', { candidate_id: candidateId });
         if(candidatesModal) candidatesModal.style.display = 'none';
+        if(modalTimerInterval) clearInterval(modalTimerInterval); // Timer stoppen
         loadMarketView();
         alert("Tausch eingeleitet! Der Admin wurde informiert.");
     } catch(e) {

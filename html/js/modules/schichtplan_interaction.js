@@ -148,15 +148,24 @@ export const PlanInteraction = {
             hasContent = true;
         }
 
-        // 2. Offene Tausch-Anträge prüfen (Pending Request für diese Zelle)
-        const pendingReq = PlanState.currentChangeRequests.find(req =>
-            req.status === 'pending' &&
+        // 2. Tausch-Anträge prüfen (Pending UND Approved für Rollback)
+        // Wir suchen Requests, die diesen User an diesem Tag betreffen (als Target oder Replacement)
+        const activeReq = PlanState.currentChangeRequests.find(req =>
+            (req.status === 'pending' || req.status === 'approved') &&
             (req.shift_date ? req.shift_date.split('T')[0] : null) === dateStr &&
-            (req.target_user_id === user.id || req.replacement_user_id === user.id)
+            // Check: Ist der angeklickte User beteiligt?
+            // Bei Pending: target (Giver) oder replacement (Receiver)
+            // Bei Approved: Der Request ist "fertig", aber wir brauchen ihn für Rollback.
+            // ACHTUNG: Bei Approved ist der Giver nicht mehr in der Schicht!
+            // Wir zeigen es nur an, wenn der User der RECEIVER ist (der jetzt die Schicht hat)
+            (
+                (req.status === 'pending' && (req.target_user_id === user.id || req.replacement_user_id === user.id)) ||
+                (req.status === 'approved' && req.replacement_user_id === user.id && req.reason_type === 'trade')
+            )
         );
 
-        if (pendingReq && (PlanState.isAdmin || PlanState.isPlanschreiber)) {
-            this._renderTradeSection(pendingReq, sections.adminShifts);
+        if (activeReq && (PlanState.isAdmin || PlanState.isPlanschreiber)) {
+            this._renderTradeSection(activeReq, sections.adminShifts);
             hasContent = true;
         }
 
@@ -236,7 +245,7 @@ export const PlanInteraction = {
                     }
                     hasContent = true;
 
-                } else if (pendingReq) {
+                } else if (activeReq && activeReq.status === 'pending') {
                     // Wenn ein Tausch läuft
                      if (sections.hfRequests) {
                          sections.hfRequests.style.display = 'block';
@@ -271,20 +280,37 @@ export const PlanInteraction = {
 
     // --- Helper für Modal-Inhalt ---
 
-    _renderTradeSection(pendingReq, anchorElement) {
+    _renderTradeSection(req, anchorElement) {
         const tradeSection = document.createElement('div');
         tradeSection.id = 'cam-trade-section';
         tradeSection.className = 'cam-section';
-        tradeSection.innerHTML = `
-            <div class="cam-section-title" style="color:#f1c40f;">⚠️ Offener Tausch</div>
-            <div style="font-size:11px; margin-bottom:5px; color:#ccc;">
-                ${pendingReq.original_user_name} ➔ ${pendingReq.replacement_name}
-            </div>
-            <div style="display:grid; grid-template-columns:1fr 1fr; gap:5px;">
-                <button class="cam-button approve" onclick="window.confirmApproveTrade(${pendingReq.id})">Genehmigen</button>
-                <button class="cam-button reject" onclick="window.confirmRejectTrade(${pendingReq.id})">Ablehnen</button>
-            </div>
-        `;
+
+        if (req.status === 'pending') {
+            // PENDING: Genehmigen / Ablehnen
+            tradeSection.innerHTML = `
+                <div class="cam-section-title" style="color:#f1c40f;">⚠️ Offener Tausch</div>
+                <div style="font-size:11px; margin-bottom:5px; color:#ccc;">
+                    ${req.original_user_name} ➔ ${req.replacement_name}
+                </div>
+                <div style="display:grid; grid-template-columns:1fr 1fr; gap:5px;">
+                    <button class="cam-button approve" onclick="window.confirmApproveTrade(${req.id})">Genehmigen</button>
+                    <button class="cam-button reject" onclick="window.confirmRejectTrade(${req.id})">Ablehnen</button>
+                </div>
+            `;
+        } else {
+            // APPROVED (Trade): Rückgängig machen (Rollback)
+            tradeSection.innerHTML = `
+                <div class="cam-section-title" style="color:#2ecc71;">✅ Genehmigter Tausch</div>
+                <div style="font-size:11px; margin-bottom:5px; color:#ccc;">
+                    ${req.original_user_name} ➔ ${req.replacement_name}
+                </div>
+                <div style="margin-top:5px;">
+                    <button class="cam-button reject" style="width:100%;" onclick="window.confirmRejectTrade(${req.id})">
+                        <i class="fas fa-undo"></i> Tausch rückgängig machen
+                    </button>
+                </div>
+            `;
+        }
 
         const modal = document.getElementById('click-action-modal');
         if (anchorElement && anchorElement.parentNode) {
@@ -464,7 +490,14 @@ export const PlanInteraction = {
 
     async confirmRejectTrade(reqId) {
         // FIX: dhfConfirm statt nativem confirm
-        window.dhfConfirm("Ablehnen", "Tausch ablehnen?", async () => {
+        // Text dynamisch machen: Ablehnen (Pending) vs. Rückgängig (Approved)
+        // Wir können das nicht direkt wissen ohne Daten, aber für den User ist "Rückgängig" verständlicher bei Approved.
+        // Da wir den Status hier nicht explizit haben (nur reqId), nutzen wir einen neutralen Text oder schauen ob wir den Status haben.
+        // In _renderTradeSection wissen wir den Status.
+        // Wir könnten den Text im HTML-Button übergeben? Nein.
+        // Egal, "Ablehnen / Rückgängig" passt immer.
+
+        window.dhfConfirm("Aktion bestätigen", "Diesen Vorgang ablehnen bzw. rückgängig machen?", async () => {
             try {
                 await PlanApi.rejectShiftChangeRequest(reqId);
                 document.getElementById('click-action-modal').style.display = 'none';
