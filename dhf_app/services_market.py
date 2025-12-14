@@ -1,12 +1,12 @@
 # dhf_app/services_market.py
 
-from datetime import timedelta, datetime
+from datetime import timedelta, datetime, date
 from sqlalchemy import and_, or_
 from sqlalchemy.orm import joinedload
 from .extensions import db
 # KORREKTUR: ShiftMarketOffer muss aus models_market importiert werden!
 from .models import User, Shift, ShiftType
-from .models_market import ShiftMarketOffer
+from .models_market import ShiftMarketOffer, ShiftMarketResponse
 
 
 class MarketService:
@@ -16,16 +16,99 @@ class MarketService:
     """
 
     @staticmethod
+    def cleanup_old_offers():
+        """
+        Markiert Angebote als abgelaufen, wenn das Schichtdatum in der Vergangenheit liegt
+        ODER das Angebot älter als 7 Tage ist.
+        """
+        try:
+            now = datetime.utcnow()
+            seven_days_ago = now - timedelta(days=7)
+            today_date = datetime.now().date()
+
+            # Finde aktive Angebote, deren Schichtdatum in der Vergangenheit liegt
+            past_shifts = ShiftMarketOffer.query.join(Shift).filter(
+                ShiftMarketOffer.status == 'active',
+                Shift.date < today_date
+            ).all()
+
+            # Finde aktive Angebote, die älter als 7 Tage sind
+            old_offers = ShiftMarketOffer.query.filter(
+                ShiftMarketOffer.status == 'active',
+                ShiftMarketOffer.created_at < seven_days_ago
+            ).all()
+
+            to_expire = set(past_shifts + old_offers)
+
+            count = 0
+            for offer in to_expire:
+                offer.status = 'expired'
+                count += 1
+
+            if count > 0:
+                db.session.commit()
+                print(f"[Market] {count} alte Angebote auf 'expired' gesetzt.")
+        except Exception as e:
+            print(f"[Market] Fehler beim Cleanup: {e}")
+
+    @staticmethod
+    def check_and_archive_if_all_declined(offer_id):
+        """
+        Prüft, ob für ein Angebot ALLE potenziellen Kandidaten abgelehnt haben.
+        Wenn ja, wird auf 'archived_no_interest' gesetzt, ABER NUR,
+        wenn es die 7-Tage-Frist überschritten hat ODER in der Vergangenheit liegt.
+        """
+        offer = db.session.get(ShiftMarketOffer, offer_id)
+        if not offer or offer.status != 'active':
+            return
+
+        # 1. Alle potenziellen Kandidaten ermitteln (die DÜRFEN)
+        potential = MarketService.get_potential_candidates(offer_id)
+        potential_ids = {p['id'] for p in potential}
+
+        # Wenn es keine potentiellen Kandidaten gibt, wird der Status nicht geändert
+        if not potential_ids:
+            return
+
+        # 2. Alle Reaktionen abrufen
+        responses = ShiftMarketResponse.query.filter_by(offer_id=offer_id).all()
+
+        # Check auf Interesse
+        has_interest = any(r.response_type == 'interested' for r in responses)
+        if has_interest:
+            return
+
+        # IDs der Ablehner
+        declined_ids = {r.user_id for r in responses if r.response_type == 'declined'}
+
+        # 3. Prüfen: Haben alle Potenziellen ABGELEHNT?
+        all_potential_declined = potential_ids.issubset(declined_ids)
+
+        if all_potential_declined:
+            # 4. PRÜFUNG DER ZEITFRIST (7 Tage oder Shift-Datum in der Vergangenheit)
+            offer_date = offer.shift.date if offer.shift else date.today()
+            is_past_shift = offer_date < date.today()
+            is_older_than_7_days = (datetime.utcnow() - offer.created_at) > timedelta(days=7)
+
+            if is_past_shift or is_older_than_7_days:
+                offer.status = 'archived_no_interest'
+                db.session.commit()
+                print(
+                    f"[Market] Angebot {offer.id} archiviert (Kein Interesse & Frist abgelaufen/Datum in Vergangenheit).")
+            # Andernfalls bleibt der Status "active", der Anbieter weiß Bescheid (da keine Interessenten)
+            # und das System wartet die Frist ab.
+
+    @staticmethod
     def get_market_history(limit=50):
         """
-        Holt die Historie abgeschlossener oder abgebrochener Tausche.
+        Holt die Historie abgeschlossener, abgebrochener, abgelaufener und archivierter Tausche.
         """
         history = ShiftMarketOffer.query.options(
             joinedload(ShiftMarketOffer.shift).joinedload(Shift.shift_type),
             joinedload(ShiftMarketOffer.offering_user),
             joinedload(ShiftMarketOffer.accepted_by_user)
         ).filter(
-            ShiftMarketOffer.status.in_(['done', 'cancelled', 'rejected'])
+            ShiftMarketOffer.status.in_(['done', 'cancelled', 'rejected', 'expired', 'archived_no_interest'])
         ).order_by(ShiftMarketOffer.created_at.desc()).limit(limit).all()
 
         results = []
@@ -41,11 +124,16 @@ class MarketService:
             # Hinweis: Bei 'done' Trades wurde die Schicht gelöscht/neu vergeben.
             # Hier zeigen wir an, was noch im Offer-Objekt referenzierbar ist.
 
+            status_display = offer.status
+            if offer.status == 'archived_no_interest': status_display = 'Kein Interesse'
+            if offer.status == 'expired': status_display = 'Abgelaufen'
+
             results.append({
                 "id": offer.id,
                 "offering_user": f"{offer.offering_user.vorname} {offer.offering_user.name}" if offer.offering_user else "Unbekannt",
                 "accepted_by": f"{offer.accepted_by_user.vorname} {offer.accepted_by_user.name}" if offer.accepted_by_user else "-",
-                "status": offer.status,
+                "status": status_display,
+                "raw_status": offer.status,
                 "note": offer.note,
                 "shift_info": f"{shift_abbr} am {shift_date_str}",
                 "created_at": offer.created_at.isoformat()
@@ -62,7 +150,7 @@ class MarketService:
             return False, "Eintrag nicht gefunden"
 
         # Nur Historie löschen
-        if offer.status == 'active' or offer.status == 'pending':
+        if offer.status in ['active', 'pending']:
             return False, "Aktive oder laufende Angebote können hier nicht gelöscht werden."
 
         db.session.delete(offer)
