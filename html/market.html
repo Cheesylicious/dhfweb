@@ -5,7 +5,8 @@
     <title>Tauschbörse - DHF-Planer</title>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
-    <link rel="stylesheet" href="css/themes.css"> <style>
+    <link rel="stylesheet" href="css/themes.css">
+    <style>
         @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap');
 
         body {
@@ -148,7 +149,7 @@
         .offer-user { font-size: 0.85rem; color: #ccc; }
         .offer-note { font-size: 0.8rem; color: #f39c12; font-style: italic; margin-top: 2px; }
 
-        .offer-actions { margin-left: 10px; display: flex; gap: 8px; }
+        .offer-actions { margin-left: 10px; display: flex; gap: 8px; align-items: center;}
 
         /* Buttons */
         .btn-mini {
@@ -160,6 +161,12 @@
         .btn-jump { background: #3498db; }
         .btn-cancel { background: #c0392b; }
         .btn-candidates { background: #8e44ad; } /* Lila für Kandidaten */
+
+        .btn-primary {
+             background: #3498db; color: white; border: none; padding: 10px 20px;
+             border-radius: 5px; cursor: pointer; font-size: 14px; transition: opacity 0.2s;
+        }
+        .btn-primary:hover { opacity: 0.9; }
 
         .empty-state { padding: 30px; text-align: center; color: #7f8c8d; font-style: italic; font-size: 0.9rem; }
 
@@ -204,6 +211,13 @@
         .modal-header h2 { margin: 0; color: #fff; font-size: 1.1rem; }
         .close { color: #aaa; font-size: 24px; font-weight: bold; cursor: pointer; }
         .modal-body { padding: 20px; color: #ddd; }
+
+        .form-group { margin-bottom:15px; }
+        .form-group label { display:block; margin-bottom:5px; color:#bdc3c7; font-size:0.9rem; }
+        .form-group textarea {
+             width: 100%; padding:10px; background:rgba(0,0,0,0.2); border:1px solid #555;
+             color:white; border-radius:5px; font-family:'Poppins',sans-serif; resize:vertical;
+        }
 
         /* Pending Animation */
         .pending-row { background: rgba(243, 156, 18, 0.1); border-left: 3px solid #f39c12; }
@@ -331,17 +345,32 @@
 
     </main>
 
-    <div id="candidate-modal" class="modal">
+    <div id="response-modal" class="modal">
         <div class="modal-content">
             <div class="modal-header">
-                <h2>Potenzielle Kandidaten</h2>
-                <span class="close" onclick="closeCandidateModal()">&times;</span>
+                <h2 id="response-modal-title">Reaktion</h2>
+                <span class="close" onclick="document.getElementById('response-modal').style.display='none'">&times;</span>
             </div>
             <div class="modal-body">
-                <p style="font-size: 0.85rem; color: #bbb; margin-bottom: 15px;">
-                    Folgende Kollegen sind an diesem Tag verfügbar (kein Dienst, keine Ruhezeitverletzung, kein Hundekonflikt).
-                </p>
-                <ul class="candidate-list" id="candidate-list-ul">
+                <div class="form-group">
+                    <label>Notiz / Begründung:</label>
+                    <textarea id="response-note" rows="3" placeholder="Optional..."></textarea>
+                </div>
+                <div style="text-align:right; margin-top:15px;">
+                    <button class="btn-primary" id="submit-response-btn">Absenden</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="candidates-modal" class="modal">
+        <div class="modal-content" style="max-width:600px;">
+            <div class="modal-header">
+                <h2>Interessenten & Status</h2>
+                <span class="close" onclick="document.getElementById('candidates-modal').style.display='none'">&times;</span>
+            </div>
+            <div class="modal-body">
+                <ul id="candidates-list-ul" class="candidate-list">
                     <li class="empty-state">Lade...</li>
                 </ul>
             </div>
@@ -357,25 +386,20 @@
             document.querySelectorAll('.market-tab-btn').forEach(el => el.classList.remove('active'));
 
             document.getElementById('tab-' + tabId).classList.add('active');
-            // Finde den Button, der geklickt wurde (etwas hacky via Event wäre besser, aber so gehts auch)
+
             const btns = document.querySelectorAll('.market-tab-btn');
             if(tabId === 'market') btns[0].classList.add('active');
             if(tabId === 'history') {
                 btns[1].classList.add('active');
-                // Lazy Load History
                 if(window.loadHistory) window.loadHistory();
             }
         }
 
-        // Modal Funktionen global verfügbar machen
-        window.closeCandidateModal = function() {
-            document.getElementById('candidate-modal').style.display = 'none';
-        }
-
-        // Klick außerhalb schließt Modal
+        // Modal schließt beim Klick auf Hintergrund
         window.onclick = function(event) {
-            const m = document.getElementById('candidate-modal');
-            if (event.target == m) m.style.display = "none";
+            if (event.target.classList.contains('modal')) {
+                event.target.style.display = "none";
+            }
         }
     </script>
 
@@ -404,7 +428,6 @@
         function animate() {
             ctx.clearRect(0,0,canvas.width,canvas.height);
             particlesArray.forEach(p => p.update());
-            // Connections
             for(let a=0; a<particlesArray.length; a++){
                 for(let b=a; b<particlesArray.length; b++){
                     let dx = particlesArray[a].x - particlesArray[b].x;

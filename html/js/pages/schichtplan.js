@@ -46,9 +46,22 @@ async function initialize() {
         PredictionUI.init();
         initPetDisplay(PlanState.loggedInUser);
 
-        // --- 3. MODULE INITIALISIEREN & VERKNÜPFEN ---
+        // NEU: Globale Marktplatz-Funktionen im Schichtplan registrieren (Stubs)
+        // Das click-action-modal ruft diese globalen Funktionen auf.
+        window.openReactionModal = (offerId, type) => {
+            console.log(`[Market Stub] Aktion: ${type} für Angebot ${offerId}. Gehe zum Marktplatz.`);
+            window.location.href = 'market.html';
+        };
 
-        // UI Helper: Braucht Callbacks für Varianten-Reload und Grid-Reload
+        // Die Funktion, die der Anbieter im Markt-Tab nutzt (hier nur Stub)
+        window.openCandidatesModal = (offerId) => {
+             console.log(`[Market Stub] Öffne Kandidaten für Angebot ${offerId}. Gehe zum Marktplatz.`);
+             window.location.href = 'market.html';
+        };
+        // ENDE NEU
+
+        // --- 3. MODULE INITIALISIEREN & VERKNÜPFEN ---
+        // ... (Der Rest des Codes ist unverändert)
         PlanUIHelper.setupUIByRole();
         PlanUIHelper.init(
             () => PlanNavigation.loadVariants(),
@@ -111,6 +124,7 @@ async function initialize() {
  * * @param {boolean} isSilent - Wenn true, wird kein Lade-Blur angezeigt (für Live-Updates).
  */
 async function renderGrid(isSilent = false) {
+// ... (Die Funktion renderGrid bleibt unverändert) ...
     const grid = document.getElementById('schichtplan-grid');
     const monthLabel = document.getElementById('current-month-label');
     const staffingGrid = document.getElementById('staffing-grid');
@@ -273,7 +287,7 @@ async function renderGrid(isSilent = false) {
 
 
 // --- 3. HELPER FUNCTIONS (Startup-related) ---
-
+// ... (Die Helper-Funktionen loadFullSpecialDates, loadColorSettings, loadShortcuts, checkHighlights bleiben unverändert) ...
 async function loadFullSpecialDates() {
     try {
         const year = PlanState.currentYear;
