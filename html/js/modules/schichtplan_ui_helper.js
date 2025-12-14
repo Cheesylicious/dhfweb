@@ -4,6 +4,8 @@ import { PlanState } from './schichtplan_state.js';
 import { PlanApi } from './schichtplan_api.js';
 import { PlanHandlers } from './schichtplan_handlers.js';
 import { isColorDark } from '../utils/helpers.js';
+// --- FIX: Import hinzugefügt ---
+import { apiFetch } from '../utils/api.js';
 
 /**
  * Modul für UI-Hilfsfunktionen, Styling und statische Elemente.

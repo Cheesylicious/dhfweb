@@ -120,7 +120,13 @@ export const MarketModule = {
             if (this.reloadCallback) this.reloadCallback(true); // Silent reload
 
         } catch (e) {
-            alert("Fehler: " + e.message);
+            // --- FIX: ORAKEL ALERT STATT BROWSER ALERT ---
+            if (window.dhfAlert) {
+                // Wir nutzen den Titel "Nicht möglich", da es meist Regelverletzungen sind
+                window.dhfAlert("Nicht möglich", e.message, "error");
+            } else {
+                alert("Fehler: " + e.message);
+            }
         } finally {
             btn.disabled = false;
             btn.textContent = "Absenden";
@@ -350,3 +356,4 @@ export const MarketModule = {
         // ... (Bleibt gleich, nur Badge Update)
     }
 };
+
