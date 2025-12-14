@@ -122,6 +122,12 @@ export const PlanInteraction = {
         }
         marketSection.style.display = 'none';
 
+        // Daten prüfen
+        const shiftKey = `${user.id}-${dateStr}`;
+        const currentShift = PlanState.currentShifts[shiftKey];
+        // Prüfen, ob eine echte Schicht existiert (nicht null und hat einen Typ)
+        const hasActiveShift = currentShift && currentShift.shifttype_id;
+
         // Anfragen für diese Zelle filtern
         const queries = PlanState.currentShiftQueries.filter(q =>
             q.shift_date === dateStr &&
@@ -214,9 +220,24 @@ export const PlanInteraction = {
                 hasContent = true;
             } else if (!wunsch) {
 
-                // --- NEU: PRÜFUNG AUF LAUFENDEN TAUSCH ---
-                // Verhindert Überschreiben durch Wunschanfrage
-                if (pendingReq) {
+                // --- UPDATE: PRÜFUNG AUF EXISTIERENDE SCHICHT ---
+                if (hasActiveShift) {
+                    // Wenn eine Schicht existiert, darf KEINE Wunschanfrage gestellt werden.
+                    // Nur Info anzeigen, wenn auch keine Tausch-Option (MarketModule) angezeigt wurde
+                    // (MarketModule rendert sich selbst, hier kümmern wir uns um den Wunsch-Teil)
+                    if (sections.hfRequests) {
+                        // Wir zeigen den Bereich an, aber mit Hinweis statt Buttons
+                        sections.hfRequests.style.display = 'block';
+                        sections.hfRequests.innerHTML = `
+                           <div style="background: rgba(255,255,255,0.05); color: #bdc3c7; padding: 10px; border-radius: 5px; text-align: center; font-size: 12px; border: 1px dashed #555;">
+                               Schicht bereits eingetragen.<br>Nutze die Tauschbörse.
+                           </div>
+                        `;
+                    }
+                    hasContent = true;
+
+                } else if (pendingReq) {
+                    // Wenn ein Tausch läuft
                      if (sections.hfRequests) {
                          sections.hfRequests.style.display = 'block';
                          // Info Text statt Buttons
@@ -229,7 +250,7 @@ export const PlanInteraction = {
                      }
                      hasContent = true;
                 } else {
-                    // Kein Wunsch & Kein Tausch -> Neuen erstellen
+                    // Kein Wunsch, Keine Schicht, Kein Tausch -> Neuen Wunsch erstellen
                     if(sections.hfRequests) {
                         sections.hfRequests.style.display = 'flex';
                         // Sicherstellen, dass das Grid sauber ist (falls vorher überschrieben)
@@ -238,7 +259,7 @@ export const PlanInteraction = {
                     }
                     hasContent = true;
                 }
-                // --- ENDE NEU ---
+                // --- ENDE UPDATE ---
             }
         }
 
