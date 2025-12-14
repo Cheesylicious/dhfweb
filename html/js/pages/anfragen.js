@@ -106,99 +106,150 @@ async function loadAllShiftTypes() {
 }
 
 // =========================================================
-// TEIL A: SCHICHT-ÄNDERUNGSANTRÄGE (KRANK / TAUSCH)
+// TEIL A: SCHICHT-ÄNDERUNGSANTRÄGE (KRANK / TAUSCH) - NEU GETRENNT
 // =========================================================
 
 async function loadShiftChangeRequests() {
-    const section = document.getElementById('shift-requests-section');
-    const tableBody = document.getElementById('shift-requests-table-body');
+    const sectionSick = document.getElementById('section-sick');
+    const sectionTrade = document.getElementById('section-trade');
+    const tbodySick = document.getElementById('tbody-sick');
+    const tbodyTrade = document.getElementById('tbody-trade');
 
     // Nur Admin und Planschreiber dürfen diese sehen
-    if (!section || !tableBody || (!isAdmin && !isScheduler)) return;
+    if ((!sectionSick && !sectionTrade) || (!isAdmin && !isScheduler)) return;
 
     try {
         const response = await apiFetch('/api/shift-change/list');
-        // Wenn keine Anträge da sind, verstecke den Bereich
+
+        // Wenn gar keine Anträge da sind, alles verstecken
         if (!response || response.length === 0) {
-            section.style.display = 'none';
+            if (sectionSick) sectionSick.style.display = 'none';
+            if (sectionTrade) sectionTrade.style.display = 'none';
             return;
         }
 
-        // Bereich anzeigen
-        section.style.display = 'block';
+        // Daten trennen
+        const sickRequests = response.filter(req => req.reason_type !== 'trade' && !(req.note && req.note.includes("Marktplatz-Deal")));
+        const tradeRequests = response.filter(req => req.reason_type === 'trade' || (req.note && req.note.includes("Marktplatz-Deal")));
 
-        // Tabelle befüllen
-        const rows = response.map(req => {
-            let dateStr = "Datum unbekannt";
-            if (req.shift_date) {
-                dateStr = new Date(req.shift_date).toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric' });
-            }
+        // --- RENDER LOGIK FÜR KRANK ---
+        if (sickRequests.length > 0 && tbodySick) {
+            sectionSick.style.display = 'block';
+            tbodySick.innerHTML = renderRequestRows(sickRequests, 'sick');
+        } else if (sectionSick) {
+            sectionSick.style.display = 'none';
+        }
 
-            // Zeitpunkt des Antrags
-            let createdStr = "-";
-            if (req.created_at) {
-                createdStr = new Date(req.created_at).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
-            }
+        // --- RENDER LOGIK FÜR TAUSCH ---
+        if (tradeRequests.length > 0 && tbodyTrade) {
+            sectionTrade.style.display = 'block';
+            tbodyTrade.innerHTML = renderRequestRows(tradeRequests, 'trade');
+        } else if (sectionTrade) {
+            sectionTrade.style.display = 'none';
+        }
 
-            // --- VISUELLE UNTERSCHEIDUNG: KRANK vs TAUSCH ---
-            let typeBadge = '';
-            // Wir prüfen, ob es ein Tausch ist (anhand reason_type ODER Notiz)
-            const isTrade = (req.reason_type === 'trade') || (req.note && req.note.includes("Marktplatz-Deal"));
 
-            if (isTrade) {
-                typeBadge = '<span style="background:#3498db; color:white; padding:4px 8px; border-radius:4px; font-size:0.8rem; font-weight:600;"><i class="fas fa-handshake"></i> Tausch</span>';
-            } else {
-                typeBadge = '<span style="background:#e74c3c; color:white; padding:4px 8px; border-radius:4px; font-size:0.8rem; font-weight:600;"><i class="fas fa-procedures"></i> Krank</span>';
-            }
+    } catch (e) {
+        console.error("Fehler beim Laden der Schichtanträge:", e);
+        if (sectionSick) sectionSick.style.display = 'none';
+        if (sectionTrade) sectionTrade.style.display = 'none';
+    }
+}
 
-            // Ersatz-Anzeige
-            const replacementText = req.replacement_name !== 'Kein Ersatz'
+// Hilfsfunktion zum Rendern der Zeilen (vermeidet Code-Duplizierung)
+function renderRequestRows(requests, type) {
+    return requests.map(req => {
+        let dateStr = "Datum unbekannt";
+        if (req.shift_date) {
+            dateStr = new Date(req.shift_date).toLocaleDateString('de-DE', { weekday: 'short', day: '2-digit', month: '2-digit', year: 'numeric' });
+        }
+
+        let createdStr = "-";
+        if (req.created_at) {
+            createdStr = new Date(req.created_at).toLocaleString('de-DE', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+        }
+
+        // Typ-Badge (Redundant durch Container-Trennung, aber zur Sicherheit)
+        let typeBadge = '';
+        if (type === 'trade') {
+            typeBadge = '<span style="color:#3498db; font-weight:600;"><i class="fas fa-handshake"></i> Tausch</span>';
+        } else {
+            typeBadge = '<span style="color:#e74c3c; font-weight:600;"><i class="fas fa-procedures"></i> Krank</span>';
+        }
+
+        // Notiz / Ersatz Spalte
+        let noteReplacementCol = '';
+        const noteText = req.note ? req.note : '-';
+        
+        if (type === 'trade') {
+             const replacementText = req.replacement_name !== 'Kein Ersatz'
                 ? `<span style="color:#2ecc71; font-weight:500;"><i class="fas fa-arrow-right"></i> ${req.replacement_name}</span>`
-                : '<span style="color:#e74c3c"><em>Schicht wird frei (K)</em></span>';
+                : '<span style="color:#e74c3c"><em>Noch kein Ersatz</em></span>';
+             noteReplacementCol = `<div>${replacementText}</div><small style="color:#aaa;">Notiz: ${noteText}</small>`;
+        } else {
+            // Bei Krank nur die Notiz
+            noteReplacementCol = `${noteText}`;
+        }
 
-            const noteText = req.note ? req.note : '-';
 
-            // Schichtart Badge
-            const shiftBadge = req.shift_abbr && req.shift_abbr !== '?' && req.shift_abbr !== '-'
-                ? `<span class="badge-shift" style="background-color: ${req.shift_color || '#555'}; color: #fff; padding: 2px 6px; border-radius: 4px;">${req.shift_abbr}</span>`
-                : '<span style="color:#888;">?</span>';
+        // Schichtart Badge (CSS hat jetzt schwarze Schrift!)
+        const shiftBadge = req.shift_abbr && req.shift_abbr !== '?' && req.shift_abbr !== '-'
+            ? `<span class="badge-shift" style="background-color: ${req.shift_color || '#555'};">${req.shift_abbr}</span>`
+            : '<span style="color:#888;">?</span>';
 
-            // Hinweis für Admin bei Tausch
-            const approveTitle = isTrade ? "Tausch genehmigen & abschließen" : "Krankmeldung bestätigen";
-            const rejectTitle = isTrade ? "Tausch ablehnen (Original bleibt)" : "Rückgängig machen (Mitarbeiter wieder einsetzen)";
+        const approveTitle = type === 'trade' ? "Tausch genehmigen & abschließen" : "Krankmeldung bestätigen";
+        const rejectTitle = type === 'trade' ? "Tausch ablehnen (Original bleibt)" : "Rückgängig machen (Mitarbeiter wieder einsetzen)";
+        const deleteBtn = `<button class="btn-mini delete" onclick="window.deleteShiftChangeRequest(${req.id})" title="Eintrag löschen (ohne Planänderung)"><i class="fas fa-trash"></i></button>`;
 
-            return `
-                <tr id="shift-req-${req.id}">
+        // Spaltenstruktur je nach Typ leicht anpassen
+        if (type === 'trade') {
+             return `
+                <tr id="shift-req-${req.id}" class="request-row">
                     <td><strong>${dateStr}</strong></td>
                     <td>${shiftBadge}</td>
                     <td style="font-size: 0.85rem; color: #ccc;">${createdStr}</td>
                     <td>${req.original_user_name}</td>
                     <td>${typeBadge}</td>
+                    <td>${noteReplacementCol}</td>
                     <td>
-                        <small style="display:block; color:#aaa; margin-bottom:4px;">${isTrade ? 'Notiz / Tauschpartner:' : 'Notiz:'} ${noteText}</small>
-                        <div>${replacementText}</div>
-                    </td>
-                    <td>
-                        <button class="btn-mini approve" onclick="window.handleShiftAction(${req.id}, 'approve')" title="${approveTitle}">✓ OK</button>
-                        <button class="btn-mini reject" onclick="window.handleShiftAction(${req.id}, 'reject')" title="${rejectTitle}">↺ Undo</button>
+                        <div style="display: flex; gap: 5px;">
+                            <button class="btn-mini approve" onclick="window.handleShiftAction(${req.id}, 'approve')" title="${approveTitle}">✓ OK</button>
+                            <button class="btn-mini reject" onclick="window.handleShiftAction(${req.id}, 'reject')" title="${rejectTitle}">Isch</button>
+                            ${deleteBtn}
+                        </div>
                     </td>
                 </tr>
             `;
-        }).join('');
+        } else {
+            // Krank (einfachere Struktur)
+             return `
+                <tr id="shift-req-${req.id}" class="request-row">
+                    <td><strong>${dateStr}</strong></td>
+                    <td>${shiftBadge}</td>
+                    <td style="font-size: 0.85rem; color: #ccc;">${createdStr}</td>
+                    <td>${req.original_user_name}</td>
+                    <td>${typeBadge}</td>
+                    <td>${noteReplacementCol}</td>
+                    <td>
+                        <div style="display: flex; gap: 5px;">
+                            <button class="btn-mini approve" onclick="window.handleShiftAction(${req.id}, 'approve')" title="${approveTitle}">✓ OK</button>
+                            <button class="btn-mini reject" onclick="window.handleShiftAction(${req.id}, 'reject')" title="${rejectTitle}">↺ Undo</button>
+                            ${deleteBtn}
+                        </div>
+                    </td>
+                </tr>
+            `;
+        }
 
-        tableBody.innerHTML = rows;
-
-    } catch (e) {
-        console.error("Fehler beim Laden der Schichtanträge:", e);
-        section.style.display = 'none';
-    }
+    }).join('');
 }
 
 // Funktionen global verfügbar machen für onclick-Handler im HTML
+
+// 1. Genehmigen / Ablehnen
 window.handleShiftAction = async function(id, action) {
     const endpoint = action === 'approve' ? 'approve' : 'reject';
 
-    // Text anpassen je nach Aktion
     let confirmMsg = "";
     if (action === 'approve') {
         confirmMsg = "Änderung endgültig bestätigen und archivieren?";
@@ -212,25 +263,10 @@ window.handleShiftAction = async function(id, action) {
         const response = await apiFetch(`/api/shift-change/${id}/${endpoint}`, 'POST');
 
         if (response && response.status === 'success') {
-            // FUNKSPRUCH SENDEN: Grid neu laden in allen Tabs
             if (planUpdateChannel) {
                 planUpdateChannel.postMessage({ type: 'PLAN_UPDATED' });
             }
-
-            // Zeile entfernen
-            const row = document.getElementById(`shift-req-${id}`);
-            if (row) {
-                row.style.opacity = '0';
-                setTimeout(() => row.remove(), 300); // Sanftes Ausblenden
-            }
-
-            // Wenn Tabelle leer, Bereich ausblenden (verzögert)
-            setTimeout(() => {
-                const tableBody = document.getElementById('shift-requests-table-body');
-                if (tableBody && tableBody.children.length === 0) {
-                    document.getElementById('shift-requests-section').style.display = 'none';
-                }
-            }, 350);
+            removeRowAndCheckContainer(id);
 
         } else {
             alert("Fehler: " + (response.message || response.error || 'Unbekannter Fehler'));
@@ -240,6 +276,42 @@ window.handleShiftAction = async function(id, action) {
         console.error(e);
     }
 };
+
+// 2. Löschen (NEU)
+window.deleteShiftChangeRequest = async function(id) {
+    if (!confirm("Eintrag wirklich löschen? Dies ändert nichts am Schichtplan, entfernt aber diesen Eintrag aus der Liste.")) return;
+
+    try {
+        const response = await apiFetch(`/api/shift-change/${id}`, 'DELETE');
+        if (response && response.status === 'success') {
+            removeRowAndCheckContainer(id);
+        } else {
+             alert("Fehler: " + (response.message || response.error || 'Unbekannter Fehler'));
+        }
+    } catch (e) {
+        alert("Serverfehler: " + e.message);
+    }
+};
+
+// Hilfsfunktion: Zeile entfernen und Container prüfen
+function removeRowAndCheckContainer(id) {
+    const row = document.getElementById(`shift-req-${id}`);
+    if (row) {
+        row.style.opacity = '0';
+        
+        // Find parent tbody and section BEFORE removing the row
+        const tbody = row.closest('tbody');
+        const section = row.closest('.requests-section');
+
+        setTimeout(() => {
+            row.remove();
+            // Check if tbody is now empty
+            if (tbody && tbody.children.length === 0 && section) {
+                section.style.display = 'none';
+            }
+        }, 300);
+    }
+}
 
 
 // =========================================================
