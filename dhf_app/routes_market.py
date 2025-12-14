@@ -136,6 +136,7 @@ def react_to_offer(offer_id):
 def get_offer_responses(offer_id):
     """
     Für den Besitzer: Liste der Reaktionen laden.
+    NEU: Nutzt den erweiterten Service für Stunden und Zeitstempel.
     """
     offer = db.session.get(ShiftMarketOffer, offer_id)
     if not offer:
@@ -145,11 +146,13 @@ def get_offer_responses(offer_id):
     if offer.offering_user_id != current_user.id and current_user.role.name != 'admin':
         return jsonify({"message": "Zugriff verweigert"}), 403
 
-    responses = ShiftMarketResponse.query.filter_by(offer_id=offer_id).all()
-    # Sortieren: Interessierte zuerst
-    responses.sort(key=lambda x: (0 if x.response_type == 'interested' else 1, x.created_at))
-
-    return jsonify([r.to_dict() for r in responses]), 200
+    # --- KORREKTUR: Nutze den neuen Service für angereicherte Daten ---
+    try:
+        enriched_data = MarketService.get_enriched_responses(offer_id)
+        return jsonify(enriched_data), 200
+    except Exception as e:
+        return jsonify({"message": f"Fehler beim Laden der Details: {str(e)}"}), 500
+    # ----------------------------------------------------------------
 
 
 @market_bp.route('/offer/<int:offer_id>/select_candidate', methods=['POST'])

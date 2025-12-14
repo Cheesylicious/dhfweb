@@ -1,7 +1,7 @@
 # dhf_app/services_market.py
 
 from datetime import timedelta, datetime, date
-from sqlalchemy import and_, or_
+from sqlalchemy import and_, or_, func, extract
 from sqlalchemy.orm import joinedload
 from .extensions import db
 # KORREKTUR: ShiftMarketOffer muss aus models_market importiert werden!
@@ -265,3 +265,74 @@ class MarketService:
             return s1 < e2 and s2 < e1
         except:
             return False
+
+    @staticmethod
+    def get_enriched_responses(offer_id):
+        """
+        Lädt alle Antworten auf ein Angebot und reichert sie mit Zusatzinformationen an:
+        - Zeitstempel (Wann?)
+        - Stundenbilanz (Aktuelle Stunden -> Neue Stunden bei Übernahme)
+        """
+        offer = db.session.get(ShiftMarketOffer, offer_id)
+        if not offer:
+            return []
+
+        # Basisdaten des Angebots
+        shift_year = offer.shift.date.year
+        shift_month = offer.shift.date.month
+        shift_hours_value = offer.shift.shift_type.hours if (offer.shift and offer.shift.shift_type) else 0.0
+
+        # Alle Antworten laden (mit User Joined Load)
+        responses = ShiftMarketResponse.query.filter_by(offer_id=offer_id).options(
+            joinedload(ShiftMarketResponse.user)
+        ).all()
+
+        # Liste der interessierten User IDs für die Stunden-Berechnung
+        interested_user_ids = [r.user_id for r in responses if r.response_type == 'interested']
+
+        # Bulk-Berechnung der aktuellen Stunden für alle interessierten User in diesem Monat
+        # Wir summieren die Stunden aller Schichten im selben Monat
+        hours_map = {}
+        if interested_user_ids:
+            hours_query = db.session.query(
+                Shift.user_id,
+                func.sum(ShiftType.hours)
+            ).join(ShiftType, Shift.shifttype_id == ShiftType.id).filter(
+                Shift.user_id.in_(interested_user_ids),
+                extract('year', Shift.date) == shift_year,
+                extract('month', Shift.date) == shift_month,
+                # Nur Hauptplan beachten
+                Shift.variant_id == None
+            ).group_by(Shift.user_id).all()
+
+            for uid, total_h in hours_query:
+                hours_map[uid] = float(total_h) if total_h else 0.0
+
+        # Ergebnisse zusammenbauen
+        enriched_results = []
+        for r in responses:
+            current_h = hours_map.get(r.user_id, 0.0)
+
+            # Neue Stunden nur berechnen, wenn interessiert
+            new_h = current_h + shift_hours_value if r.response_type == 'interested' else current_h
+
+            enriched_results.append({
+                'id': r.id,
+                'offer_id': r.offer_id,
+                'user_id': r.user_id,
+                'user_name': f"{r.user.vorname} {r.user.name}" if r.user else "Unbekannt",
+                'response_type': r.response_type,
+                'note': r.note,
+                # Timestamp im ISO Format für JS
+                'created_at': r.created_at.isoformat(),
+                # Stunden-Info
+                'current_hours': round(current_h, 1),
+                'new_hours': round(new_h, 1),
+                'hours_diff': shift_hours_value
+            })
+
+        # Sortieren: Interessierte zuerst, dann nach Datum (FIFO)
+        enriched_results.sort(key=lambda x: (0 if x['response_type'] == 'interested' else 1, x['created_at']))
+
+        return enriched_results
+
