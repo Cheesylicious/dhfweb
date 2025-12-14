@@ -244,6 +244,19 @@ def create_shift_query():
 
             # Prüfe, ob es eine Schicht-Wunsch-Anfrage ist (Format "Anfrage für: X")
             if message.startswith("Anfrage für:"):
+                # --- NEU: Zuerst prüfen, ob für diesen Tag bereits eine Schicht eingetragen ist ---
+                existing_shift_db = Shift.query.filter_by(
+                    user_id=current_user.id,
+                    date=shift_date
+                ).first()
+
+                # Wenn Schicht existiert und nicht 'FREI' (also shifttype_id nicht NULL)
+                if existing_shift_db and existing_shift_db.shifttype_id is not None:
+                     return jsonify({
+                         "message": "Nicht möglich: Du hast an diesem Tag bereits eine Schicht eingetragen. Bitte nutze die Tauschbörse."
+                     }), 403
+                # --- ENDE NEU ---
+
                 # Extrahiere Abkürzung
                 parts = message.split(":")
                 if len(parts) > 1:
