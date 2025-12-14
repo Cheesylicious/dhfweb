@@ -154,7 +154,7 @@ export const PlanRenderer = {
 
         // --- ICONS EINFÜGEN ---
 
-        // 1. Marktplatz Icon (NEU)
+        // 1. Marktplatz Icon
         if (showMarket) {
              const marketIcon = document.createElement('div');
              marketIcon.className = 'market-icon-overlay';
@@ -192,6 +192,16 @@ export const PlanRenderer = {
              }
              cell.appendChild(iconSpan);
         }
+
+        // --- 3. NEU: HANDSCHLAG (TRADE) ICON ---
+        if (shift && shift.is_trade) {
+            const tradeIcon = document.createElement('div');
+            tradeIcon.className = 'icon-trade';
+            tradeIcon.innerHTML = '🤝';
+            tradeIcon.title = 'Diese Schicht wurde getauscht';
+            cell.appendChild(tradeIcon);
+        }
+        // ---------------------------------------
 
         // Bulk Selection wiederherstellen
         if (PlanState.isBulkMode && wunschQuery && PlanState.selectedQueryIds.has(wunschQuery.id)) {

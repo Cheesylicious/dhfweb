@@ -262,6 +262,20 @@ export const PlanUIHelper = {
             .icon-incoming { position: absolute; bottom: 2px; right: 2px; font-size: 16px; color: #2ecc71; z-index: 22; filter: drop-shadow(0 0 2px rgba(0,0,0,0.8)); }
             .ghost-text { font-style: italic; opacity: 0.8; font-weight: bold; color: #2ecc71; font-size: 1.1em; }
 
+            /* --- NEU: Trade Handschlag Icon --- */
+            .icon-trade {
+                position: absolute;
+                bottom: 2px;
+                left: 2px;
+                font-size: 14px;
+                line-height: 1;
+                filter: drop-shadow(0 0 2px rgba(0,0,0,0.8));
+                z-index: 22;
+                animation: popIn 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            }
+            @keyframes popIn { from { transform: scale(0); opacity: 0; } to { transform: scale(1); opacity: 1; } }
+            /* --- ENDE NEU --- */
+
             /* --- UNIFIED BANNER STYLES --- */
             #dhf-unified-grid { display: flex; flex-direction: row; width: 100%; gap: 1px; margin-bottom: 5px; position: sticky; top: 0; z-index: 9999; flex-wrap: wrap; box-shadow: 0 3px 6px rgba(0,0,0,0.15); }
             .unified-banner-item { flex: 1 1 0; min-width: 150px; padding: 10px 15px; text-align: center; font-weight: 700; color: white !important; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 10px; transition: all 0.2s ease; font-size: 14px; border-radius: 0; margin: 0; border: none; white-space: nowrap; }
