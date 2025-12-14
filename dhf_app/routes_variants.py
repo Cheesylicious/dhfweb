@@ -1,5 +1,10 @@
 from flask import Blueprint, request, jsonify, current_app
 from .models import PlanVariant, Shift, UpdateLog
+# --- NEU: Importe für Abhängigkeits-Bereinigung ---
+from .models_market import ShiftMarketOffer
+from .models_shift_change import ShiftChangeRequest
+from .models_gamification import GamificationLog
+# --------------------------------------------------
 from .extensions import db
 from .utils import admin_required
 from datetime import datetime
@@ -118,9 +123,10 @@ def create_variant():
 def publish_variant(variant_id):
     """
     Macht eine Variante zum neuen Hauptplan.
-    1. Löscht den aktuellen Hauptplan für den Zeitraum.
-    2. Setzt variant_id der Variante auf NULL (damit wird sie zum Hauptplan).
-    3. Löscht den Varianten-Eintrag.
+    1. Bereinigt Abhängigkeiten (Foreign Keys) der alten Schichten.
+    2. Löscht den aktuellen Hauptplan für den Zeitraum.
+    3. Setzt variant_id der Variante auf NULL (damit wird sie zum Hauptplan).
+    4. Löscht den Varianten-Eintrag.
     """
     variant = db.session.get(PlanVariant, variant_id)
     if not variant:
@@ -130,21 +136,50 @@ def publish_variant(variant_id):
     month = variant.month
 
     try:
-        # 1. Alten Hauptplan löschen (Performantes Bulk Delete)
-        # Wir löschen alles, wo variant_id IS NULL im betroffenen Monat
+        # --- SCHRITT 0: Abhängigkeiten bereinigen (FIX FÜR INTEGRITY ERROR) ---
+        # Wir müssen alle Verweise auf die "alten" Hauptplan-Schichten entfernen,
+        # bevor wir diese löschen können.
+
+        # 1. Query für die IDs der betroffenen Schichten (alter Hauptplan)
+        shifts_to_delete_query = db.session.query(Shift.id).filter(
+            extract('year', Shift.date) == year,
+            extract('month', Shift.date) == month,
+            Shift.variant_id == None
+        )
+
+        # 2. Marktplatz-Angebote entkoppeln
+        # (Setze shift_id auf NULL, Status auf archiviert, da der Plan überschrieben wird)
+        ShiftMarketOffer.query.filter(
+            ShiftMarketOffer.shift_id.in_(shifts_to_delete_query)
+        ).update({ShiftMarketOffer.shift_id: None, ShiftMarketOffer.status: 'archived_overwrite'}, synchronize_session=False)
+
+        # 3. Änderungsanträge entkoppeln
+        ShiftChangeRequest.query.filter(
+            ShiftChangeRequest.original_shift_id.in_(shifts_to_delete_query)
+        ).update({ShiftChangeRequest.original_shift_id: None, ShiftChangeRequest.status: 'archived_overwrite'}, synchronize_session=False)
+
+        # 4. Gamification Logs entkoppeln
+        # (Punkte bleiben erhalten, aber der Link zur Schicht wird entfernt)
+        GamificationLog.query.filter(
+            GamificationLog.shift_id.in_(shifts_to_delete_query)
+        ).update({GamificationLog.shift_id: None}, synchronize_session=False)
+
+        # DB Flush, um Updates anzuwenden, bevor Delete kommt
+        db.session.flush()
+
+        # --- SCHRITT 1: Alten Hauptplan löschen (Performantes Bulk Delete) ---
         delete_count = Shift.query.filter(
             extract('year', Shift.date) == year,
             extract('month', Shift.date) == month,
             Shift.variant_id == None
         ).delete(synchronize_session=False)
 
-        # 2. Die Schichten der Variante "befördern" (variant_id -> NULL)
-        # Wir nutzen update() für Performance
+        # --- SCHRITT 2: Die Schichten der Variante "befördern" (variant_id -> NULL) ---
         update_count = Shift.query.filter(
             Shift.variant_id == variant_id
         ).update({Shift.variant_id: None}, synchronize_session=False)
 
-        # 3. Das Varianten-Objekt selbst löschen
+        # --- SCHRITT 3: Das Varianten-Objekt selbst löschen ---
         db.session.delete(variant)
 
         _log_update_event("Planung",
@@ -188,3 +223,4 @@ def delete_variant(variant_id):
         db.session.rollback()
         current_app.logger.error(f"Fehler beim Löschen der Variante: {e}")
         return jsonify({"message": f"Fehler: {str(e)}"}), 500
+

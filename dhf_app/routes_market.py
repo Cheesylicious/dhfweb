@@ -24,39 +24,120 @@ def _is_allowed():
     return False
 
 
+# --- HILFSFUNKTIONEN FÜR KONFLIKTPRÜFUNG ---
+
+def _check_time_overlap(st1, st2):
+    """
+    Prüft zwei Schichtarten auf zeitliche Überlappung.
+    """
+    if not st1 or not st2: return False
+    if not st1.start_time or not st1.end_time or not st2.start_time or not st2.end_time:
+        return False
+
+    try:
+        def to_min(t_str):
+            h, m = map(int, t_str.split(':'))
+            return h * 60 + m
+
+        s1, e1 = to_min(st1.start_time), to_min(st1.end_time)
+        s2, e2 = to_min(st2.start_time), to_min(st2.end_time)
+
+        # Nachtschicht-Korrektur (Ende am nächsten Tag)
+        if e1 <= s1: e1 += 24 * 60
+        if e2 <= s2: e2 += 24 * 60
+
+        return (s1 < e2) and (s2 < e1)
+    except:
+        return False
+
+
+def _check_dog_conflict(target_date, target_shift_type, user):
+    """
+    Prüft, ob ein anderer Hundeführer mit demselben Hund an diesem Tag arbeitet.
+    """
+    if not user.diensthund or user.diensthund == '---':
+        return None
+
+    # Alle Schichten an diesem Tag laden, wo der User den gleichen Hund hat
+    # WICHTIG: Wir schließen den User selbst aus (user.id != ...), da eigene Schichten 
+    # separat als "Doppelbelegung" geprüft werden. Hier geht es um das Tier.
+    conflicting_shifts = Shift.query.join(User).join(ShiftType).filter(
+        Shift.date == target_date,
+        Shift.variant_id == None,
+        User.diensthund == user.diensthund,
+        User.id != user.id,
+        Shift.shifttype_id != None
+    ).all()
+
+    for s in conflicting_shifts:
+        if _check_time_overlap(target_shift_type, s.shift_type):
+            return f"Hund '{user.diensthund}' ist bereits im Einsatz bei {s.user.vorname} {s.user.name} ({s.shift_type.abbreviation})."
+
+    return None
+
+
+def _check_rest_period_conflict(target_date, target_shift_type, user_id):
+    """
+    Prüft auf Ruhezeitverletzungen (N -> T/6/S/QA Regel).
+    """
+    # Kritische Schichten, die nicht auf N folgen dürfen (Ruhezeit < 11h).
+    # X und EU sind hier NICHT enthalten -> Manuelle Entscheidung möglich.
+    CRITICAL_FOLLOWERS = ['T.', '6', 'S', 'QA']
+
+    target_abbr = target_shift_type.abbreviation
+
+    # FALL 1: Wir wollen eine T/6/S/QA Schicht annehmen -> Prüfen ob gestern N war
+    if target_abbr in CRITICAL_FOLLOWERS:
+        yesterday = target_date - timedelta(days=1)
+        prev_shift = Shift.query.join(ShiftType).filter(
+            Shift.user_id == user_id,
+            Shift.date == yesterday,
+            Shift.variant_id == None,
+            ShiftType.abbreviation == 'N.'
+        ).first()
+
+        if prev_shift:
+            return f"Ruhezeitverletzung: Du hast am Vortag ({yesterday.strftime('%d.%m.')}) Nachtschicht."
+
+    # FALL 2: Wir wollen eine N Schicht annehmen -> Prüfen ob morgen T/6/S/QA ist
+    if target_abbr == 'N.':
+        tomorrow = target_date + timedelta(days=1)
+        next_shift = Shift.query.join(ShiftType).filter(
+            Shift.user_id == user_id,
+            Shift.date == tomorrow,
+            Shift.variant_id == None,
+            ShiftType.abbreviation.in_(CRITICAL_FOLLOWERS)
+        ).first()
+
+        if next_shift:
+            return f"Ruhezeitverletzung: Du hast am Folgetag ({tomorrow.strftime('%d.%m.')}) Dienst ({next_shift.shift_type.abbreviation})."
+
+    return None
+
+
 @market_bp.route('/offers', methods=['GET'])
 @login_required
 def get_market_offers():
     """
     Liefert Angebote zurück.
     Führt vorher einen Cleanup alter Angebote durch.
-    Enthält Zusatzinfos: Hat der User bereits reagiert? Wie viele Interessenten (für Owner)?
-    NEU: 'leading_candidate_id' für die Geister-Animation beim ersten Interessenten.
     """
     if not _is_allowed():
         return jsonify({"message": "Zugriff verweigert."}), 403
 
-    # Cleanup Task bei jedem Laden triggern (Inklusive Auto-Accept Check)
     MarketService.cleanup_old_offers()
-
-    # Filter auslesen (Default: active)
     status_filter = request.args.get('status', 'active')
 
-    query = ShiftMarketOffer.query.join(Shift).filter(
-        Shift.variant_id == None  # <--- NUR HAUPTPLAN
-    )
+    query = ShiftMarketOffer.query.join(Shift).filter(Shift.variant_id == None)
 
     if status_filter == 'own':
-        # Eigene Angebote (active oder pending)
         query = query.filter(
             ShiftMarketOffer.offering_user_id == current_user.id,
             ShiftMarketOffer.status.in_(['active', 'pending'])
         )
     elif status_filter == 'pending':
-        # Laufende Genehmigungsverfahren
         query = query.filter(ShiftMarketOffer.status == 'pending')
     else:
-        # Standard: Nur aktive Angebote im Markt
         query = query.filter(ShiftMarketOffer.status == 'active')
 
     offers = query.order_by(ShiftMarketOffer.created_at.desc()).all()
@@ -65,33 +146,24 @@ def get_market_offers():
     for offer in offers:
         data = offer.to_dict()
         data['is_my_offer'] = (offer.offering_user_id == current_user.id)
-
-        # NEU: Leading Candidate ermitteln (Timer läuft)
-        # Wenn Deadline gesetzt ist, ist der älteste Interessent der "Leader"
         data['leading_candidate_id'] = None
 
         if offer.auto_accept_deadline:
-            # Wir suchen den ersten Interessenten (FIFO Prinzip)
-            # Nutze die relationship 'responses'
             first_interested = ShiftMarketResponse.query.filter_by(
                 offer_id=offer.id,
                 response_type='interested'
             ).order_by(ShiftMarketResponse.created_at.asc()).first()
-
             if first_interested:
                 data['leading_candidate_id'] = first_interested.user_id
 
-        # Meine Reaktion hinzufügen (falls ich Kandidat bin)
         my_response = ShiftMarketResponse.query.filter_by(offer_id=offer.id, user_id=current_user.id).first()
         data['my_response'] = my_response.response_type if my_response else None
 
-        # Für den Owner: Anzahl Interessenten zählen (für Badge im Frontend)
         if data['is_my_offer']:
             interested_count = ShiftMarketResponse.query.filter_by(offer_id=offer.id,
                                                                    response_type='interested').count()
             data['interested_count'] = interested_count
 
-        # Für Pending-Angebote fügen wir hinzu, wer angenommen hat (falls sichtbar)
         if status_filter == 'pending' and offer.accepted_by_user:
             data['accepted_by_name'] = f"{offer.accepted_by_user.vorname} {offer.accepted_by_user.name}"
 
@@ -105,6 +177,7 @@ def get_market_offers():
 def react_to_offer(offer_id):
     """
     Kandidat bekundet Interesse oder lehnt ab.
+    NEU: Enthält Prüfungen auf Konflikte (Hunde, Ruhezeiten).
     """
     if not _is_allowed():
         return jsonify({"message": "Zugriff verweigert"}), 403
@@ -117,38 +190,48 @@ def react_to_offer(offer_id):
         return jsonify({"message": "Eigene Angebote können nicht kommentiert werden."}), 400
 
     data = request.get_json()
-    response_type = data.get('response_type')  # 'interested' or 'declined'
+    response_type = data.get('response_type')
     note = data.get('note', '')
 
     if response_type not in ['interested', 'declined']:
         return jsonify({"message": "Ungültiger Status."}), 400
 
-    # CHECK AUF DOPPELBELEGUNG
+    # --- KONFLIKT-CHECKS (Nur bei Interesse) ---
     if response_type == 'interested':
-        # Prüfen, ob der aktuelle User am Tag des Angebots bereits eine Schicht hat
-        # (Nur Hauptplan beachten, variant_id == None)
+        target_date = offer.shift.date
+        target_shift_type = offer.shift.shift_type
+
+        # 1. Check: Habe ich schon Schicht?
         existing_shift = Shift.query.filter_by(
             user_id=current_user.id,
-            date=offer.shift.date,
+            date=target_date,
             variant_id=None
         ).first()
 
-        # Wenn Schicht existiert UND nicht explizit "FREI" ist (shifttype_id nicht NULL)
         if existing_shift and existing_shift.shifttype_id is not None:
-            # Optionale Prüfung: Ist es eine "Arbeitsschicht"?
-            # Hier streng: Jede eingetragene Schicht blockiert.
             st = ShiftType.query.get(existing_shift.shifttype_id)
-            if st and st.is_work_shift:
-                return jsonify({
-                    "message": f"Nicht möglich: Du hast am {offer.shift.date.strftime('%d.%m.')} bereits Dienst ({st.abbreviation})."
-                }), 400
+            # Wenn es eine Arbeitsschicht ist (oder generell belegt), blockieren
+            return jsonify({
+                "message": f"Nicht möglich: Du hast am {target_date.strftime('%d.%m.')} bereits Dienst ({st.abbreviation if st else '?'})."
+            }), 400
 
-    # Bestehende Antwort prüfen/aktualisieren
+        # 2. Check: Ruhezeitverletzung (N -> T/6/S/QA)
+        rest_conflict = _check_rest_period_conflict(target_date, target_shift_type, current_user.id)
+        if rest_conflict:
+            return jsonify({"message": f"Nicht möglich: {rest_conflict}"}), 400
+
+        # 3. Check: Hundekonflikt (Anderer User hat meinen Hund)
+        dog_conflict = _check_dog_conflict(target_date, target_shift_type, current_user)
+        if dog_conflict:
+            return jsonify({"message": f"Nicht möglich: {dog_conflict}"}), 400
+
+    # --- ENDE CHECKS ---
+
+    # Bestehende Antwort aktualisieren oder neu erstellen
     existing = ShiftMarketResponse.query.filter_by(offer_id=offer_id, user_id=current_user.id).first()
     if existing:
         existing.response_type = response_type
         existing.note = note
-        # WICHTIG: Timestamp aktualisieren, falls er seine Meinung ändert/erneuert
         existing.created_at = datetime.utcnow()
     else:
         new_resp = ShiftMarketResponse(
@@ -161,10 +244,7 @@ def react_to_offer(offer_id):
 
     db.session.commit()
 
-    # Timer Logik auslösen (Prüft, ob Timer gestartet werden muss)
     MarketService.check_and_set_deadline(offer_id)
-
-    # Check: Wenn abgelehnt, prüfen ob alle abgelehnt haben -> Archivieren
     if response_type == 'declined':
         MarketService.check_and_archive_if_all_declined(offer_id)
 
@@ -174,15 +254,10 @@ def react_to_offer(offer_id):
 @market_bp.route('/offer/<int:offer_id>/responses', methods=['GET'])
 @login_required
 def get_offer_responses(offer_id):
-    """
-    Für den Besitzer: Liste der Reaktionen laden.
-    Nutzt den erweiterten Service für Stunden und Zeitstempel.
-    """
     offer = db.session.get(ShiftMarketOffer, offer_id)
     if not offer:
         return jsonify({"message": "Nicht gefunden"}), 404
 
-    # Nur Besitzer oder Admin darf das sehen
     if offer.offering_user_id != current_user.id and current_user.role.name != 'admin':
         return jsonify({"message": "Zugriff verweigert"}), 403
 
@@ -196,10 +271,6 @@ def get_offer_responses(offer_id):
 @market_bp.route('/offer/<int:offer_id>/select_candidate', methods=['POST'])
 @login_required
 def select_candidate(offer_id):
-    """
-    Besitzer wählt einen Kandidaten aus -> Startet den Tauschprozess.
-    Erstellt einen ChangeRequest und setzt Offer auf pending.
-    """
     data = request.get_json()
     candidate_id = data.get('candidate_id')
 
@@ -210,17 +281,14 @@ def select_candidate(offer_id):
     if offer.offering_user_id != current_user.id:
         return jsonify({"message": "Nur der Anbieter kann einen Kandidaten auswählen."}), 403
 
-    # Kandidaten User laden
     candidate = db.session.get(User, candidate_id)
     if not candidate:
         return jsonify({"message": "Kandidat nicht gefunden."}), 404
 
-    # Status Update
     offer.status = 'pending'
     offer.accepted_by_id = candidate_id
     offer.accepted_at = datetime.utcnow()
 
-    # Change Request erstellen (mit reason_type='trade')
     res, code = ShiftChangeService.create_request(
         shift_id=offer.shift_id,
         requester_id=offer.offering_user_id,
@@ -340,3 +408,5 @@ def cancel_market_offer(offer_id):
     offer.status = 'cancelled'
     db.session.commit()
     return jsonify({"message": "Angebot zurückgezogen."}), 200
+
+
