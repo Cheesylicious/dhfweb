@@ -44,15 +44,10 @@ try {
     }
 
     // *** WICHTIG: GLOBALE ZUWEISUNGEN FÜR DIE MARKT-SEITE ***
-    // Dadurch können die Funktionen vom Schichtplan (schichtplan_market.js) und von inline-onclick aufgerufen werden.
     window.loadHistory = loadHistory;
     window.deleteHistoryItem = deleteHistoryItem;
-
-    // Diese Funktionen werden von schichtplan_market.js aufgerufen
     window.openReactionModalMarket = openReactionModal;
     window.openCandidatesModalMarket = openCandidatesModal;
-
-    // Die Aktionsfunktionen, die im HTML oder JS verwendet werden
     window.selectCandidate = selectCandidate;
     window.cancelOffer = cancelOffer;
     window.jumpToOffer = jumpToOffer;
@@ -186,8 +181,6 @@ function createOfferElement(offer, type) {
 
     if (type === 'market') {
         // Fremdes Angebot
-
-        // HAB ICH SCHON REAGIERT?
         if (offer.my_response === 'interested') {
             actionsHtml = `
                 <span class="status-badge status-done" title="Warte auf Bestätigung durch Anbieter"><i class="fas fa-check"></i> Interesse</span>
@@ -199,7 +192,6 @@ function createOfferElement(offer, type) {
                 ${jumpBtnHtml}
             `;
         } else {
-            // Noch keine Reaktion -> Buttons zeigen
             actionsHtml = `
                 <button class="btn-mini btn-accept" onclick="window.openReactionModalMarket(${offer.id}, 'interested')">
                     <i class="fas fa-thumbs-up"></i> Interesse
@@ -213,8 +205,6 @@ function createOfferElement(offer, type) {
 
     } else if (type === 'mine') {
         // Eigenes Angebot
-
-        // Badge für Anzahl Interessenten
         let interestBadge = '';
         if (offer.interested_count > 0) {
             interestBadge = `<span class="nav-badge" style="display:inline-block; position:relative; top:0; margin-left:5px; background:#2ecc71;">${offer.interested_count}</span>`;
@@ -289,14 +279,12 @@ function openReactionModal(offerId, type) {
     if(responseModal) responseModal.style.display = 'block';
 }
 
-// Event Listener für Submit Button im Modal
 const submitRespBtn = document.getElementById('submit-response-btn');
 if (submitRespBtn) {
     submitRespBtn.onclick = async () => {
         const noteInput = document.getElementById('response-note');
         const note = noteInput ? noteInput.value : '';
 
-        // Button sperren
         submitRespBtn.disabled = true;
         submitRespBtn.textContent = 'Sende...';
 
@@ -306,7 +294,7 @@ if (submitRespBtn) {
                 note: note
             });
             if(responseModal) responseModal.style.display = 'none';
-            loadMarketView(); // Refresh um Badge anzuzeigen
+            loadMarketView();
         } catch(e) {
             alert("Fehler: " + e.message);
         } finally {
@@ -317,7 +305,7 @@ if (submitRespBtn) {
 }
 
 
-// --- 4. KANDIDATEN VERWALTEN (Anbieter) ---
+// --- 4. KANDIDATEN VERWALTEN (Anbieter) - ERWEITERT ---
 
 async function openCandidatesModal(offerId) {
     if (!candidatesModal || !candidatesListUl) return;
@@ -326,39 +314,60 @@ async function openCandidatesModal(offerId) {
     candidatesListUl.innerHTML = '<li class="empty-state"><i class="fas fa-spinner fa-spin"></i> Lade Daten...</li>';
 
     try {
-        // 1. Hole Reaktionen (Wer will, wer will nicht)
+        // --- API-AUFRUF FÜR ERWEITERTE DATEN (Stunden, Timestamp) ---
         const responses = await apiFetch(`/api/market/offer/${offerId}/responses`);
-
-        // 2. Hole Potenzielle (Wer dürfte theoretisch)
         const potentials = await apiFetch(`/api/market/offer/${offerId}/candidates`);
 
         candidatesListUl.innerHTML = '';
-
-        // Map Responses by UserID für schnellen Zugriff
         const respMap = {};
         responses.forEach(r => respMap[r.user_id] = r);
 
-        // A. Zuerst Interessenten anzeigen (Wichtigste Gruppe)
+        // A. Interessenten (Mit Zusatzinfos)
         const interested = responses.filter(r => r.response_type === 'interested');
         if (interested.length > 0) {
-            candidatesListUl.innerHTML += '<li class="group-header" style="color:#2ecc71; font-weight:bold; margin-top:5px; padding:5px;">Interessiert:</li>';
+            candidatesListUl.innerHTML += '<li class="group-header" style="color:#2ecc71; font-weight:bold; margin-top:5px; padding:5px; border-bottom:1px solid rgba(46, 204, 113, 0.3);">Interessiert:</li>';
+
             interested.forEach(r => {
                 const li = document.createElement('li');
                 li.className = 'candidate-item';
+
+                // Datum formatieren
+                const dateObj = new Date(r.created_at);
+                const dateStr = dateObj.toLocaleDateString('de-DE', { day: '2-digit', month: '2-digit' });
+                const timeStr = dateObj.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+
+                // Stunden-Badge Farbe (wenn Stunden steigen -> eher rot/gelb, sonst grün)
+                // Einfache Logik: Wir zeigen einfach den Anstieg.
+                const hoursHtml = `
+                    <div style="font-size:0.8rem; margin-top:2px; color:#bbb;">
+                        <i class="fas fa-clock"></i> ${r.current_hours}h
+                        <i class="fas fa-arrow-right" style="font-size:0.7em; color:#3498db;"></i>
+                        <span style="font-weight:bold; color:#fff;">${r.new_hours}h</span>
+                    </div>
+                `;
+
                 li.innerHTML = `
                     <div style="flex-grow:1;">
-                        <strong style="color:#fff;">${escapeHtml(r.user_name)}</strong>
-                        <div style="font-size:0.8rem; color:#aaa;">"${escapeHtml(r.note || '-')}"</div>
+                        <div style="display:flex; justify-content:space-between; align-items:center;">
+                            <strong style="color:#fff;">${escapeHtml(r.user_name)}</strong>
+                            <span style="font-size:0.75rem; color:#777;">
+                                <i class="far fa-calendar-alt"></i> ${dateStr} ${timeStr}
+                            </span>
+                        </div>
+                        ${hoursHtml}
+                        <div style="font-size:0.8rem; color:#f1c40f; margin-top:2px;">"${escapeHtml(r.note || '-')}"</div>
                     </div>
-                    <button class="btn-mini btn-accept" onclick="window.selectCandidate(${offerId}, ${r.user_id}, '${escapeHtml(r.user_name)}')">
-                        <i class="fas fa-check"></i> Akzeptieren
-                    </button>
+                    <div style="margin-left:10px;">
+                        <button class="btn-mini btn-accept" onclick="window.selectCandidate(${offerId}, ${r.user_id}, '${escapeHtml(r.user_name)}')">
+                            <i class="fas fa-check"></i>
+                        </button>
+                    </div>
                 `;
                 candidatesListUl.appendChild(li);
             });
         }
 
-        // B. Dann Abgelehnte (nur Info)
+        // B. Abgesagt
         const declined = responses.filter(r => r.response_type === 'declined');
         if (declined.length > 0) {
              candidatesListUl.innerHTML += '<li class="group-header" style="color:#e74c3c; font-weight:bold; margin-top:15px; padding:5px; border-top:1px solid rgba(255,255,255,0.1);">Abgesagt:</li>';
@@ -376,7 +385,7 @@ async function openCandidatesModal(offerId) {
              });
         }
 
-        // C. Dann "Noch offen" (Potenzielle, die noch nicht reagiert haben)
+        // C. Noch offen
         const potentialIdsNotResponded = potentials.filter(p => !respMap[p.id]);
         if (potentialIdsNotResponded.length > 0) {
             candidatesListUl.innerHTML += '<li class="group-header" style="color:#bdc3c7; font-weight:bold; margin-top:15px; padding:5px; border-top:1px solid rgba(255,255,255,0.1);">Noch keine Antwort:</li>';
@@ -481,8 +490,6 @@ async function deleteHistoryItem(id) {
         alert("Fehler: " + e.message);
     }
 }
-
-// --- Global Actions ---
 
 function jumpToOffer(dateStr, userId) {
     const highlightData = { date: dateStr, targetUserId: userId };

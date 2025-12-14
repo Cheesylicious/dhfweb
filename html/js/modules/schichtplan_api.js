@@ -154,6 +154,15 @@ export const PlanApi = {
     },
 
     async acceptMarketOffer(offerId) {
+        // Veraltet, wird durch reactToMarketOffer ersetzt, bleibt für Kompatibilität
         return await apiFetch(`/api/market/accept/${offerId}`, 'POST');
+    },
+
+    // NEU: Reagieren (Interesse / Ablehnung)
+    async reactToMarketOffer(offerId, responseType, note) {
+        return await apiFetch(`/api/market/offer/${offerId}/react`, 'POST', {
+            response_type: responseType,
+            note: note
+        });
     }
 };

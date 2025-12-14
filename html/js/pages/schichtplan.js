@@ -12,8 +12,9 @@ import { PlanRenderer } from '../modules/schichtplan_renderer.js';
 import { StaffingModule } from '../modules/schichtplan_staffing.js';
 import { PlanHandlers } from '../modules/schichtplan_handlers.js';
 import { PredictionUI } from '../modules/prediction_ui.js';
+import { MarketModule } from '../modules/schichtplan_market.js'; // Import wichtig
 
-// Feature Modules (Neu ausgelagert)
+// Feature Modules
 import { PlanUIHelper } from '../modules/schichtplan_ui_helper.js';
 import { PlanNavigation } from '../modules/schichtplan_navigation.js';
 import { PlanBanner } from '../modules/schichtplan_banner.js';
@@ -46,22 +47,10 @@ async function initialize() {
         PredictionUI.init();
         initPetDisplay(PlanState.loggedInUser);
 
-        // NEU: Globale Marktplatz-Funktionen im Schichtplan registrieren (Stubs)
-        // Das click-action-modal ruft diese globalen Funktionen auf.
-        window.openReactionModal = (offerId, type) => {
-            console.log(`[Market Stub] Aktion: ${type} für Angebot ${offerId}. Gehe zum Marktplatz.`);
-            window.location.href = 'market.html';
-        };
+        // --- NEU: Market Module initialisieren (Inject Modal) ---
+        MarketModule.init();
 
-        // Die Funktion, die der Anbieter im Markt-Tab nutzt (hier nur Stub)
-        window.openCandidatesModal = (offerId) => {
-             console.log(`[Market Stub] Öffne Kandidaten für Angebot ${offerId}. Gehe zum Marktplatz.`);
-             window.location.href = 'market.html';
-        };
-        // ENDE NEU
-
-        // --- 3. MODULE INITIALISIEREN & VERKNÜPFEN ---
-        // ... (Der Rest des Codes ist unverändert)
+        // 3. MODULE INITIALISIEREN & VERKNÜPFEN
         PlanUIHelper.setupUIByRole();
         PlanUIHelper.init(
             () => PlanNavigation.loadVariants(),
@@ -80,7 +69,7 @@ async function initialize() {
         // Generator UI: HUD und Steuerung
         PlanGeneratorUI.init(renderGrid);
 
-        // Socket: Echtzeit-Updates (Verbindet Grid-Reload und Status-UI Update)
+        // Socket: Echtzeit-Updates
         PlanSocket.init(
             renderGrid,
             PlanUIHelper.updatePlanStatusUI.bind(PlanUIHelper)
@@ -120,11 +109,9 @@ async function initialize() {
 
 /**
  * Lädt alle Schichtdaten neu und aktualisiert das gesamte Grid.
- * Diese Funktion wird an fast alle Module als Callback übergeben.
- * * @param {boolean} isSilent - Wenn true, wird kein Lade-Blur angezeigt (für Live-Updates).
+ * @param {boolean} isSilent - Wenn true, wird kein Lade-Blur angezeigt (für Live-Updates).
  */
 async function renderGrid(isSilent = false) {
-// ... (Die Funktion renderGrid bleibt unverändert) ...
     const grid = document.getElementById('schichtplan-grid');
     const monthLabel = document.getElementById('current-month-label');
     const staffingGrid = document.getElementById('staffing-grid');
@@ -153,7 +140,6 @@ async function renderGrid(isSilent = false) {
 
     try {
         // --- PARALLEL DATEN LADEN ---
-        // Wir nutzen Promise.all für maximale Geschwindigkeit
         const [shiftPayload, specialDatesResult, queriesResult, marketOffersResult, pendingRequestsResult] = await Promise.all([
             // 1. Schichten & Status
             PlanApi.fetchShiftData(PlanState.currentYear, PlanState.currentMonth, PlanState.currentVariantId),
@@ -184,7 +170,7 @@ async function renderGrid(isSilent = false) {
             PlanState.currentShifts[key] = { ...s, shift_type: fullShiftType };
         });
 
-        // Last Month (für Übertrag-Anzeige)
+        // Last Month
         PlanState.currentShiftsLastMonth = {};
         if (shiftPayload.shifts_last_month) {
             shiftPayload.shifts_last_month.forEach(s => {
@@ -204,7 +190,6 @@ async function renderGrid(isSilent = false) {
         PlanState.currentMarketOffers = {};
         if (marketOffersResult && Array.isArray(marketOffersResult)) {
             marketOffersResult.forEach(offer => {
-                // Key format: userId-dateStr
                 const d = offer.shift_date.split('T')[0];
                 const key = `${offer.offering_user_id}-${d}`;
                 PlanState.currentMarketOffers[key] = offer;
@@ -221,7 +206,7 @@ async function renderGrid(isSilent = false) {
             status: "In Bearbeitung", is_locked: false
         };
 
-        // Special Dates (Vollständiger Load inkl. Training/DPO)
+        // Special Dates (Vollständiger Load)
         PlanState.currentSpecialDates = {};
         await loadFullSpecialDates();
 
@@ -231,11 +216,10 @@ async function renderGrid(isSilent = false) {
 
         // --- UI UPDATES ---
 
-        // 1. Status Bar aktualisieren (Sperren/Varianten Buttons)
+        // 1. Status Bar aktualisieren
         PlanUIHelper.updatePlanStatusUI(PlanState.currentPlanStatus);
 
         // 2. Grid DOM bauen
-        // Wir übergeben den Click-Handler aus dem Interaction Modul
         PlanRenderer.buildGridDOM({
             onCellClick: (e, user, dateStr, cell, isOwn) =>
                 PlanInteraction.handleCellClick(e, user, dateStr, cell, isOwn),
@@ -255,7 +239,7 @@ async function renderGrid(isSilent = false) {
         // 3. Staffing Table aufbauen
         StaffingModule.buildStaffingTable();
 
-        // 4. Highlight (falls User von "Anfragen" kam)
+        // 4. Highlight
         if(PlanState.pendingHighlight) {
             setTimeout(() => {
                 PlanRenderer.highlightCells(PlanState.pendingHighlight.date, PlanState.pendingHighlight.targetUserId);
@@ -263,7 +247,7 @@ async function renderGrid(isSilent = false) {
             }, 300);
         }
 
-        // 5. Banner & Visuals (Marktplatz, Offene Anträge)
+        // 5. Banner & Visuals
         PlanBanner.renderUnifiedBanner();
         PlanBanner.markPendingTakeovers();
 
@@ -279,19 +263,18 @@ async function renderGrid(isSilent = false) {
         if(grid) grid.innerHTML = `<div style="padding: 20px; text-align: center; color: red;">Fehler beim Laden des Plans: ${error.message}</div>`;
         console.error(error);
     } finally {
-        // Animation Ende (Blur entfernen)
+        // Animation Ende
         if(grid) grid.classList.remove('blur-loading');
         if(staffingGrid) staffingGrid.classList.remove('blur-loading');
     }
 }
 
 
-// --- 3. HELPER FUNCTIONS (Startup-related) ---
-// ... (Die Helper-Funktionen loadFullSpecialDates, loadColorSettings, loadShortcuts, checkHighlights bleiben unverändert) ...
+// --- 3. HELPER FUNCTIONS ---
+
 async function loadFullSpecialDates() {
     try {
         const year = PlanState.currentYear;
-        // Parallel laden aller Typen für maximale Performance
         const [holidays, training, shooting, dpo] = await Promise.all([
             PlanApi.fetchSpecialDates(year, 'holiday'),
             PlanApi.fetchSpecialDates(year, 'training'),
@@ -299,7 +282,6 @@ async function loadFullSpecialDates() {
             PlanApi.fetchSpecialDates(year, 'dpo')
         ]);
 
-        // In State merken
         training.forEach(d => { if(d.date) PlanState.currentSpecialDates[d.date] = d.type; });
         shooting.forEach(d => { if(d.date) PlanState.currentSpecialDates[d.date] = d.type; });
         holidays.forEach(d => { if(d.date) PlanState.currentSpecialDates[d.date] = 'holiday'; });
@@ -355,7 +337,6 @@ function checkHighlights() {
             highlightData = JSON.parse(data);
             localStorage.removeItem(DHF_HIGHLIGHT_KEY);
 
-            // FIX: Datum bereinigen
             if (highlightData.date && highlightData.date.includes('T')) {
                 highlightData.date = highlightData.date.split('T')[0];
             }
@@ -371,12 +352,9 @@ function checkHighlights() {
 
 // --- 4. START ---
 
-// Global Keydown (Shortcuts)
 window.addEventListener('keydown', (e) => PlanHandlers.handleKeyboardShortcut(e));
 
-// Global Click (Modals schließen)
 window.addEventListener('click', (e) => {
-    // Liste der Modals, die geschlossen werden sollen bei Klick auf Hintergrund (Overlay)
     const overlayModals = [
         document.getElementById('shift-modal'),
         document.getElementById('query-modal'),
@@ -389,9 +367,7 @@ window.addEventListener('click', (e) => {
         if(m && e.target === m) m.style.display = 'none';
     });
 
-    // --- NEU: Spezialbehandlung für das Kontext-Menü (kein Overlay) ---
     const clickActionModal = document.getElementById('click-action-modal');
-    // Wenn das Modal offen ist UND der Klick NICHT im Modal war UND NICHT auf einer Grid-Zelle
     if (clickActionModal && clickActionModal.style.display === 'block') {
         if (!clickActionModal.contains(e.target) && !e.target.closest('.grid-cell')) {
             clickActionModal.style.display = 'none';
