@@ -24,8 +24,8 @@ def create_shift_change_request():
         if not shift_id:
             return jsonify({"error": "Schicht-ID fehlt"}), 400
 
-        # Wir rufen den Service auf. Dieser erstellt den Antrag nur (Status: Pending).
-        # Es werden KEINE Änderungen am Schichtplan vorgenommen, bis der Admin genehmigt.
+        # Wir rufen den Service auf. Dieser erstellt den Antrag.
+        # HINWEIS: Bei 'trade' führt der Service einen AUTO-APPROVE durch und liefert direkt 200 zurück.
         result, status_code = ShiftChangeService.create_request(
             shift_id=shift_id,
             requester_id=current_user.id,
@@ -34,9 +34,8 @@ def create_shift_change_request():
             reason_type=reason_type
         )
 
-        # --- NEU: Auto-Approve für Planschreiber und Admins ---
-        # Wenn der Ersteller vertrauenswürdig ist (Admin oder Planschreiber),
-        # setzen wir die Änderung sofort um (Auto-Genehmigung).
+        # --- NEU: Auto-Approve für Planschreiber und Admins (nur für manuelle Krankmeldungen relevant) ---
+        # Wenn der Service 201 zurückgibt (noch pending) UND es ein Admin ist, genehmigen wir sofort.
         if status_code == 201:
             user_role = current_user.role.name if current_user.role else ""
 
@@ -65,8 +64,11 @@ def create_shift_change_request():
 @shift_change_bp.route('/list', methods=['GET'])
 @login_required
 def get_pending_requests():
-    # Zeigt alle offenen Anträge für Admin/Planschreiber
-    requests = ShiftChangeRequest.query.filter_by(status='pending').order_by(ShiftChangeRequest.created_at.desc()).all()
+    # Zeigt alle offenen UND genehmigten Anträge für Admin/Planschreiber
+    # Damit können auch bereits genehmigte Tausche rückgängig gemacht werden.
+    requests = ShiftChangeRequest.query.filter(
+        ShiftChangeRequest.status.in_(['pending', 'approved'])
+    ).order_by(ShiftChangeRequest.created_at.desc()).limit(100).all()
 
     results = []
     for req in requests:
@@ -93,12 +95,13 @@ def approve_request(request_id):
     return jsonify(result), status_code
 
 
-# --- 4. Antrag ABLEHNEN ---
+# --- 4. Antrag ABLEHNEN / RÜCKGÄNGIG MACHEN ---
 @shift_change_bp.route('/<int:request_id>/reject', methods=['POST'])
 @login_required
 def reject_request(request_id):
     if current_user.role.name not in ['admin', 'Planschreiber']:
         return jsonify({"error": "Keine Berechtigung"}), 403
 
+    # Der Service prüft nun, ob es 'pending' (Ablehnen) oder 'approved' (Rollback) ist
     result, status_code = ShiftChangeService.reject_request(request_id, current_user.id)
     return jsonify(result), status_code

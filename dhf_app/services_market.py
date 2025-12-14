@@ -20,7 +20,13 @@ class MarketService:
         """
         Markiert Angebote als abgelaufen, wenn das Schichtdatum in der Vergangenheit liegt
         ODER das Angebot älter als 7 Tage ist.
+
+        Führt zusätzlich die Prüfung auf automatische Annahme durch (Auto-Accept).
         """
+        # 1. Automatische Annahme prüfen (Timer abgelaufen?)
+        MarketService.process_auto_accepts()
+
+        # 2. Aufräumen alter Angebote
         try:
             now = datetime.utcnow()
             seven_days_ago = now - timedelta(days=7)
@@ -50,6 +56,97 @@ class MarketService:
                 print(f"[Market] {count} alte Angebote auf 'expired' gesetzt.")
         except Exception as e:
             print(f"[Market] Fehler beim Cleanup: {e}")
+
+    @staticmethod
+    def check_and_set_deadline(offer_id):
+        """
+        Prüft, ob für ein Angebot ein Timer gestartet oder gestoppt werden muss.
+        Wird aufgerufen, wenn eine Reaktion (Interesse/Absage) erfolgt.
+        Regel:
+        - Erster Interessent da? -> Timer auf 24h setzen (falls noch nicht gesetzt).
+        - Kein Interessent mehr da? -> Timer entfernen.
+        """
+        offer = db.session.get(ShiftMarketOffer, offer_id)
+        if not offer or offer.status != 'active':
+            return
+
+        # Prüfen, ob es aktive Interessenten gibt
+        has_interest = ShiftMarketResponse.query.filter_by(
+            offer_id=offer_id,
+            response_type='interested'
+        ).count() > 0
+
+        if has_interest:
+            # Wenn Interesse besteht, aber noch kein Timer läuft -> Starten
+            if not offer.auto_accept_deadline:
+                # Timer: Jetzt + 24 Stunden
+                offer.auto_accept_deadline = datetime.utcnow() + timedelta(hours=24)
+                print(f"[Market] Timer für Angebot {offer.id} gestartet (24h).")
+        else:
+            # Wenn kein Interesse mehr besteht (alle abgesprungen), Timer resetten
+            if offer.auto_accept_deadline:
+                offer.auto_accept_deadline = None
+                print(f"[Market] Timer für Angebot {offer.id} gestoppt (keine Interessenten mehr).")
+
+        db.session.commit()
+
+    @staticmethod
+    def process_auto_accepts():
+        """
+        Prüft alle aktiven Angebote auf abgelaufene Deadlines.
+        Wenn Deadline erreicht: Automatisch den ältesten (ersten) Interessenten akzeptieren.
+        """
+        try:
+            now = datetime.utcnow()
+
+            # Finde Angebote, deren Deadline erreicht ist
+            due_offers = ShiftMarketOffer.query.filter(
+                ShiftMarketOffer.status == 'active',
+                ShiftMarketOffer.auto_accept_deadline != None,
+                ShiftMarketOffer.auto_accept_deadline <= now
+            ).all()
+
+            if not due_offers:
+                return
+
+            # Import hier, um Zyklen zu vermeiden
+            from .services_shift_change import ShiftChangeService
+
+            for offer in due_offers:
+                # Den Kandidaten finden, der am längsten wartet (FIFO Prinzip)
+                winner_response = ShiftMarketResponse.query.filter_by(
+                    offer_id=offer.id,
+                    response_type='interested'
+                ).order_by(ShiftMarketResponse.created_at.asc()).first()
+
+                if winner_response:
+                    candidate = winner_response.user
+                    print(f"[Market] Auto-Accept ausgelöst für Angebot {offer.id}. Gewinner: {candidate.name}")
+
+                    # Status im Angebot setzen
+                    offer.status = 'pending'
+                    offer.accepted_by_id = candidate.id
+                    offer.accepted_at = now
+
+                    # Offiziellen Tausch-Antrag erstellen
+                    ShiftChangeService.create_request(
+                        shift_id=offer.shift_id,
+                        requester_id=offer.offering_user_id,
+                        replacement_user_id=candidate.id,
+                        note=f"🤖 AUTO-MATCH (24h Timer abgelaufen): {offer.offering_user.name} -> {candidate.name}\nNotiz: {offer.note}",
+                        reason_type='trade'
+                    )
+                else:
+                    # Sollte eigentlich nicht passieren (Timer läuft, aber keiner will mehr?),
+                    # aber zur Sicherheit Timer entfernen, damit er nicht loopet.
+                    offer.auto_accept_deadline = None
+
+            db.session.commit()
+
+        except Exception as e:
+            print(f"[Market] Fehler bei Auto-Accept Verarbeitung: {e}")
+            # Rollback nur bei Fehler, damit der Server weiterläuft
+            db.session.rollback()
 
     @staticmethod
     def check_and_archive_if_all_declined(offer_id):
@@ -335,4 +432,3 @@ class MarketService:
         enriched_results.sort(key=lambda x: (0 if x['response_type'] == 'interested' else 1, x['created_at']))
 
         return enriched_results
-

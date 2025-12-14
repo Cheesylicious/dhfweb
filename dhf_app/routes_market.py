@@ -35,7 +35,7 @@ def get_market_offers():
     if not _is_allowed():
         return jsonify({"message": "Zugriff verweigert."}), 403
 
-    # Cleanup Task bei jedem Laden triggern
+    # Cleanup Task bei jedem Laden triggern (Inklusive Auto-Accept Check)
     MarketService.cleanup_old_offers()
 
     # Filter auslesen (Default: active)
@@ -107,6 +107,27 @@ def react_to_offer(offer_id):
     if response_type not in ['interested', 'declined']:
         return jsonify({"message": "Ungültiger Status."}), 400
 
+    # --- NEU: CHECK AUF DOPPELBELEGUNG ---
+    if response_type == 'interested':
+        # Prüfen, ob der aktuelle User am Tag des Angebots bereits eine Schicht hat
+        # (Nur Hauptplan beachten, variant_id == None)
+        existing_shift = Shift.query.filter_by(
+            user_id=current_user.id,
+            date=offer.shift.date,
+            variant_id=None
+        ).first()
+
+        # Wenn Schicht existiert UND nicht explizit "FREI" ist (shifttype_id nicht NULL)
+        if existing_shift and existing_shift.shifttype_id is not None:
+            # Optionale Prüfung: Ist es eine "Arbeitsschicht"?
+            # Hier streng: Jede eingetragene Schicht blockiert, außer es ist ein Dummy.
+            st = ShiftType.query.get(existing_shift.shifttype_id)
+            if st and st.is_work_shift:
+                return jsonify({
+                    "message": f"Nicht möglich: Du hast am {offer.shift.date.strftime('%d.%m.')} bereits Dienst ({st.abbreviation})."
+                }), 400
+    # -------------------------------------
+
     # Bestehende Antwort prüfen/aktualisieren
     existing = ShiftMarketResponse.query.filter_by(offer_id=offer_id, user_id=current_user.id).first()
     if existing:
@@ -123,6 +144,9 @@ def react_to_offer(offer_id):
         db.session.add(new_resp)
 
     db.session.commit()
+
+    # Timer Logik auslösen
+    MarketService.check_and_set_deadline(offer_id)
 
     # Check: Wenn abgelehnt, prüfen ob alle abgelehnt haben -> Archivieren
     if response_type == 'declined':

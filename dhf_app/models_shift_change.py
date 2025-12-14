@@ -13,6 +13,9 @@ class ShiftChangeRequest(db.Model):
     # Speichert die ursprüngliche Schichtart für "Rückgängig machen"
     backup_shifttype_id = db.Column(db.Integer, nullable=True)
 
+    # NEU: Das Datum fest speichern, damit es erhalten bleibt, wenn die Schicht gelöscht wird (bei Tausch)
+    shift_date = db.Column(db.Date, nullable=True)
+
     reason_type = db.Column(db.String(50), default='sickness', nullable=False)
     note = db.Column(db.String(255), nullable=True)
     status = db.Column(db.String(20), default='pending', index=True)
@@ -28,9 +31,14 @@ class ShiftChangeRequest(db.Model):
     processed_by = db.relationship('User', foreign_keys=[processed_by_id])
 
     def to_dict(self):
-        shift_date_str = self.original_shift.date.isoformat() if self.original_shift else None
+        # Datum ermitteln: Zuerst das feste Feld, Fallback auf Relation
+        shift_date_str = None
+        if self.shift_date:
+            shift_date_str = self.shift_date.isoformat()
+        elif self.original_shift:
+            shift_date_str = self.original_shift.date.isoformat()
 
-        # --- NEU: Schicht-Kürzel und Farbe ermitteln ---
+        # --- Schicht-Kürzel und Farbe ermitteln ---
         shift_abbr = "?"
         shift_color = "#555555"
 
@@ -40,14 +48,19 @@ class ShiftChangeRequest(db.Model):
         # -----------------------------------------------
 
         original_user = "Unbekannt"
-        target_user_id = None  # Variable initialisieren
+        target_user_id = None
 
+        # User-Namen auflösen
+        # Fall 1: Über Relation zur Schicht (wenn noch vorhanden)
         if self.original_shift and self.original_shift.user:
             original_user = f"{self.original_shift.user.vorname} {self.original_shift.user.name}"
-            # --- WICHTIG: Die ID speichern, damit das Frontend die Zeile findet ---
             target_user_id = self.original_shift.user.id
-        elif not self.original_shift:
-            original_user = "Schicht gelöscht/offen"
+        # Fall 2: Wenn Schicht gelöscht, nehmen wir den Requester (das ist der ursprüngliche Besitzer)
+        elif self.requester:
+            original_user = f"{self.requester.vorname} {self.requester.name}"
+            target_user_id = self.requester.id
+        else:
+            original_user = "Gelöscht"
 
         requester_name = "System"
         if self.requester:
@@ -62,11 +75,9 @@ class ShiftChangeRequest(db.Model):
             "original_shift_id": self.original_shift_id,
             "shift_date": shift_date_str,
 
-            # --- WICHTIG FÜR DAS FRONTEND ---
             "shift_abbr": shift_abbr,
             "shift_color": shift_color,
-            "target_user_id": target_user_id, # <--- Hier übergeben wir die ID
-            # --------------------------------
+            "target_user_id": target_user_id,
 
             "original_user_name": original_user,
             "requester_name": requester_name,
