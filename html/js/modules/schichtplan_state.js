@@ -39,6 +39,14 @@ export const PlanState = {
     // Key: "userId-dateStr" (z.B. "5-2025-01-12") -> Offer Object
     currentMarketOffers: {},
 
+    // Timer Targets für Ghost Animation (EMPFÄNGER)
+    // Key: "RECEIVER_ID-DATE" -> { abbr: "T.", from: "Max Mustermann" }
+    marketTimerTargets: {},
+
+    // NEU: Timer Sources für Ghost Animation (SENDER)
+    // Key: "GIVER_ID-DATE" -> { to: "Erika Musterfrau" }
+    marketTimerSources: {},
+
     // Einstellungen
     colorSettings: {},
     shortcutMap: {},

@@ -186,13 +186,38 @@ async function renderGrid(isSilent = false) {
             shiftPayload.violations.forEach(v => PlanState.currentViolations.add(`${v[0]}-${v[1]}`));
         }
 
-        // Market Offers
+        // Market Offers & Ghost Targets
         PlanState.currentMarketOffers = {};
+        PlanState.marketTimerTargets = {}; // Reset
+        PlanState.marketTimerSources = {}; // NEU: Reset Sources
+
         if (marketOffersResult && Array.isArray(marketOffersResult)) {
             marketOffersResult.forEach(offer => {
                 const d = offer.shift_date.split('T')[0];
                 const key = `${offer.offering_user_id}-${d}`;
                 PlanState.currentMarketOffers[key] = offer;
+
+                // NEU: Ghost Logic (Beide Seiten: Sender & Empfänger)
+                if (offer.leading_candidate_id) {
+
+                    // 1. Empfänger (sieht "Geist")
+                    const receiverKey = `${offer.leading_candidate_id}-${d}`;
+                    PlanState.marketTimerTargets[receiverKey] = {
+                        abbr: offer.shift_type_abbr,
+                        from: offer.offering_user_name
+                    };
+
+                    // 2. Sender (sieht "Ausgang") - ID ist offer.offering_user_id
+                    const senderKey = `${offer.offering_user_id}-${d}`;
+
+                    // Name des Empfängers finden (für Tooltip)
+                    const candidateUser = PlanState.allUsers.find(u => u.id === offer.leading_candidate_id);
+                    const candidateName = candidateUser ? `${candidateUser.vorname} ${candidateUser.name}` : "Unbekannt";
+
+                    PlanState.marketTimerSources[senderKey] = {
+                        to: candidateName
+                    };
+                }
             });
         }
 

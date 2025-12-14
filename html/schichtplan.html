@@ -1404,6 +1404,66 @@
             display: none;
         }
 
+        /* --- GHOST / MARKET ANIMATIONS --- */
+
+        /* 1. Eingehend (Empfänger) - GRÜN */
+        .grid-cell.pending-incoming {
+            border: 2px dashed #2ecc71 !important;
+            background-color: rgba(46, 204, 113, 0.05);
+            position: relative;
+            animation: pulse-border-green 2s infinite;
+        }
+
+        /* 2. Ausgehend (Sender) - ORANGE */
+        .grid-cell.pending-outgoing {
+            border: 2px dashed #f39c12 !important;
+            background-color: rgba(243, 156, 18, 0.05);
+            position: relative;
+            opacity: 0.9;
+            animation: pulse-border-orange 2s infinite;
+        }
+
+        /* 3. Der "Geister-Text" */
+        .ghost-text {
+            opacity: 0.5;
+            font-style: italic;
+            color: #555;
+            pointer-events: none;
+            font-weight: bold;
+        }
+
+        /* 4. Icons */
+        .icon-incoming {
+            position: absolute;
+            top: 2px; right: 2px;
+            color: #2ecc71;
+            font-size: 0.8em;
+            z-index: 5;
+            opacity: 0.8;
+        }
+
+        .icon-outgoing {
+            position: absolute;
+            top: 2px; right: 2px;
+            color: #f39c12;
+            font-size: 0.8em;
+            z-index: 5;
+            opacity: 0.8;
+        }
+
+        /* Animationen */
+        @keyframes pulse-border-green {
+            0% { border-color: rgba(46, 204, 113, 0.4); }
+            50% { border-color: rgba(46, 204, 113, 1.0); }
+            100% { border-color: rgba(46, 204, 113, 0.4); }
+        }
+
+        @keyframes pulse-border-orange {
+            0% { border-color: rgba(243, 156, 18, 0.4); }
+            50% { border-color: rgba(243, 156, 18, 1.0); }
+            100% { border-color: rgba(243, 156, 18, 0.4); }
+        }
+
     </style>
 </head>
 <body>

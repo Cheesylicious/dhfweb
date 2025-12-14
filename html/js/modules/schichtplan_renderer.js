@@ -55,15 +55,22 @@ export const PlanRenderer = {
         const shiftType = shift ? shift.shift_type : null;
         const violationKey = `${userId}-${day}`;
 
-        // --- MARKTPLATZ CHECK ---
+        // --- MARKTPLATZ CHECK (ANGEBOTE) ---
         const marketOffer = (PlanState.currentMarketOffers || {})[key];
 
         // WICHTIG: Marktplatz-Angebote NUR im Hauptplan anzeigen!
-        // Wenn wir in einer Variante sind (currentVariantId !== null), ignorieren wir Angebote.
         const isMainPlan = (PlanState.currentVariantId === null);
 
         // Nur anzeigen, wenn Hauptplan UND Angebot existiert UND Rolle passt
         const showMarket = isMainPlan && marketOffer && (PlanState.isAdmin || PlanState.isHundefuehrer);
+
+        // --- GHOST CHECK (INCOMING) ---
+        const ghostData = (PlanState.marketTimerTargets || {})[key];
+        const showGhost = isMainPlan && ghostData;
+
+        // --- OUTGOING CHECK (NEU: Sender) ---
+        const outgoingData = (PlanState.marketTimerSources || {})[key];
+        const showOutgoing = isMainPlan && outgoingData;
 
         // --- Check ob heute ---
         const today = new Date();
@@ -76,9 +83,19 @@ export const PlanRenderer = {
         if (PlanState.currentViolations.has(violationKey)) cellClasses += ' violation';
         if (shift && shift.is_locked) cellClasses += ' locked-shift';
 
-        // Marktplatz-Klasse (für Blinken)
+        // Marktplatz-Klasse (für Blinken bei Angebot)
         if (showMarket) {
             cellClasses += ' market-offer-active';
+        }
+
+        // Ghost (Empfänger)
+        if (showGhost) {
+            cellClasses += ' pending-incoming';
+        }
+
+        // Outgoing (Sender) - NEU
+        if (showOutgoing) {
+            cellClasses += ' pending-outgoing';
         }
 
         // Klasse hinzufügen, wenn es heute ist
@@ -144,6 +161,11 @@ export const PlanRenderer = {
             cell.textContent = shiftRequestText;
             cellClasses += ' shift-request-cell';
             if (wunschQuery) cell.dataset.queryId = wunschQuery.id;
+        } else if (showGhost) {
+            // NEU: Geist anzeigen (wenn Zelle leer ist)
+            cell.innerHTML = `<span class="ghost-text">${ghostData.abbr}</span>`;
+             if (eventType === 'holiday') cellClasses += ` day-color-${eventType}`;
+             else if (isWeekend) cellClasses += ' weekend';
         } else {
              if (eventType === 'holiday') cellClasses += ` day-color-${eventType}`;
              else if (isWeekend) cellClasses += ' weekend';
@@ -154,7 +176,7 @@ export const PlanRenderer = {
 
         // --- ICONS EINFÜGEN ---
 
-        // 1. Marktplatz Icon
+        // 1. Marktplatz Icon (Angebot)
         if (showMarket) {
              const marketIcon = document.createElement('div');
              marketIcon.className = 'market-icon-overlay';
@@ -176,7 +198,25 @@ export const PlanRenderer = {
              cell.dataset.marketOfferId = marketOffer.id;
         }
 
-        // 2. Notiz Icon
+        // 2. Ghost Icon (Download Pfeil für Empfänger)
+        if (showGhost) {
+            const icon = document.createElement('div');
+            icon.className = 'icon-incoming';
+            icon.innerHTML = '<i class="fas fa-download"></i>';
+            icon.title = `Wartet auf Übernahme von ${ghostData.from} (Timer läuft)`;
+            cell.appendChild(icon);
+        }
+
+        // 3. Outgoing Icon (Upload Pfeil für Sender) - NEU
+        if (showOutgoing) {
+            const icon = document.createElement('div');
+            icon.className = 'icon-outgoing';
+            icon.innerHTML = '<i class="fas fa-upload"></i>';
+            icon.title = `Wird übergeben an ${outgoingData.to} (Timer läuft)`;
+            cell.appendChild(icon);
+        }
+
+        // 4. Notiz Icon
         if (showQuestionMark) {
              const iconSpan = document.createElement('span');
              iconSpan.className = 'shift-query-icon';
@@ -193,7 +233,7 @@ export const PlanRenderer = {
              cell.appendChild(iconSpan);
         }
 
-        // --- 3. NEU: HANDSCHLAG (TRADE) ICON ---
+        // --- 5. HANDSCHLAG (TRADE) ICON ---
         if (shift && shift.is_trade) {
             const tradeIcon = document.createElement('div');
             tradeIcon.className = 'icon-trade';
