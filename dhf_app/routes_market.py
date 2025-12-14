@@ -1,3 +1,5 @@
+# dhf_app/routes_market.py
+
 from flask import Blueprint, request, jsonify
 from flask_login import login_required, current_user
 from datetime import datetime, date, timedelta
@@ -5,6 +7,9 @@ from .extensions import db
 from .models import Shift, ShiftType, User
 from .models_market import ShiftMarketOffer
 from .services_shift_change import ShiftChangeService
+# NEU: Import des neuen MarketService und Admin-Check
+from .services_market import MarketService
+from .utils import admin_required
 
 market_bp = Blueprint('market', __name__, url_prefix='/api/market')
 
@@ -24,6 +29,7 @@ def _check_overlap(st1, st2):
     """
     Hilfsfunktion: Prüft, ob sich zwei Schichtarten zeitlich überschneiden.
     Erwartet ShiftType-Objekte.
+    (Wird weiterhin für die direkte Prüfung beim Annehmen benötigt)
     """
     if not st1 or not st2: return False
     if not st1.start_time or not st1.end_time or not st2.start_time or not st2.end_time:
@@ -51,25 +57,89 @@ def _check_overlap(st1, st2):
 @login_required
 def get_market_offers():
     """
-    Liefert alle AKTIVEN Angebote.
-    NEU: Filtert strikt auf den HAUPTPLAN (variant_id IS NULL).
+    Liefert Angebote zurück.
+    Parameter 'status' steuert, welche Angebote geladen werden (active, pending, own).
     """
     if not _is_allowed():
         return jsonify({"message": "Zugriff verweigert."}), 403
 
-    # Join mit Shift, um auf variant_id zu prüfen
-    offers = ShiftMarketOffer.query.join(Shift).filter(
-        ShiftMarketOffer.status == 'active',
+    # Filter auslesen (Default: active)
+    status_filter = request.args.get('status', 'active')
+
+    query = ShiftMarketOffer.query.join(Shift).filter(
         Shift.variant_id == None  # <--- NUR HAUPTPLAN
-    ).order_by(ShiftMarketOffer.created_at.desc()).all()
+    )
+
+    if status_filter == 'own':
+        # Eigene Angebote (egal welcher Status, außer gelöscht)
+        query = query.filter(ShiftMarketOffer.offering_user_id == current_user.id)
+    elif status_filter == 'pending':
+        # Laufende Genehmigungsverfahren
+        query = query.filter(ShiftMarketOffer.status == 'pending')
+    else:
+        # Standard: Nur aktive Angebote im Markt
+        query = query.filter(ShiftMarketOffer.status == 'active')
+
+    offers = query.order_by(ShiftMarketOffer.created_at.desc()).all()
 
     results = []
     for offer in offers:
         data = offer.to_dict()
         data['is_my_offer'] = (offer.offering_user_id == current_user.id)
+
+        # Für Pending-Angebote fügen wir hinzu, wer angenommen hat (falls sichtbar)
+        if status_filter == 'pending' and offer.accepted_by_user:
+            data['accepted_by_name'] = f"{offer.accepted_by_user.vorname} {offer.accepted_by_user.name}"
+
         results.append(data)
 
     return jsonify(results), 200
+
+
+@market_bp.route('/history', methods=['GET'])
+@login_required
+def get_market_history():
+    """
+    NEU: Liefert die Historie der Tauschbörse.
+    """
+    if not _is_allowed():
+        return jsonify({"message": "Zugriff verweigert."}), 403
+
+    try:
+        limit = request.args.get('limit', 50, type=int)
+        history = MarketService.get_market_history(limit)
+        return jsonify(history), 200
+    except Exception as e:
+        return jsonify({"message": f"Fehler beim Laden der Historie: {str(e)}"}), 500
+
+
+@market_bp.route('/history/<int:offer_id>', methods=['DELETE'])
+@admin_required
+def delete_history_entry(offer_id):
+    """
+    NEU: Löscht einen Eintrag aus der Historie (Admin only).
+    """
+    success, msg = MarketService.delete_history_entry(offer_id)
+    if success:
+        return jsonify({"message": msg}), 200
+    else:
+        return jsonify({"message": msg}), 400
+
+
+@market_bp.route('/offer/<int:offer_id>/candidates', methods=['GET'])
+@login_required
+def get_offer_candidates(offer_id):
+    """
+    NEU: Liefert potenzielle Kandidaten für ein Angebot.
+    """
+    if not _is_allowed():
+        return jsonify({"message": "Zugriff verweigert."}), 403
+
+    try:
+        candidates = MarketService.get_potential_candidates(offer_id)
+        return jsonify(candidates), 200
+    except Exception as e:
+        return jsonify({"message": f"Fehler bei Kandidatensuche: {str(e)}"}), 500
 
 
 @market_bp.route('/offer', methods=['POST'])
@@ -103,14 +173,14 @@ def create_market_offer():
         return jsonify({"message": "Vergangene Schichten können nicht getauscht werden."}), 400
 
     # --- 2. Whitelist-Check ---
-    ALLOWED_MARKET_SHIFTS = ['T.', 'N.', '6', '24']
+    ALLOWED_MARKET_SHIFTS = ['T.', 'N.', '6', '24', 'S', 'QA']  # Erweitert falls nötig
 
     if not shift.shift_type:
         return jsonify({"message": "Schicht-Typ konnte nicht ermittelt werden."}), 400
 
     if shift.shift_type.abbreviation not in ALLOWED_MARKET_SHIFTS:
         return jsonify({
-            "message": f"Diese Schichtart darf nicht getauscht werden. Erlaubt sind nur: {', '.join(ALLOWED_MARKET_SHIFTS)}"
+            "message": f"Diese Schichtart darf nicht getauscht werden."
         }), 400
 
     if shift.user_id != current_user.id:
@@ -217,7 +287,7 @@ def accept_market_offer(offer_id):
 
     if prev_shift and prev_shift.shift_type and target_shift_type:
         # Wenn Gestern = Nacht und Heute = Tag
-        if prev_shift.shift_type.abbreviation == 'N.' and target_shift_type.abbreviation == 'T.':
+        if prev_shift.shift_type.abbreviation == 'N.' and target_shift_type.abbreviation in ['T.', '6', 'S', 'QA']:
             return jsonify({
                 "message": "Konflikt: Ruhezeitverletzung! Sie können keine Tag-Schicht direkt nach einer Nachtschicht übernehmen."
             }), 409
@@ -256,7 +326,7 @@ def accept_market_offer(offer_id):
             reason_type='trade'
         )
 
-        if status_code != 201:
+        if status_code != 201 and status_code != 200:  # 200 ist bei Auto-Approve auch ok
             db.session.rollback()
             return jsonify(service_result), status_code
 
