@@ -21,12 +21,9 @@ export const PlanBanner = {
             // 1. ZIEL-CONTAINER FINDEN (Shared Container)
             let mainContainer = document.getElementById('notification-container');
 
-            // Fallback: Falls shared_notifications.js noch nicht lief, erstellen wir den Container
             if (!mainContainer) {
                 mainContainer = document.createElement('div');
                 mainContainer.id = 'notification-container';
-                // Styles werden durch shared_notifications.js oder schichtplan_ui_helper gesetzt
-                // Wir fügen ihn nach dem Header ein
                 const header = document.querySelector('header');
                 if (header) header.insertAdjacentElement('afterend', mainContainer);
             }
@@ -36,14 +33,14 @@ export const PlanBanner = {
             if (!slot) {
                 slot = document.createElement('div');
                 slot.id = 'plan-notifications-slot';
-                slot.className = 'notification-slot'; // Nutzt CSS von shared_notifications
+                slot.className = 'notification-slot';
                 mainContainer.appendChild(slot);
             }
 
-            // Slot leeren (nur die Plan-spezifischen Banner neu bauen)
+            // Slot leeren
             slot.innerHTML = '';
 
-            // 3. SERVER-BANNER KAPERN (Optional: Wenn Server-Flash-Messages da sind)
+            // 3. SERVER-BANNER KAPERN (System Message)
             let serverMessage = null;
             let serverAction = null;
             const possibleBanners = document.querySelectorAll('.alert, .flash, .flashes div, .alert-danger, .alert-success');
@@ -58,7 +55,7 @@ export const PlanBanner = {
                 }
             });
 
-            // 4. API DATEN HOLEN (Client-Side State)
+            // 4. API DATEN HOLEN
             let pendingRequests = PlanState.currentChangeRequests || [];
             if ((PlanState.isAdmin || PlanState.isPlanschreiber) && pendingRequests.length === 0) {
                  try { pendingRequests = await PlanApi.fetchPendingShiftChangeRequests(); } catch(e) {}
@@ -77,15 +74,18 @@ export const PlanBanner = {
             const countSick = otherReqs.length;
             const countMarket = marketOffers.length;
 
-            if (!serverMessage && countTrade === 0 && countSick === 0 && countMarket === 0) return;
+            // --- NEU: Trainings-Warnungen (Admin only) ---
+            const countTraining = PlanState.trainingWarnings ? PlanState.trainingWarnings.length : 0;
 
-            // 5. BANNER RENDERN (in den Slot)
 
-            // Helper: Nutzt die CSS-Klassen von shared_notifications für einheitlichen Look
+            if (!serverMessage && countTrade === 0 && countSick === 0 && countMarket === 0 && countTraining === 0) return;
+
+            // 5. BANNER RENDERN
+
+            // Helper
             const addTile = (text, colorClass, iconClass, onClick) => {
                 const div = document.createElement('div');
-                div.className = `notification-banner`; // Nutzt Shared Styles
-                // Manuelle Farbe setzen, da die Klassen leicht abweichen können
+                div.className = `notification-banner`;
                 div.style.backgroundColor = colorClass;
 
                 div.innerHTML = `
@@ -105,20 +105,41 @@ export const PlanBanner = {
                 addTile(serverMessage, '#c0392b', 'fa-bell', serverAction);
             }
 
-            // Kachel 2: Krankmeldungen (Orange) - Für Admin & Planschreiber
+            // Kachel 2: Krankmeldungen (Orange)
             if (countSick > 0 && (PlanState.isAdmin || PlanState.isPlanschreiber)) {
                 addTile(`${countSick} Krankmeldung(en)`, '#e67e22', 'fa-exclamation-triangle', () => window.location.href='anfragen.html');
             }
 
-            // Kachel 3: Tausch-Genehmigungen (Blau) - NUR FÜR ADMIN
-            // --- HIER IST DIE WICHTIGE PRÜFUNG ---
+            // Kachel 3: Tausch-Genehmigungen (Blau)
             if (countTrade > 0 && PlanState.isAdmin) {
-                addTile(`${countTrade} Schicht(en) wurde getuascht`, '#2980b9', 'fa-exchange-alt', () => window.location.href='anfragen.html');
+                addTile(`${countTrade} Schicht(en) wurde getauscht`, '#2980b9', 'fa-exchange-alt', () => window.location.href='anfragen.html');
             }
 
-            // Kachel 4: Markt-Angebote (Grün) - Für Hundeführer
+            // --- NEU: Kachel 4: Trainings-Warnungen (Rot-Orange) ---
+            if (countTraining > 0 && PlanState.isAdmin) {
+                // Wir nutzen hier das Orakel-Modal für die Details
+                addTile(`${countTraining} Ausbildung/Schießen fällig`, '#d35400', 'fa-crosshairs', () => {
+                    let msg = "<strong>Folgende Hundeführer müssen noch eingeplant werden:</strong><br><br>";
+                    msg += "<ul style='text-align:left; font-size:13px;'>";
+                    PlanState.trainingWarnings.forEach(w => {
+                        const icon = w.type === 'QA' ? '🎓' : '🔫';
+                        const color = w.status === 'Überfällig' ? '#e74c3c' : '#f1c40f';
+                        msg += `<li style="margin-bottom:5px;">${icon} <strong>${w.name}</strong>: ${w.type}<br><span style="color:${color}; font-size:0.9em;">${w.message}</span></li>`;
+                    });
+                    msg += "</ul>";
+                    msg += "<br><em>Tipp: Trage die entsprechende Schicht (QA oder S) im Plan ein, um diese Meldung zu entfernen.</em>";
+
+                    if (window.dhfAlert) {
+                        window.dhfAlert("Fälligkeiten", msg, "warning");
+                    } else {
+                        alert("Details siehe Hundeführer-Liste.");
+                    }
+                });
+            }
+
+            // Kachel 5: Markt-Angebote (Grün)
             if (countMarket > 0 && PlanState.isHundefuehrer) {
-                addTile(`${countMarket} Schicht(en) möchte(m) getauscht werden`, '#27ae60', 'fa-tags', () => window.location.href='market.html');
+                addTile(`${countMarket} Schicht(en) zum Tausch`, '#27ae60', 'fa-tags', () => window.location.href='market.html');
             }
 
         } catch (e) {

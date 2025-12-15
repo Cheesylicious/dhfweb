@@ -141,7 +141,7 @@ async function renderGrid(isSilent = false) {
     try {
         // --- PARALLEL DATEN LADEN ---
         const [shiftPayload, specialDatesResult, queriesResult, marketOffersResult, pendingRequestsResult] = await Promise.all([
-            // 1. Schichten & Status
+            // 1. Schichten & Status (enthält jetzt auch training_warnings)
             PlanApi.fetchShiftData(PlanState.currentYear, PlanState.currentMonth, PlanState.currentVariantId),
             // 2. Feiertage
             PlanApi.fetchSpecialDates(PlanState.currentYear, 'holiday'),
@@ -230,6 +230,11 @@ async function renderGrid(isSilent = false) {
             year: PlanState.currentYear, month: PlanState.currentMonth,
             status: "In Bearbeitung", is_locked: false
         };
+
+        // --- NEU: Trainings-Warnungen speichern ---
+        // Das ist der entscheidende Teil für das neue Banner!
+        PlanState.trainingWarnings = shiftPayload.training_warnings || [];
+        // ------------------------------------------
 
         // Special Dates (Vollständiger Load)
         PlanState.currentSpecialDates = {};

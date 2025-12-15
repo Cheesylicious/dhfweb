@@ -2,10 +2,6 @@
 
 import { COL_WIDTH_NAME, COL_WIDTH_DETAILS } from '../utils/constants.js';
 
-/**
- * Zentraler Speicher für den Zustand des Schichtplans.
- * Dient als "Single Source of Truth" für alle Module.
- */
 export const PlanState = {
     // Auth & User
     loggedInUser: null,
@@ -31,20 +27,20 @@ export const PlanState = {
     currentStaffingActual: {}, // Nested Object
     currentPlanStatus: {}, // {status, is_locked, ...}
 
+    // NEU: Trainings-Warnungen
+    trainingWarnings: [], // Array von {user_id, name, type, due_date, message}
+
     // Anfragen & Anträge
     currentShiftQueries: [], // Array of query objects (Text-Notizen)
-    currentChangeRequests: [], // NEU: Array of change requests (Krank/Tausch)
+    currentChangeRequests: [], // Array of change requests (Krank/Tausch)
 
     // Marktplatz Angebote Cache
-    // Key: "userId-dateStr" (z.B. "5-2025-01-12") -> Offer Object
     currentMarketOffers: {},
 
     // Timer Targets für Ghost Animation (EMPFÄNGER)
-    // Key: "RECEIVER_ID-DATE" -> { abbr: "T.", from: "Max Mustermann" }
     marketTimerTargets: {},
 
-    // NEU: Timer Sources für Ghost Animation (SENDER)
-    // Key: "GIVER_ID-DATE" -> { to: "Erika Musterfrau" }
+    // Timer Sources für Ghost Animation (SENDER)
     marketTimerSources: {},
 
     // Einstellungen

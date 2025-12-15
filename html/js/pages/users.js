@@ -72,6 +72,9 @@ const passGeaendertField = document.getElementById('user-pass-geaendert');
 const zuletztOnlineField = document.getElementById('user-zuletzt-online');
 const forcePwResetBtn = document.getElementById('force-pw-reset-btn');
 
+// NEU: Checkbox für manuelle Hundeführer-Zuweisung
+const isManualDogHandlerField = document.getElementById('user-is-manual-dog-handler');
+
 // Container für dynamische Sichtbarkeit (Limits Bereich)
 const limitsWrapper = document.getElementById('limits-wrapper');
 
@@ -308,6 +311,9 @@ if (addUserBtn) {
         tutorialField.checked = false;
         canSeeStatsField.checked = false;
 
+        // NEU: Hundeführer Checkbox Reset
+        if (isManualDogHandlerField) isManualDogHandlerField.checked = false;
+
         // Read-Only Infos leeren
         passGeaendertField.value = 'Wird autom. gesetzt';
         zuletztOnlineField.value = 'Nie';
@@ -344,6 +350,11 @@ async function openEditModal(user) {
     tutorialField.checked = user.tutorial_gesehen;
     canSeeStatsField.checked = user.can_see_statistics === true;
 
+    // NEU: Hundeführer Checkbox laden
+    if (isManualDogHandlerField) {
+        isManualDogHandlerField.checked = user.is_manual_dog_handler === true;
+    }
+
     passGeaendertField.value = formatDateTime(user.password_geaendert, 'datetime') || 'Unbekannt';
     zuletztOnlineField.value = formatDateTime(user.zuletzt_online, 'datetime') || 'Nie';
 
@@ -377,7 +388,9 @@ if (saveUserBtn) {
             urlaub_rest: parseInt(urlaubRestField.value) || 0,
             diensthund: diensthundField.value || null,
             tutorial_gesehen: tutorialField.checked,
-            can_see_statistics: canSeeStatsField.checked
+            can_see_statistics: canSeeStatsField.checked,
+            // NEU: Manuelles Hundeführer-Flag senden
+            is_manual_dog_handler: isManualDogHandlerField ? isManualDogHandlerField.checked : false
         };
 
         if (!payload.passwort) delete payload.passwort;
@@ -386,9 +399,23 @@ if (saveUserBtn) {
         modalStatus.textContent = 'Speichere...';
 
         try {
+            let savedUser = null;
+
             if (id) {
                 // UPDATE
-                await apiFetch(`/api/users/${id}`, 'PUT', payload);
+                savedUser = await apiFetch(`/api/users/${id}`, 'PUT', payload);
+
+                // --- HACK: Damit das Flag sicher gespeichert wird, rufen wir den spezifischen Endpoint auf,
+                // falls die normale User-Route das Feld nicht verarbeitet.
+                if (payload.is_manual_dog_handler !== undefined) {
+                     try {
+                         await apiFetch(`/api/dog_handlers/${id}`, 'PUT', {
+                             is_manual_dog_handler: payload.is_manual_dog_handler
+                         });
+                     } catch(ignore) {
+                         console.warn("Konnte Hundeführer-Status nicht separat speichern (vielleicht Route nicht aktiv?)", ignore);
+                     }
+                }
 
                 // Limits nur speichern, wenn sichtbar (also im Edit Mode)
                 if (limitsWrapper && limitsWrapper.style.display !== 'none') {
@@ -401,7 +428,16 @@ if (saveUserBtn) {
                     saveUserBtn.disabled = false;
                     return;
                 }
-                await apiFetch('/api/users', 'POST', payload);
+                savedUser = await apiFetch('/api/users', 'POST', payload);
+
+                // Bei Create müssen wir evtl. auch das Flag setzen (ID wird von Response benötigt)
+                if (savedUser && savedUser.id && payload.is_manual_dog_handler) {
+                    try {
+                        await apiFetch(`/api/dog_handlers/${savedUser.id}`, 'PUT', {
+                            is_manual_dog_handler: true
+                        });
+                    } catch(ignore) {}
+                }
             }
 
             closeModal(modal);
