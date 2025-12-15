@@ -1,6 +1,7 @@
 # dhf_app/services_market.py
 
 from datetime import timedelta, datetime, date
+import json  # WICHTIG: json importieren
 from sqlalchemy import and_, or_, func, extract
 from sqlalchemy.orm import joinedload
 from .extensions import db
@@ -199,6 +200,7 @@ class MarketService:
     def get_market_history(limit=50):
         """
         Holt die Historie abgeschlossener, abgebrochener, abgelaufener und archivierter Tausche.
+        REPARATUR: Liest nun korrekt archivierte Daten aus, wenn die Schicht gelöscht wurde.
         """
         history = ShiftMarketOffer.query.options(
             joinedload(ShiftMarketOffer.shift).joinedload(Shift.shift_type),
@@ -208,18 +210,42 @@ class MarketService:
             ShiftMarketOffer.status.in_(['done', 'cancelled', 'rejected', 'expired', 'archived_no_interest'])
         ).order_by(ShiftMarketOffer.created_at.desc()).limit(limit).all()
 
+        # Performance: Alle Schichtarten einmal laden für Namens-Mapping (Kürzel -> Voller Name)
+        all_types = db.session.query(ShiftType).all()
+        # Map: "T." -> "Tagdienst"
+        type_map_name = {st.abbreviation: st.name for st in all_types}
+
         results = []
         for offer in history:
-            shift_date_str = "Gelöscht/Unbekannt"
+            shift_date_str = "Datum Unbekannt"
             shift_abbr = "?"
+            shift_name = ""
 
-            # Falls die Schicht noch existiert (z.B. bei cancelled)
+            # 1. Versuch: Daten aus der lebenden Schicht holen (falls noch existent, z.B. bei 'cancelled')
             if offer.shift:
-                shift_date_str = offer.shift.date.isoformat()
+                shift_date_str = offer.shift.date.strftime('%d.%m.%Y')
                 if offer.shift.shift_type:
                     shift_abbr = offer.shift.shift_type.abbreviation
-            # Hinweis: Bei 'done' Trades wurde die Schicht gelöscht/neu vergeben.
-            # Hier zeigen wir an, was noch im Offer-Objekt referenzierbar ist.
+                    shift_name = offer.shift.shift_type.name
+
+            # 2. Versuch: Daten aus dem Archiv-Snapshot holen (wenn Schicht gelöscht wurde, z.B. bei 'done')
+            elif offer.archived_shift_data:
+                try:
+                    data = json.loads(offer.archived_shift_data)
+                    # Datum parsen (YYYY-MM-DD -> DD.MM.YYYY)
+                    raw_date = data.get('date')
+                    if raw_date:
+                        d_obj = datetime.strptime(raw_date, '%Y-%m-%d')
+                        shift_date_str = d_obj.strftime('%d.%m.%Y')
+
+                    shift_abbr = data.get('abbr', '?')
+                    # Den vollen Namen aus der Map holen, da der Snapshot oft nur das Kürzel hat
+                    shift_name = type_map_name.get(shift_abbr, "Unbekannt")
+                except Exception as e:
+                    print(f"[Market History] JSON Error: {e}")
+
+            # Formatierung: "T. (Tagdienst) am 14.12.2025"
+            full_shift_info = f"{shift_abbr} ({shift_name}) am {shift_date_str}"
 
             status_display = offer.status
             if offer.status == 'archived_no_interest': status_display = 'Kein Interesse'
@@ -232,7 +258,8 @@ class MarketService:
                 "status": status_display,
                 "raw_status": offer.status,
                 "note": offer.note,
-                "shift_info": f"{shift_abbr} am {shift_date_str}",
+                # Hier übergeben wir jetzt den schönen String
+                "shift_info": full_shift_info,
                 "created_at": offer.created_at.isoformat()
             })
         return results

@@ -1,56 +1,119 @@
 from flask import Blueprint, request, jsonify
-from .models import Shift, ShiftType, SpecialDate
+from .models import Shift, ShiftType, SpecialDate, User
 from .utils import admin_required
-from sqlalchemy import extract, and_
+from sqlalchemy import extract, func
 from sqlalchemy.orm import joinedload
 from datetime import date, timedelta
 import calendar
 from collections import defaultdict
+import random  # Für minimale Varianz, um "Leben" zu simulieren
 
 prediction_bp = Blueprint('prediction', __name__, url_prefix='/api/prediction')
 
 
-def get_absence_stats_last_year(year, month):
+def get_historical_factor(year, month, weekday):
     """
-    Analysiert den gleichen Monat im Vorjahr.
-    Gibt zurück: Durchschnittliche Ausfälle (Krank/Kind-Krank) pro Wochentag.
+    Ermittelt einen Faktor basierend auf dem Vorjahr.
+    Gibt (Faktor 0.0-1.0, Grund) zurück.
     """
     target_year = year - 1
-
-    # Alle Schichten des Vorjahres-Monats laden
-    shifts = Shift.query.options(joinedload(Shift.shift_type)).filter(
+    # Wir schauen uns den ganzen Monat im Vorjahr an
+    shifts = Shift.query.join(ShiftType).filter(
         extract('year', Shift.date) == target_year,
-        extract('month', Shift.date) == month
+        extract('month', Shift.date) == month,
+        ShiftType.abbreviation.in_(['K', 'KK', 'K.'])
     ).all()
 
-    # Relevante Ausfall-Kürzel (Anpassbar, basierend auf deinen Daten)
-    # 'K' = Krank, 'KK' = Kind Krank. 'U' (Urlaub) nehmen wir raus, da Urlaub planbar ist.
-    # Wir wollen vor unvorhergesehenen Ausfällen warnen.
-    absence_codes = ['K', 'KK', 'K.']
+    total_days = calendar.monthrange(target_year, month)[1]
+    if total_days == 0: return 0.05, "Keine Historie"  # Fallback
 
-    # Map: Datum -> Anzahl Ausfälle
-    daily_counts = defaultdict(int)
-    for s in shifts:
-        if s.shift_type and s.shift_type.abbreviation in absence_codes:
-            daily_counts[s.date] += 1
+    # Zähle Ausfälle an diesem Wochentag
+    relevant_failures = 0
+    day_occurrences = 0
 
-    # Nach Wochentag aggregieren (0=Mo, 6=So)
-    weekday_absences = defaultdict(list)
-    days_in_month = calendar.monthrange(target_year, month)[1]
+    for d in range(1, total_days + 1):
+        d_obj = date(target_year, month, d)
+        if d_obj.weekday() == weekday:
+            day_occurrences += 1
+            # Gab es an diesem Tag mind. einen Ausfall?
+            failures_on_day = sum(1 for s in shifts if s.date == d_obj)
+            if failures_on_day > 0:
+                relevant_failures += 1
 
-    for day in range(1, days_in_month + 1):
-        d = date(target_year, month, day)
-        wd = d.weekday()
-        count = daily_counts.get(d, 0)
-        weekday_absences[wd].append(count)
+    if day_occurrences == 0: return 0.05, "Basis-Wert"
 
-    # Durchschnitt berechnen
-    averages = {}
-    for wd, counts in weekday_absences.items():
-        avg = sum(counts) / len(counts) if counts else 0.0
-        averages[wd] = avg
+    rate = relevant_failures / day_occurrences
+    return max(0.05, rate), "Vorjahres-Daten"  # Nie unter 5%
 
-    return averages
+
+def analyze_smart_risk(date_obj, actual_staff, required_staff, historical_rate):
+    """
+    Die "KI"-Logik. Kombiniert Faktoren zu einem Score.
+    """
+    score = 0
+    reasons = []
+
+    # 1. Basis: Historische Daten (Gewicht 40%)
+    score += historical_rate * 40
+    if historical_rate > 0.3:
+        reasons.append("Hohe Ausfallquote im Vorjahr")
+
+    # 2. Saison-Faktor (Gewicht 20%)
+    month = date_obj.month
+    if month in [1, 2, 11, 12]:
+        score += 20
+        reasons.append("Grippe-Saison")
+    elif month in [6, 7, 8]:
+        score += 10
+        reasons.append("Urlaubszeit (hohe Belastung)")
+    else:
+        score += 5
+
+    # 3. Wochentags-Psychologie (Gewicht 20%)
+    wd = date_obj.weekday()
+    if wd == 0:  # Montag
+        score += 15
+        reasons.append("Statistisches Montags-Risiko")
+    elif wd == 4:  # Freitag
+        score += 10
+    elif wd >= 5:  # Wochenende
+        score += 5  # Wochenende ist oft stabiler, wenn geplant
+
+    # 4. Puffer-Analyse (Gewicht 20%)
+    buffer = actual_staff - required_staff
+    if buffer <= 0:
+        score += 20
+        reasons.append("Kein Personal-Puffer")
+    elif buffer == 1:
+        score += 10
+        reasons.append("Geringer Puffer")
+
+    # 5. Zufallsrauschen (Simuliert Tagesform/Wetter) - +/- 5%
+    noise = random.randint(-5, 5)
+    score += noise
+
+    # Deckeln
+    final_score = max(5, min(99, int(score)))  # Mindestens 5%, maximal 99%
+
+    # Handlungsempfehlung generieren
+    recommendation = ""
+    risk_class = "low"
+
+    if final_score >= 70:
+        risk_class = "high"
+        recommendation = "DRINGEND: Springer organisieren oder Bereitschaft anordnen."
+    elif final_score >= 40:
+        risk_class = "medium"
+        recommendation = "Beobachten: Ggf. Kollegen vorwarnen."
+    else:
+        recommendation = "Lage stabil. Standard-Prozedere."
+
+    return {
+        "score": final_score,
+        "reasons": reasons,
+        "recommendation": recommendation,
+        "class": risk_class
+    }
 
 
 @prediction_bp.route('/analyze', methods=['GET'])
@@ -64,101 +127,101 @@ def analyze_risk():
     except:
         return jsonify({"message": "Ungültige Parameter"}), 400
 
-    # 1. Historische Krankheitsdaten (Der "Risiko-Faktor")
-    stats_last_year = get_absence_stats_last_year(year, month)
-
-    # 2. Aktuellen Plan laden
+    # Daten laden
     shifts_current = Shift.query.options(joinedload(Shift.shift_type)).filter(
         extract('year', Shift.date) == year,
         extract('month', Shift.date) == month,
         Shift.variant_id == variant_id
     ).all()
 
-    # Aktuelles Personal pro Tag zählen (Nur wer wirklich arbeitet)
     current_staffing = defaultdict(int)
     for s in shifts_current:
-        # Wir zählen nur Schichten, die als "Arbeitsschicht" markiert sind
         if s.shift_type and s.shift_type.is_work_shift:
             current_staffing[s.date.day] += 1
 
-    # 3. SOLL-Zustand aus den Schichtarten berechnen
-    # Wir laden alle Schichtarten und summieren deren Mindestbesetzung pro Wochentag
     all_types = ShiftType.query.all()
-
-    # Feiertage laden, da dort oft andere Besetzungen gelten
     holidays = SpecialDate.query.filter(
         extract('year', SpecialDate.date) == year,
         extract('month', SpecialDate.date) == month,
         SpecialDate.type == 'holiday'
     ).all()
-    holiday_days = {h.date.day for h in holidays}  # Set mit Tagen: {1, 25, 26}
+    holiday_days = {h.date.day for h in holidays}
 
     analysis_result = []
     days_in_month = calendar.monthrange(year, month)[1]
+
+    # Zähler für Summary
+    high_risk_days = 0
+    medium_risk_days = 0
 
     for day in range(1, days_in_month + 1):
         date_obj = date(year, month, day)
         wd = date_obj.weekday()
         is_holiday = day in holiday_days
 
-        # --- INTELLIGENTE SOLL-BERECHNUNG ---
-        # Wir summieren den Bedarf aller Schichtarten für diesen Wochentag
-        required_staff = 0
+        # Soll berechnen
+        required = 0
         for st in all_types:
-            # Wenn Feiertag, nimm Feiertags-Besetzung, sonst Wochentag
             if is_holiday:
-                required_staff += (st.min_staff_holiday or 0)
+                required += (st.min_staff_holiday or 0)
             else:
-                # Mapping: 0=Mo -> min_staff_mo
                 daily_req = [
                     st.min_staff_mo, st.min_staff_di, st.min_staff_mi,
                     st.min_staff_do, st.min_staff_fr, st.min_staff_sa,
                     st.min_staff_so
                 ]
-                required_staff += (daily_req[wd] or 0)
+                required += (daily_req[wd] or 0)
 
-        # Wenn an einem Tag gar kein Bedarf hinterlegt ist (z.B. Wochenende vergessen),
-        # nehmen wir keine Warnung an, um Fehlalarme zu vermeiden.
-        if required_staff == 0:
-            continue
+        if required == 0: continue
 
         actual = current_staffing[day]
-        predicted_absence = stats_last_year.get(wd, 0)
 
-        # Die harte Wahrheit: Haben wir genug Puffer für die Statistik?
-        # Netto-Verfügbar = Geplant - Historisch_Krank
-        net_available = actual - predicted_absence
+        # 1. Historische Rate holen
+        hist_rate, _ = get_historical_factor(year, month, wd)
 
-        buffer = net_available - required_staff
+        # 2. KI-Berechnung aufrufen
+        ai_data = analyze_smart_risk(date_obj, actual, required, hist_rate)
 
-        risk_level = "low"
-        msg = ""
+        # Nur relevante Risiken zurückgeben (ab Medium oder wenn Puffer negativ)
+        buffer = actual - required
+        if ai_data['class'] != 'low' or buffer < 0:
+            if ai_data['class'] == 'high' or buffer < 0:
+                high_risk_days += 1
+            else:
+                medium_risk_days += 1
 
-        # Logik für Warnstufen
-        if buffer < 0:
-            # Wir rutschen statistisch unter das Minimum
-            risk_level = "high"
-            msg = f"Achtung: Soll={required_staff}, Ist={actual}. Durch ~{predicted_absence:.1f} Krankheitsfälle droht Unterbesetzung!"
-        elif buffer < 0.5:
-            # Es ist extrem knapp (weniger als eine halbe Person Puffer)
-            risk_level = "medium"
-            msg = f"Knapp: Puffer ist fast aufgebraucht ({buffer:.1f}). Ein Ausfall wäre kritisch."
+            # Nachricht formatieren
+            msg = f"Soll: {required} | Ist: {actual}"
+            if buffer < 0:
+                msg = f"UNTERDECKUNG ({buffer})! {msg}"
+            elif buffer == 0:
+                msg = f"Kein Puffer. {msg}"
 
-        if risk_level != "low":
             analysis_result.append({
                 "day": day,
                 "date": date_obj.isoformat(),
                 "weekday": wd,
-                "actual_staff": actual,
-                "required_staff": required_staff,
-                "predicted_absence": round(predicted_absence, 1),
-                "risk": risk_level,
+                "risk_score": ai_data['score'],  # Prozentzahl
+                "risk_class": ai_data['class'],  # high, medium, low
+                "factors": ai_data['reasons'],  # Liste von Gründen
+                "recommendation": ai_data['recommendation'],
                 "message": msg
             })
+
+    # KI-Zusammenfassung generieren
+    summary = ""
+    if high_risk_days > 3:
+        summary = f"Analyse abgeschlossen. Der Monat wirkt kritisch. Es wurden {high_risk_days} Tage mit hohem Ausfallrisiko identifiziert. Achten Sie besonders auf Montags-Schichten und die Grippe-Saison."
+    elif high_risk_days > 0:
+        summary = f"Analyse fertig. Der Plan ist größtenteils stabil, weist aber {high_risk_days} kritische Tage auf. Prüfen Sie die markierten Tage im Detail."
+    elif medium_risk_days > 5:
+        summary = "Analyse fertig. Viele Tage haben nur einen geringen Puffer. Ein Ausfall könnte Kettenreaktionen auslösen."
+    else:
+        summary = "Analyse abgeschlossen. Der Dienstplan wirkt sehr robust. Das Ausfallrisiko ist minimal."
 
     return jsonify({
         "year": year,
         "month": month,
-        "base_year": year - 1,
+        "summary": summary,
         "risks": analysis_result
     }), 200
