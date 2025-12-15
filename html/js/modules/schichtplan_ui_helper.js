@@ -3,8 +3,7 @@
 import { PlanState } from './schichtplan_state.js';
 import { PlanApi } from './schichtplan_api.js';
 import { PlanHandlers } from './schichtplan_handlers.js';
-import { isColorDark } from '../utils/helpers.js';
-// --- FIX: Import hinzugefügt ---
+import { isColorDark, isWunschAnfrage } from '../utils/helpers.js';
 import { apiFetch } from '../utils/api.js';
 
 /**
@@ -29,8 +28,49 @@ export const PlanUIHelper = {
         // Custom Modal initialisieren
         this.initCustomModal();
 
-        // WICHTIG: Event-Listener für die Status-Buttons binden
+        // Event-Listener binden
         this._bindStatusEvents();
+        this._bindMenuEvents(); // <--- NEU: Menü-Events (Löschen) binden
+    },
+
+    /**
+     * Bindet Events für das Dropdown-Menü (z.B. Plan löschen).
+     */
+    _bindMenuEvents() {
+        const deleteLink = document.getElementById('delete-plan-link');
+
+        if (deleteLink) {
+            // Alten Listener entfernen durch Klonen (falls mehrfach initiiert)
+            const newDeleteLink = deleteLink.cloneNode(true);
+            deleteLink.parentNode.replaceChild(newDeleteLink, deleteLink);
+
+            newDeleteLink.onclick = (e) => {
+                e.preventDefault();
+                if (!PlanState.isAdmin) return;
+
+                const variantText = PlanState.currentVariantId !== null ? "diese VARIANTE" : "den HAUPTPLAN";
+
+                // Sicherheitsabfrage
+                window.dhfConfirm("Plan Löschen", `Möchten Sie wirklich ${variantText} für ${PlanState.currentMonth}/${PlanState.currentYear} leeren?\n\n(Gesperrte Schichten mit Schloss 🔒 bleiben erhalten!)`, async () => {
+                    try {
+                        const response = await PlanApi.clearShiftPlan(
+                            PlanState.currentYear,
+                            PlanState.currentMonth,
+                            PlanState.currentVariantId
+                        );
+
+                        window.dhfAlert("Erfolg", response.message, "success");
+
+                        // Grid neu laden
+                        if (this.callbacks.renderGrid) {
+                            this.callbacks.renderGrid();
+                        }
+                    } catch (err) {
+                        window.dhfAlert("Fehler", err.message, "error");
+                    }
+                });
+            };
+        }
     },
 
     /**
@@ -553,3 +593,4 @@ export const PlanUIHelper = {
         });
     }
 };
+

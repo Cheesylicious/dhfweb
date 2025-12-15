@@ -5,7 +5,6 @@ import { initAuthCheck } from './js/utils/auth.js';
 
 // --- Globale Variablen ---
 let currentYear = new Date().getFullYear();
-// NEU: 'dpo' hinzugefügt
 let years = {
     holiday: currentYear,
     training: currentYear,
@@ -15,7 +14,6 @@ let years = {
 let modalContextYear = null;
 
 // --- DOM Elemente ---
-// NEU: 'dpo' Elemente hinzugefügt
 const yearLabels = {
     holiday: document.getElementById('holiday-year-label'),
     training: document.getElementById('training-year-label'),
@@ -36,17 +34,20 @@ const eventNameField = document.getElementById('date-name');
 const eventDateField = document.getElementById('date-value');
 const eventTypeField = document.getElementById('date-type');
 const eventIdField = document.createElement('input'); eventIdField.type = 'hidden';
-// Optional: Falls das Modal diese Elemente hat
+
+// Wrapper für das Namensfeld (um es komplett auszublenden)
 const eventNameGroup = document.getElementById('event-name-group');
 const holidayNote = document.querySelector('.holiday-note');
 
 // Buttons
 const generateHolidaysBtn = document.getElementById('generate-holidays-btn');
 
+// --- KONFIGURATION: Typen ohne Namensfeld ---
+const NO_NAME_TYPES = ['dpo', 'training', 'shooting'];
 
-// --- HILFSFUNKTION: Deutsche Feiertage berechnen (JS Client-Side) ---
+
+// --- HILFSFUNKTION: Deutsche Feiertage berechnen ---
 function calculateGermanHolidays(year) {
-    // Gauss'sche Osterformel
     const a = year % 19;
     const b = Math.floor(year / 100);
     const c = year % 100;
@@ -63,15 +64,12 @@ function calculateGermanHolidays(year) {
     const day = ((h + l - 7 * m + 114) % 31) + 1;
 
     const easter = new Date(year, month - 1, day);
-
-    // Datum als YYYY-MM-DD String
     const fmt = (d) => {
         const y = d.getFullYear();
         const mo = String(d.getMonth() + 1).padStart(2,'0');
         const da = String(d.getDate()).padStart(2,'0');
         return `${y}-${mo}-${da}`;
     };
-
     const addDays = (d, days) => {
         const res = new Date(d);
         res.setDate(res.getDate() + days);
@@ -100,6 +98,8 @@ function initializePage() {
     console.log("Feiertage (Client-Side Logic) gestartet.");
     updateLabels();
     refreshAllTabs();
+    setupDateInputMask(); // 1.2.3 -> 1.2.3.
+    setupEnterSubmit();   // Enter -> Speichern
 }
 
 function updateLabels() {
@@ -112,11 +112,43 @@ function refreshAllTabs() {
     loadEventsForYear('holiday', years.holiday);
     loadEventsForYear('training', years.training);
     loadEventsForYear('shooting', years.shooting);
-    // NEU: DPO laden
     loadEventsForYear('dpo', years.dpo);
 }
 
-// Daten laden und Client-Side Filtern
+// --- LOGIK: ENTER TASTE ---
+function setupEnterSubmit() {
+    const inputs = [eventNameField, eventDateField];
+    inputs.forEach(field => {
+        if(!field) return;
+        field.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                if(saveEventBtn && !saveEventBtn.disabled) {
+                    saveEventBtn.click();
+                }
+            }
+        });
+    });
+}
+
+// --- LOGIK: PUNKTE AUTOMATISCH SETZEN ---
+function setupDateInputMask() {
+    if (eventDateField) {
+        eventDateField.addEventListener('input', (e) => {
+            let v = e.target.value.replace(/[^0-9]/g, '');
+
+            if (v.length > 2) {
+                v = v.slice(0, 2) + '.' + v.slice(2);
+            }
+            if (v.length > 5) {
+                v = v.slice(0, 5) + '.' + v.slice(5);
+            }
+            e.target.value = v.slice(0, 10);
+        });
+    }
+}
+
+// Daten laden
 async function loadEventsForYear(type, year) {
     const table = tables[type];
     if(!table) return;
@@ -124,24 +156,16 @@ async function loadEventsForYear(type, year) {
     table.innerHTML = `<tr><td colspan="3">Lade Daten...</td></tr>`;
 
     try {
-        // 1. Wir holen ALLES vom Server (kein Filter Query, nur Timestamp)
         const ts = new Date().getTime();
-        // Falls deine API Filter ignoriert (wie im neuen Python Code), bekommen wir alles.
         const allEvents = await apiFetch(`/api/special_dates?_t=${ts}`);
 
-        // 2. Wir filtern hier im Browser (Sicher ist sicher)
         const filtered = allEvents.filter(ev => {
-            // Typ prüfen (trim removes whitespace issues)
             if (!ev.type || ev.type.trim() !== type) return false;
-
-            // Datum prüfen: Enthält der String das Jahr? (z.B. "2026")
             if (!ev.date) return false;
             return ev.date.includes(String(year));
         });
 
-        console.log(`Gefiltert für ${type} ${year}:`, filtered.length, "Einträge");
         renderTable(table, filtered, type);
-
     } catch (error) {
         console.error("Ladefehler:", error);
         table.innerHTML = `<tr><td colspan="3" style="color: #e74c3c;">Fehler: ${error.message}</td></tr>`;
@@ -154,21 +178,16 @@ function renderTable(tbody, data, type) {
         tbody.innerHTML = '<tr><td colspan="3">Keine Einträge für dieses Jahr.</td></tr>';
         return;
     }
-
-    // Sortieren
     data.sort((a, b) => (a.date > b.date) ? 1 : -1);
 
     data.forEach(item => {
         const row = document.createElement('tr');
-
-        // Anzeige-Datum formatieren (YYYY-MM-DD -> DD.MM.YYYY)
         let displayDate = item.date;
         if (item.date && item.date.match(/^\d{4}-\d{2}-\d{2}$/)) {
             const [y, m, d] = item.date.split('-');
             displayDate = `${d}.${m}.${y}`;
         }
 
-        // Action Buttons erstellen
         const editBtn = document.createElement('button');
         editBtn.className = 'btn-primary';
         editBtn.style.padding = '6px 12px'; editBtn.style.marginRight = '5px';
@@ -195,45 +214,30 @@ function renderTable(tbody, data, type) {
 }
 
 
-// --- BUTTON LOGIK ---
-
-// Generieren (Client-Side Calculation -> Server Save)
+// --- BUTTONS ---
 if (generateHolidaysBtn) {
     generateHolidaysBtn.onclick = async () => {
         const year = years.holiday;
-        if (!confirm(`Feiertage für ${year} generieren? (Existierende werden nicht überschrieben)`)) return;
-
+        if (!confirm(`Feiertage für ${year} generieren?`)) return;
         const newHolidays = calculateGermanHolidays(year);
         let count = 0;
-
-        // Wir holen erst alle existierenden, um Duplikate zu vermeiden
         const ts = new Date().getTime();
         const allEvents = await apiFetch(`/api/special_dates?_t=${ts}`);
 
         for (const h of newHolidays) {
-            // Check Duplikat (Client-Side)
             const exists = allEvents.some(ev => ev.date === h.date && ev.type === 'holiday');
-
             if (!exists) {
                 try {
-                    await apiFetch('/api/special_dates', 'POST', {
-                        name: h.name,
-                        date: h.date, // YYYY-MM-DD
-                        type: 'holiday'
-                    });
+                    await apiFetch('/api/special_dates', 'POST', { name: h.name, date: h.date, type: 'holiday' });
                     count++;
-                } catch (e) {
-                    console.error("Fehler beim Speichern von " + h.name, e);
-                }
+                } catch (e) {}
             }
         }
-
         alert(`${count} Feiertage erfolgreich erstellt.`);
         loadEventsForYear('holiday', year);
     };
 }
 
-// Navigation
 document.querySelectorAll('.year-nav').forEach(btn => {
     btn.addEventListener('click', () => {
         const type = btn.dataset.type;
@@ -244,7 +248,6 @@ document.querySelectorAll('.year-nav').forEach(btn => {
     });
 });
 
-// Tabs
 document.querySelectorAll('.page-tab-btn').forEach(btn => {
     btn.addEventListener('click', () => {
         document.querySelectorAll('.page-tab-btn').forEach(b => b.classList.remove('active'));
@@ -254,7 +257,6 @@ document.querySelectorAll('.page-tab-btn').forEach(btn => {
     });
 });
 
-// Löschen
 async function deleteEvent(id, type) {
     if(!confirm("Wirklich löschen?")) return;
     try {
@@ -264,27 +266,20 @@ async function deleteEvent(id, type) {
 }
 
 
-// --- MODAL & SPEICHERN ---
-
+// --- MODAL ---
 function openModal() { if(modal) modal.style.display = 'block'; }
 function closeModal() { if(modal) modal.style.display = 'none'; }
 if(document.querySelector('.close')) document.querySelector('.close').onclick = closeModal;
 window.onclick = (e) => { if(e.target == modal) closeModal(); };
 
-// Buttons zum Öffnen
-if(document.getElementById('add-holiday-btn'))
-    document.getElementById('add-holiday-btn').onclick = () => setupModal('holiday', true);
-if(document.getElementById('add-training-btn'))
-    document.getElementById('add-training-btn').onclick = () => setupModal('training', false);
-if(document.getElementById('add-shooting-btn'))
-    document.getElementById('add-shooting-btn').onclick = () => setupModal('shooting', false);
-// NEU: DPO Button
-if(document.getElementById('add-dpo-btn'))
-    document.getElementById('add-dpo-btn').onclick = () => setupModal('dpo', false);
+if(document.getElementById('add-holiday-btn')) document.getElementById('add-holiday-btn').onclick = () => setupModal('holiday');
+if(document.getElementById('add-training-btn')) document.getElementById('add-training-btn').onclick = () => setupModal('training');
+if(document.getElementById('add-shooting-btn')) document.getElementById('add-shooting-btn').onclick = () => setupModal('shooting');
+if(document.getElementById('add-dpo-btn')) document.getElementById('add-dpo-btn').onclick = () => setupModal('dpo');
 
-function setupModal(type, isEdit=false) {
+function setupModal(type) {
     modalContextYear = years[type];
-    if(eventIdField) eventIdField.value = ''; // Reset ID = Neu anlegen
+    if(eventIdField) eventIdField.value = '';
     if(eventTypeField) eventTypeField.value = type;
     if(eventNameField) eventNameField.value = '';
     if(eventDateField) {
@@ -292,26 +287,27 @@ function setupModal(type, isEdit=false) {
         eventDateField.placeholder = `TT.MM (Jahr ${modalContextYear})`;
     }
 
-    // --- NEU: Namensfeld verstecken für DPO ---
+    // --- NAMENSFELD AUSBLENDEN für DPO, Training, Shooting ---
     if(eventNameGroup) {
-        // Holiday braucht Namen immer. DPO nie (weil automatisch).
-        // Training/Shooting lassen wir optional (Backend entscheidet),
-        // aber das UI kann es anzeigen.
-        // Der Nutzer wollte es explizit für DPO weg haben.
-        if (type === 'dpo') {
+        if (NO_NAME_TYPES.includes(type)) {
             eventNameGroup.style.display = 'none';
         } else {
             eventNameGroup.style.display = 'block';
         }
     }
 
-    // Hinweis nur bei Holiday anzeigen
     if(holidayNote) holidayNote.style.display = (type === 'holiday') ? 'block' : 'none';
 
     openModal();
-    // Fokus setzen je nach Sichtbarkeit
-    if(type === 'holiday' && eventNameField && eventNameGroup.style.display !== 'none') eventNameField.focus();
-    else if(eventDateField) eventDateField.focus();
+
+    // Fokus setzen
+    if (NO_NAME_TYPES.includes(type)) {
+        // Direkt ins Datum
+        if(eventDateField) setTimeout(() => eventDateField.focus(), 50);
+    } else if (eventNameField) {
+        // In den Namen
+        eventNameField.focus();
+    }
 }
 
 function openEditModal(item) {
@@ -319,7 +315,6 @@ function openEditModal(item) {
     if(eventTypeField) eventTypeField.value = item.type;
     if(eventNameField) eventNameField.value = item.name;
 
-    // YYYY-MM-DD -> DD.MM.YYYY für Anzeige
     if (eventDateField && item.date) {
         if (item.date.includes('-')) {
             const [y, m, d] = item.date.split('-');
@@ -329,32 +324,39 @@ function openEditModal(item) {
         }
     }
 
-    // Beim Bearbeiten zeigen wir das Namensfeld immer an, falls man es ändern will
-    if(eventNameGroup) eventNameGroup.style.display = 'block';
+    // Beim Bearbeiten auch Namensfeld steuern (konsistent bleiben)
+    if(eventNameGroup) {
+        if (NO_NAME_TYPES.includes(item.type)) {
+            eventNameGroup.style.display = 'none';
+        } else {
+            eventNameGroup.style.display = 'block';
+        }
+    }
 
     openModal();
 }
 
+// --- SPEICHERN ---
 if (saveEventBtn) {
     saveEventBtn.onclick = async () => {
         const id = eventIdField ? eventIdField.value : null;
         const type = eventTypeField ? eventTypeField.value : 'holiday';
 
-        // Datumseingabe verarbeiten (DD.MM oder DD.MM.YYYY)
         let inputDate = eventDateField ? eventDateField.value.trim() : '';
         let finalIsoDate = "";
 
-        // Fall 1: Nur TT.MM eingegeben -> Jahr ergänzen
-        if (inputDate.match(/^\d{1,2}\.\d{1,2}$/)) {
+        if (inputDate.match(/^\d{1,2}\.\d{1,2}$/)) { // TT.MM
             const [d, m] = inputDate.split('.');
-            // WICHTIG: Nutze das Jahr des aktuellen Tabs
             const y = years[type];
             finalIsoDate = `${y}-${m.padStart(2,'0')}-${d.padStart(2,'0')}`;
         }
-        // Fall 2: TT.MM.YYYY eingegeben
-        else if (inputDate.match(/^\d{1,2}\.\d{1,2}\.\d{4}$/)) {
+        else if (inputDate.match(/^\d{1,2}\.\d{1,2}\.\d{4}$/)) { // TT.MM.YYYY
             const [d, m, y] = inputDate.split('.');
             finalIsoDate = `${y}-${m.padStart(2,'0')}-${d.padStart(2,'0')}`;
+        } else if (inputDate.match(/^\d{1,2}\.\d{1,2}\.$/)) {
+             const [d, m] = inputDate.replace(/\.$/, '').split('.');
+             const y = years[type];
+             finalIsoDate = `${y}-${m.padStart(2,'0')}-${d.padStart(2,'0')}`;
         }
         else {
             alert("Bitte Datum im Format TT.MM eingeben");
@@ -364,20 +366,47 @@ if (saveEventBtn) {
         const payload = {
             name: eventNameField ? eventNameField.value : '',
             type: type,
-            date: finalIsoDate // Wir senden jetzt IMMER YYYY-MM-DD an den Server
+            date: finalIsoDate
         };
 
-        // Nur für Feiertage ist der Name Client-Seitig Pflicht.
-        // Für DPO wird er im Backend gesetzt.
-        if(!payload.name && type === 'holiday') { alert("Name fehlt"); return; }
+        // Name Pflicht nur bei Holiday
+        if(!payload.name && !NO_NAME_TYPES.includes(type)) {
+             alert("Name fehlt"); return;
+        }
 
         try {
             if (id) {
+                // UPDATE -> Modal schließen
                 await apiFetch(`/api/special_dates/${id}`, 'PUT', payload);
+                closeModal();
             } else {
+                // CREATE (Schnelleingabe)
                 await apiFetch('/api/special_dates', 'POST', payload);
+
+                // Feedback
+                const originalText = saveEventBtn.textContent;
+                saveEventBtn.textContent = "Gespeichert!";
+                saveEventBtn.style.backgroundColor = "#27ae60";
+                saveEventBtn.disabled = true;
+
+                setTimeout(() => {
+                    saveEventBtn.textContent = originalText;
+                    saveEventBtn.style.backgroundColor = "";
+                    saveEventBtn.disabled = false;
+                }, 800);
+
+                // Reset
+                if(eventNameField) eventNameField.value = '';
+                if(eventDateField) eventDateField.value = '';
+
+                // Fokus zurücksetzen (Schnelleingabe)
+                if (NO_NAME_TYPES.includes(type)) {
+                    if(eventDateField) eventDateField.focus();
+                } else if (eventNameField) {
+                    eventNameField.focus();
+                }
             }
-            closeModal();
+
             loadEventsForYear(type, years[type]);
         } catch (e) {
             alert("Fehler: " + e.message);
