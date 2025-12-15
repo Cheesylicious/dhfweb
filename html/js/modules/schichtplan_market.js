@@ -163,8 +163,9 @@ export const MarketModule = {
 
         let hasContent = false;
 
-        // A) Eigene Schicht anbieten (Eigene Zeile + Hat Schicht + Ist HF)
-        if (context.isCellOnOwnRow && PlanState.isHundefuehrer) {
+        // A) Eigene Schicht anbieten (Eigene Zeile + Hat Schicht + (Ist HF ODER Admin))
+        // *** HIER WURDE DER CHECK AUF PLANSTATE.ISADMIN HINZUGEFÜGT ***
+        if (context.isCellOnOwnRow && (PlanState.isHundefuehrer || PlanState.isAdmin)) {
 
             const ALLOWED_MARKET_SHIFTS = ["T.", "N.", "6", "24", "S", "QA"];
 
@@ -356,4 +357,3 @@ export const MarketModule = {
         // ... (Bleibt gleich, nur Badge Update)
     }
 };
-

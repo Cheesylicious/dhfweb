@@ -25,14 +25,21 @@ export const PlanInteraction = {
         window.confirmApproveTrade = this.confirmApproveTrade.bind(this);
         window.confirmRejectTrade = this.confirmRejectTrade.bind(this);
 
-        // --- NEU: Modal schließen bei Klick außerhalb ---
+        // --- Globaler Click-Listener zum Schließen von Modals ---
         window.addEventListener('click', (e) => {
-            const modal = document.getElementById('click-action-modal');
-            // Prüfen ob Modal offen ist und der Klick NICHT im Modal war
-            if (modal && modal.style.display === 'block') {
-                if (!modal.contains(e.target) && !e.target.closest('.grid-cell')) {
-                    modal.style.display = 'none';
+            const contextModal = document.getElementById('click-action-modal');
+            const queryModal = document.getElementById('query-modal');
+
+            // 1. Kontext-Menü schließen (wenn Klick außerhalb)
+            if (contextModal && contextModal.style.display === 'block') {
+                if (!contextModal.contains(e.target) && !e.target.closest('.grid-cell')) {
+                    contextModal.style.display = 'none';
                 }
+            }
+
+            // 2. Query Modal schließen (Klick auf den dunklen Hintergrund)
+            if (queryModal && e.target === queryModal) {
+                queryModal.style.display = 'none';
             }
         });
     },
@@ -149,15 +156,10 @@ export const PlanInteraction = {
         }
 
         // 2. Tausch-Anträge prüfen (Pending UND Approved für Rollback)
-        // Wir suchen Requests, die diesen User an diesem Tag betreffen (als Target oder Replacement)
         const activeReq = PlanState.currentChangeRequests.find(req =>
             (req.status === 'pending' || req.status === 'approved') &&
             (req.shift_date ? req.shift_date.split('T')[0] : null) === dateStr &&
             // Check: Ist der angeklickte User beteiligt?
-            // Bei Pending: target (Giver) oder replacement (Receiver)
-            // Bei Approved: Der Request ist "fertig", aber wir brauchen ihn für Rollback.
-            // ACHTUNG: Bei Approved ist der Giver nicht mehr in der Schicht!
-            // Wir zeigen es nur an, wenn der User der RECEIVER ist (der jetzt die Schicht hat)
             (
                 (req.status === 'pending' && (req.target_user_id === user.id || req.replacement_user_id === user.id)) ||
                 (req.status === 'approved' && req.replacement_user_id === user.id && req.reason_type === 'trade')
@@ -215,27 +217,18 @@ export const PlanInteraction = {
                     if(delLink) {
                         delLink.textContent = 'Wunsch-Anfrage zurückziehen';
 
-                        // --- FIX: Event Listener korrekt setzen ---
                         delLink.onclick = (e) => {
                             if(e) e.stopPropagation();
-                            // Modal schließen
                             document.getElementById('click-action-modal').style.display = 'none';
-                            // Löschen via PlanHandlers
                             PlanHandlers.deleteShiftQuery(wunsch.id);
                         };
-                        // ---------------------------------------
                     }
                 }
                 hasContent = true;
             } else if (!wunsch) {
-
-                // --- UPDATE: PRÜFUNG AUF EXISTIERENDE SCHICHT ---
+                // UPDATE: PRÜFUNG AUF EXISTIERENDE SCHICHT
                 if (hasActiveShift) {
-                    // Wenn eine Schicht existiert, darf KEINE Wunschanfrage gestellt werden.
-                    // Nur Info anzeigen, wenn auch keine Tausch-Option (MarketModule) angezeigt wurde
-                    // (MarketModule rendert sich selbst, hier kümmern wir uns um den Wunsch-Teil)
                     if (sections.hfRequests) {
-                        // Wir zeigen den Bereich an, aber mit Hinweis statt Buttons
                         sections.hfRequests.style.display = 'block';
                         sections.hfRequests.innerHTML = `
                            <div style="background: rgba(255,255,255,0.05); color: #bdc3c7; padding: 10px; border-radius: 5px; text-align: center; font-size: 12px; border: 1px dashed #555;">
@@ -246,10 +239,8 @@ export const PlanInteraction = {
                     hasContent = true;
 
                 } else if (activeReq && activeReq.status === 'pending') {
-                    // Wenn ein Tausch läuft
                      if (sections.hfRequests) {
                          sections.hfRequests.style.display = 'block';
-                         // Info Text statt Buttons
                          sections.hfRequests.innerHTML = `
                             <div style="background: rgba(243, 156, 18, 0.1); border: 1px solid #f39c12; color: #f39c12; padding: 10px; border-radius: 5px; text-align: center; font-size: 13px;">
                                 <i class="fas fa-sync fa-spin"></i> Tausch in Bearbeitung.<br>
@@ -259,22 +250,18 @@ export const PlanInteraction = {
                      }
                      hasContent = true;
                 } else {
-                    // Kein Wunsch, Keine Schicht, Kein Tausch -> Neuen Wunsch erstellen
                     if(sections.hfRequests) {
                         sections.hfRequests.style.display = 'flex';
-                        // Sicherstellen, dass das Grid sauber ist (falls vorher überschrieben)
                         sections.hfRequests.innerHTML = '';
                         this.populateHfButtons();
                     }
                     hasContent = true;
                 }
-                // --- ENDE UPDATE ---
             }
         }
 
         if (!hasContent) return;
 
-        // Positionierung
         this._positionModal(cell, modal);
     },
 
@@ -286,7 +273,6 @@ export const PlanInteraction = {
         tradeSection.className = 'cam-section';
 
         if (req.status === 'pending') {
-            // PENDING: Genehmigen / Ablehnen
             tradeSection.innerHTML = `
                 <div class="cam-section-title" style="color:#f1c40f;">⚠️ Offener Tausch</div>
                 <div style="font-size:11px; margin-bottom:5px; color:#ccc;">
@@ -298,7 +284,6 @@ export const PlanInteraction = {
                 </div>
             `;
         } else {
-            // APPROVED (Trade): Rückgängig machen (Rollback)
             tradeSection.innerHTML = `
                 <div class="cam-section-title" style="color:#2ecc71;">✅ Genehmigter Tausch</div>
                 <div style="font-size:11px; margin-bottom:5px; color:#ccc;">
@@ -321,7 +306,6 @@ export const PlanInteraction = {
     },
 
     _renderLockedPlanActions(sections, user, dateStr, userName, notiz) {
-        // Nutzen den Admin-Shift Container für den Krank-Button
         const container = sections.adminShifts;
         if(container) {
             container.style.display = 'block';
@@ -359,7 +343,141 @@ export const PlanInteraction = {
         if(link) {
             link.textContent = notiz ? '❓ Text-Notiz ansehen...' : '❓ Text-Notiz erstellen...';
             link.dataset.targetQueryId = notiz ? notiz.id : "";
+
+            // FIX: Klick-Handler hinzufügen
+            link.onclick = (e) => {
+                e.stopPropagation();
+                document.getElementById('click-action-modal').style.display = 'none';
+                this.openQueryModal(notiz);
+            };
         }
+    },
+
+    // --- REPARIERTE MODAL ÖFFNEN LOGIK ---
+    openQueryModal(existingQuery) {
+        // Kontext für Speichern setzen
+        const context = PlanState.clickModalContext;
+        PlanState.modalQueryContext = {
+            userId: context.userId,
+            dateStr: context.dateStr,
+            userName: context.userName,
+            queryId: existingQuery ? existingQuery.id : null
+        };
+
+        const modal = document.getElementById('query-modal');
+        const title = document.getElementById('query-modal-title');
+        const info = document.getElementById('query-modal-info');
+        const existingContainer = document.getElementById('query-existing-container');
+        const newContainer = document.getElementById('query-new-container');
+        const replyForm = document.getElementById('query-reply-form');
+        const msgInput = document.getElementById('query-message-input');
+        const statusEl = document.getElementById('query-modal-status');
+        const existingMsg = document.getElementById('query-existing-message');
+        const adminActions = document.getElementById('query-admin-actions');
+        const resolveBtn = document.getElementById('query-resolve-btn');
+        const deleteBtn = document.getElementById('query-delete-btn');
+        const repliesList = document.getElementById('query-replies-list');
+        const replyBtn = document.getElementById('reply-submit-btn');
+        const submitBtn = document.getElementById('query-submit-btn');
+        const targetSelection = document.getElementById('query-target-selection');
+        const closeBtn = document.getElementById('close-query-modal');
+
+        if(!modal) return;
+
+        // 1. FIX: Close Button Handler explizit setzen (überschreiben)
+        if (closeBtn) {
+            closeBtn.onclick = () => {
+                modal.style.display = 'none';
+            };
+        }
+
+        // Reset UI
+        title.textContent = existingQuery ? "Notiz / Anfrage Details" : "Neue Notiz / Anfrage";
+        info.textContent = `${context.userName} am ${new Date(context.dateStr).toLocaleDateString('de-DE')}`;
+        statusEl.textContent = "";
+        msgInput.value = "";
+
+        // Ziel-Auswahl anzeigen?
+        if (targetSelection) {
+            if (!existingQuery && (PlanState.isAdmin || PlanState.isHundefuehrer)) {
+                targetSelection.style.display = 'block';
+                const radioUser = document.getElementById('target-type-user');
+                if(radioUser) radioUser.checked = true;
+            } else {
+                targetSelection.style.display = 'none';
+            }
+        }
+
+
+        if (existingQuery) {
+            // Ansicht: Existierend
+            newContainer.style.display = 'none';
+            existingContainer.style.display = 'block';
+            replyForm.style.display = 'block';
+
+            existingMsg.textContent = existingQuery.message;
+
+            // Admin Aktionen
+            if (PlanState.isAdmin || PlanState.isPlanschreiber) {
+                adminActions.style.display = 'flex';
+                resolveBtn.onclick = () => PlanHandlers.resolveShiftQuery(existingQuery.id, () => modal.style.display='none');
+                deleteBtn.onclick = () => PlanHandlers.deleteShiftQuery(existingQuery.id, () => modal.style.display='none');
+            } else if (PlanState.isHundefuehrer && existingQuery.sender_user_id === PlanState.loggedInUser.id) {
+                // HF darf eigene löschen
+                adminActions.style.display = 'flex';
+                resolveBtn.style.display = 'none';
+                deleteBtn.textContent = 'Anfrage zurückziehen';
+                deleteBtn.onclick = () => PlanHandlers.deleteShiftQuery(existingQuery.id, () => modal.style.display='none');
+            } else {
+                adminActions.style.display = 'none';
+            }
+
+            // Replies laden
+            if (repliesList) {
+                repliesList.innerHTML = '<li style="color:#aaa;">Lade Verlauf...</li>';
+                this.loadAndRenderModalConversation(existingQuery.id);
+            }
+
+            // 2. FIX: Reply Handler sauber setzen (Direkt PlanApi statt PlanHandler nutzen)
+            if (replyBtn) {
+                // Wir überschreiben onclick, kein Klonen nötig
+                replyBtn.onclick = async () => {
+                    const txt = document.getElementById('reply-message-input').value.trim();
+                    if(!txt) { alert("Bitte Text eingeben."); return; }
+
+                    replyBtn.disabled = true;
+                    replyBtn.textContent = 'Sende...';
+
+                    try {
+                        await PlanApi.sendQueryReply(existingQuery.id, txt);
+                        document.getElementById('reply-message-input').value = '';
+                        this.loadAndRenderModalConversation(existingQuery.id);
+                    } catch (e) {
+                        alert("Fehler: " + e.message);
+                    } finally {
+                        replyBtn.disabled = false;
+                        replyBtn.textContent = 'Antwort senden';
+                    }
+                };
+            }
+
+        } else {
+            // Ansicht: Neu
+            existingContainer.style.display = 'none';
+            replyForm.style.display = 'none';
+            newContainer.style.display = 'block';
+
+            // Submit Handler für neue Anfragen
+            if (submitBtn) {
+                 submitBtn.onclick = () => {
+                     const txt = msgInput.value;
+                     if(!txt) { statusEl.textContent = "Bitte Text eingeben."; return; }
+                     PlanHandlers.saveShiftQuery(txt, () => modal.style.display='none');
+                 };
+            }
+        }
+
+        modal.style.display = 'block';
     },
 
     _positionModal(cell, modal) {
@@ -368,7 +486,6 @@ export const PlanInteraction = {
         let left = cellRect.left + window.scrollX;
         let top = cellRect.bottom + window.scrollY + 5;
 
-        // Boundary Check (Rechts)
         if (left + modalWidth > document.documentElement.clientWidth) {
             left = document.documentElement.clientWidth - modalWidth - 10;
         }
@@ -377,8 +494,6 @@ export const PlanInteraction = {
         modal.style.top = `${top}px`;
         modal.style.display = 'block';
     },
-
-    // --- Buttons befüllen ---
 
     populateAdminShiftButtons() {
         const container = document.getElementById('cam-admin-shifts');
@@ -402,13 +517,11 @@ export const PlanInteraction = {
                 if (modal) modal.style.display = 'none';
 
                 if (def.isAll) {
-                    // "Alle" öffnet das große Modal
                     PlanState.modalContext = { userId: PlanState.clickModalContext.userId, dateStr: PlanState.clickModalContext.dateStr };
                     document.getElementById('shift-modal-title').textContent = "Alle Schichten";
                     document.getElementById('shift-modal-info').textContent = `Für: ${PlanState.clickModalContext.userName}`;
                     document.getElementById('shift-modal').style.display = 'block';
                 } else {
-                    // Direkt speichern
                     const st = PlanState.allShiftTypesList.find(s => s.abbreviation === def.abbrev);
                     if (st) {
                         PlanHandlers.saveShift(st.id, PlanState.clickModalContext.userId, PlanState.clickModalContext.dateStr);
@@ -437,7 +550,6 @@ export const PlanInteraction = {
                 const btn = document.createElement('button');
                 btn.className = 'cam-shift-button';
 
-                // Limit Check
                 const limit = usage[def.abbr];
                 let disabled = false;
                 let info = '';
@@ -447,7 +559,6 @@ export const PlanInteraction = {
                     else { info = `(${limit.remaining})`; }
                 }
 
-                // 6er nur Freitags (Logik aus Original)
                 if (def.abbr === '6') {
                     const d = new Date(PlanState.clickModalContext.dateStr);
                     const isFri = d.getDay() === 5;
@@ -473,14 +584,10 @@ export const PlanInteraction = {
         }
     },
 
-    // --- Actions (Tausch) ---
-
     async confirmApproveTrade(reqId) {
-        // FIX: dhfConfirm statt nativem confirm
         window.dhfConfirm("Genehmigen", "Diesen Tausch genehmigen?", async () => {
             try {
                 await PlanApi.approveShiftChangeRequest(reqId);
-                // Modal schließen (Socket macht Refresh)
                 document.getElementById('click-action-modal').style.display = 'none';
             } catch (e) {
                 window.dhfAlert("Fehler", e.message, "error");
@@ -489,19 +596,10 @@ export const PlanInteraction = {
     },
 
     async confirmRejectTrade(reqId) {
-        // FIX: dhfConfirm statt nativem confirm
-        // Text dynamisch machen: Ablehnen (Pending) vs. Rückgängig (Approved)
-        // Wir können das nicht direkt wissen ohne Daten, aber für den User ist "Rückgängig" verständlicher bei Approved.
-        // Da wir den Status hier nicht explizit haben (nur reqId), nutzen wir einen neutralen Text oder schauen ob wir den Status haben.
-        // In _renderTradeSection wissen wir den Status.
-        // Wir könnten den Text im HTML-Button übergeben? Nein.
-        // Egal, "Ablehnen / Rückgängig" passt immer.
-
         window.dhfConfirm("Aktion bestätigen", "Diesen Vorgang ablehnen bzw. rückgängig machen?", async () => {
             try {
                 await PlanApi.rejectShiftChangeRequest(reqId);
                 document.getElementById('click-action-modal').style.display = 'none';
-                // Manueller Reload um Pending-Status wegzubekommen
                 if (this.renderGrid) this.renderGrid();
             } catch (e) {
                 window.dhfAlert("Fehler", e.message, "error");
@@ -509,15 +607,12 @@ export const PlanInteraction = {
         });
     },
 
-    // --- Konversation ---
-
     async loadAndRenderModalConversation(queryId) {
         const repliesList = document.getElementById('query-replies-list');
         if (!repliesList) return;
 
         try {
             const replies = await apiFetch(`/api/queries/${queryId}/replies`);
-            // Bestehende entfernen außer Initial
             const itemsToRemove = repliesList.querySelectorAll('.reply-item:not(#initial-query-item)');
             itemsToRemove.forEach(el => el.remove());
 
@@ -535,6 +630,10 @@ export const PlanInteraction = {
                 `;
                 repliesList.appendChild(li);
             });
+
+            const container = document.getElementById('query-conversation-container');
+            if(container) container.scrollTop = container.scrollHeight;
+
         } catch (e) {
             console.error("Fehler beim Laden der Antworten:", e);
         }
