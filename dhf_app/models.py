@@ -52,7 +52,13 @@ class User(db.Model, UserMixin):
 
     # NEU: Aktives Theme (Design)
     active_theme = db.Column(db.String(50), default='theme-default', nullable=True)
-    # ---------------------------------------------
+
+    # --- NEU: Felder für Hundeführer-Verwaltung (Ausbildung & Schießen) ---
+    last_training_qa = db.Column(db.Date, nullable=True)  # Letzte Quartalsausbildung
+    last_training_shooting = db.Column(db.Date, nullable=True)  # Letztes Schießen
+    is_manual_dog_handler = db.Column(db.Boolean, default=False)  # Manuell zur Hundeführer-Liste hinzugefügt
+    is_hidden_dog_handler = db.Column(db.Boolean, default=False) # NEU: Hundeführer ausblenden (z.B. bei Austritt)
+    # ----------------------------------------------------------------------
 
     # HINWEIS: Die Beziehung (relationship) zu den Stats wird durch den backref
     # in models_gamification.py automatisch erstellt (Name: self.gamification_stats)
@@ -97,8 +103,14 @@ class User(db.Model, UserMixin):
             "current_rank": current_rank,
             "active_pet_asset": self.active_pet_asset,
             # NEU: Aktives Theme übergeben
-            "active_theme": self.active_theme
-            # ------------------------------------
+            "active_theme": self.active_theme,
+
+            # --- NEU: Hundeführer-Daten ---
+            "last_training_qa": self.safe_date_iso(self.last_training_qa),
+            "last_training_shooting": self.safe_date_iso(self.last_training_shooting),
+            "is_manual_dog_handler": self.is_manual_dog_handler,
+            "is_hidden_dog_handler": self.is_hidden_dog_handler
+            # ------------------------------
         }
 
 

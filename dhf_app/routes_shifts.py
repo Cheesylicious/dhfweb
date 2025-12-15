@@ -1,10 +1,10 @@
 # dhf_app/routes_shifts.py
 
 from flask import Blueprint, request, jsonify, current_app
-from .models import Shift, ShiftType, User, ShiftPlanStatus, UpdateLog, ShiftQuery, SpecialDate
+from .models import Shift, ShiftType, User, ShiftPlanStatus, UpdateLog, ShiftQuery, SpecialDate, Role
 from .extensions import db, socketio
 from .utils import admin_required
-from .models_audit import log_audit  # <<< NEU: Import für das Audit-Log
+from .models_audit import log_audit
 from flask_login import login_required, current_user
 from sqlalchemy import extract, func, or_, and_
 from sqlalchemy.orm import joinedload
@@ -24,6 +24,155 @@ shifts_bp = Blueprint('shifts', __name__, url_prefix='/api')
 def _log_update_event(area, description):
     new_log = UpdateLog(area=area, description=description, updated_at=datetime.utcnow())
     db.session.add(new_log)
+
+
+# --- NEU: Verbesserte Hilfsfunktionen für Fälligkeiten ---
+
+def get_quarter_dates(year, month):
+    """
+    Gibt Start- und Enddatum des Quartals zurück, in dem der angegebene Monat liegt.
+    """
+    q = (month - 1) // 3 + 1
+    q_start_month = (q - 1) * 3 + 1
+    q_end_month = q * 3
+
+    start_date = date(year, q_start_month, 1)
+
+    # Letzter Tag des End-Monats
+    last_day = calendar.monthrange(year, q_end_month)[1]
+    end_date = date(year, q_end_month, last_day)
+
+    return start_date, end_date
+
+
+def get_latest_shift_date(user_id, abbreviation, limit_date):
+    """
+    Sucht das Datum der letzten Schicht eines bestimmten Typs (QA/S) vor oder am limit_date.
+    """
+    last_shift = Shift.query.join(ShiftType).filter(
+        Shift.user_id == user_id,
+        ShiftType.abbreviation == abbreviation,
+        Shift.date <= limit_date
+    ).order_by(Shift.date.desc()).first()
+
+    return last_shift.date if last_shift else None
+
+
+def calculate_training_warnings(users, shifts_current_month, year, month):
+    """
+    Prüft Fälligkeiten basierend auf DB-Einträgen UND tatsächlichen Schichten.
+    """
+    warnings = []
+
+    # Der aktuell betrachtete Planungs-Monat
+    plan_view_date = date(year, month, 1)
+    _, plan_last_day_num = calendar.monthrange(year, month)
+    plan_view_end = date(year, month, plan_last_day_num)
+
+    # Quartalsgrenzen für den Planungsmonat
+    q_start, q_end = get_quarter_dates(year, month)
+
+    # Bereits geplante Schichten im aktuellen Monat (um Warnung auszublenden, wenn schon geplant)
+    existing_shift_types = set()
+    for s in shifts_current_month:
+        if s.shift_type:
+            existing_shift_types.add((s.user_id, s.shift_type.abbreviation))
+
+    today = date.today()
+
+    for user in users:
+        # Check: Ist User Hundeführer?
+        is_hf = (user.role and user.role.name == 'Hundeführer') or user.is_manual_dog_handler
+
+        if not is_hf or user.is_hidden_dog_handler:
+            continue
+
+        # --- A. Quartalsausbildung (QA) ---
+        # 1. Letztes Datum ermitteln (DB Profil ODER letzte Schicht)
+        # Wir schauen bis zum Ende des aktuellen Planungsmonats
+        last_qa_shift = get_latest_shift_date(user.id, 'QA', plan_view_end)
+        last_qa_manual = user.last_training_qa
+
+        last_qa_real = None
+        if last_qa_shift and last_qa_manual:
+            last_qa_real = max(last_qa_shift, last_qa_manual)
+        elif last_qa_shift:
+            last_qa_real = last_qa_shift
+        else:
+            last_qa_real = last_qa_manual
+
+        # 2. Prüfen: Wurde im aktuellen Quartal (des Plans) schon eine QA gemacht?
+        qa_done_in_quarter = False
+        if last_qa_real:
+            if q_start <= last_qa_real <= q_end:
+                qa_done_in_quarter = True
+
+        # 3. Warnung generieren, wenn NICHT erledigt und NICHT im aktuellen Plan eingeplant
+        if not qa_done_in_quarter:
+            if (user.id, 'QA') not in existing_shift_types:
+                # Frist ist IMMER das Ende des Quartals
+                due_date_str = q_end.strftime('%d.%m.%Y')
+
+                status = "Fällig"
+                # Wenn wir im letzten Monat des Quartals sind, wird es dringend
+                if month % 3 == 0:
+                    status = "Dringend fällig"
+
+                # Wenn gar kein Datum da ist -> Überfällig (seit Ewigkeiten)
+                if not last_qa_real:
+                    status = "Überfällig (Nie absolviert)"
+
+                warnings.append({
+                    "user_id": user.id,
+                    "name": f"{user.vorname} {user.name}",
+                    "type": "QA",
+                    "due_date": due_date_str,
+                    "status": status,
+                    "message": f"Muss zur Quartalsausbildung (Frist: {due_date_str})"
+                })
+
+        # --- B. Schießen (S) - 90 Tage ---
+        # 1. Letztes Datum ermitteln
+        last_s_shift = get_latest_shift_date(user.id, 'S', plan_view_end)
+        last_s_manual = user.last_training_shooting
+
+        last_s_real = None
+        if last_s_shift and last_s_manual:
+            last_s_real = max(last_s_shift, last_s_manual)
+        elif last_s_shift:
+            last_s_real = last_s_shift
+        else:
+            last_s_real = last_s_manual
+
+        # 2. Fälligkeit berechnen
+        if not last_s_real:
+            # Nie gemacht -> Sofort
+            s_due_date = plan_view_date
+            is_overdue = True
+        else:
+            s_due_date = last_s_real + timedelta(days=90)
+            is_overdue = s_due_date < plan_view_date
+
+        # 3. Warnung wenn Fälligkeit in diesem Monat (oder davor) liegt
+        # UND nicht schon eingeplant ist
+        if s_due_date <= plan_view_end:
+            if (user.id, 'S') not in existing_shift_types:
+                due_str = s_due_date.strftime('%d.%m.%Y')
+                status = "Überfällig" if is_overdue else "Fällig"
+
+                warnings.append({
+                    "user_id": user.id,
+                    "name": f"{user.vorname} {user.name}",
+                    "type": "S",
+                    "due_date": due_str,
+                    "status": status,
+                    "message": f"Muss zum Schießen (Frist: {due_str})"
+                })
+
+    return warnings
+
+
+# --- ENDE NEU ---
 
 
 def _calculate_user_total_hours(user_id, year, month, shift_types_map=None, variant_id=None):
@@ -192,7 +341,8 @@ def get_shifts():
     current_month_end_date = date(year, month, days_in_month)
     prev_month_end_date = current_month_start_date - timedelta(days=1)
 
-    users_query = User.query.filter(
+    # User laden (mit Rolle für HF-Check)
+    users_query = User.query.options(joinedload(User.role)).filter(
         User.shift_plan_visible == True,
         or_(User.aktiv_ab_datum.is_(None), User.aktiv_ab_datum <= current_month_end_date)
     )
@@ -243,6 +393,13 @@ def get_shifts():
     plan_status_data = status_obj.to_dict() if status_obj else {"id": None, "year": year, "month": month,
                                                                 "status": "In Bearbeitung", "is_locked": False}
 
+    # --- NEU: Trainings-Warnungen berechnen ---
+    training_warnings = []
+    # Nur für Admins berechnen
+    if current_user.role and current_user.role.name == 'admin':
+        training_warnings = calculate_training_warnings(users, shifts_current_month, year, month)
+    # ------------------------------------------
+
     return jsonify({
         "shifts": shifts_data,
         "users": users_data,
@@ -251,10 +408,12 @@ def get_shifts():
         "staffing_actual": staffing_actual,
         "shifts_last_month": shifts_last_month_data,
         "plan_status": plan_status_data,
-        "current_variant_id": variant_id
+        "current_variant_id": variant_id,
+        "training_warnings": training_warnings
     }), 200
 
 
+# ... (Rest der Datei bleibt unverändert) ...
 def _parse_date_from_payload(data):
     date_str = data.get('date')
     if date_str:
@@ -813,3 +972,4 @@ def send_completion_notification():
         import traceback
         traceback.print_exc()
         return jsonify({"message": f"Fehler: {str(e)}"}), 500
+

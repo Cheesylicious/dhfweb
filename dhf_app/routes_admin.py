@@ -6,7 +6,7 @@ from .models import User, Role, ShiftType, Shift, GlobalSetting, UpdateLog, User
 from .extensions import db, bcrypt
 from flask_login import login_required, current_user
 from .utils import admin_required
-from datetime import datetime
+from datetime import datetime, date
 from sqlalchemy import desc, or_
 # --- NEU: Import für E-Mail Service ---
 from .email_service import send_email
@@ -395,6 +395,138 @@ def update_user_limits(user_id):
         db.session.rollback()
         current_app.logger.error(f"Fehler beim Speichern der Limits: {str(e)}")
         return jsonify({"message": f"Datenbankfehler: {str(e)}"}), 500
+
+
+# --- NEU: ROUTEN FÜR HUNDEFÜHRER-VERWALTUNG (TRAINING & SCHIEßEN) ---
+
+@admin_bp.route('/dog_handlers', methods=['GET'])
+@admin_required
+def get_dog_handlers():
+    """
+    Liefert alle Benutzer, die entweder die Rolle 'Hundeführer' haben
+    ODER manuell als solche markiert wurden (is_manual_dog_handler=True).
+    Sortiert nach Namen.
+
+    ZUSÄTZLICH: Prüft im Schichtplan nach den letzten Terminen für "QA" und "S".
+    Wenn ein Termin im Plan NEUER ist als der manuell im User-Profil gespeicherte,
+    wird dieser für die Anzeige verwendet.
+    """
+    try:
+        # 1. Benutzer laden
+        query = User.query.join(Role).filter(
+            or_(
+                Role.name == 'Hundeführer',
+                User.is_manual_dog_handler == True
+            )
+        ).order_by(User.name, User.vorname)
+
+        users = query.all()
+        user_list = []
+        today = datetime.utcnow().date()
+
+        for user in users:
+            u_dict = user.to_dict()
+
+            # 2. Letzte "QA" Schicht aus dem Plan holen
+            last_qa_shift = Shift.query.join(ShiftType).filter(
+                Shift.user_id == user.id,
+                ShiftType.abbreviation == 'QA',  # Wir suchen nach dem Kürzel 'QA'
+                Shift.date <= today
+            ).order_by(Shift.date.desc()).first()
+
+            roster_qa_date = last_qa_shift.date if last_qa_shift else None
+            manual_qa_date = user.last_training_qa
+
+            # Vergleich: Nehme das neuere Datum
+            final_qa = roster_qa_date
+            if manual_qa_date:
+                # Wenn manuelles Datum existiert: Prüfe ob es neuer ist oder ob kein Roster-Datum da ist
+                if not roster_qa_date or manual_qa_date > roster_qa_date:
+                    final_qa = manual_qa_date
+
+            # Datum ins Ergebnis schreiben (ISO Format)
+            u_dict['last_training_qa'] = final_qa.isoformat() if final_qa else None
+
+            # 3. Letzte "S" Schicht aus dem Plan holen
+            last_shooting_shift = Shift.query.join(ShiftType).filter(
+                Shift.user_id == user.id,
+                ShiftType.abbreviation == 'S',  # Wir suchen nach dem Kürzel 'S'
+                Shift.date <= today
+            ).order_by(Shift.date.desc()).first()
+
+            roster_s_date = last_shooting_shift.date if last_shooting_shift else None
+            manual_s_date = user.last_training_shooting
+
+            # Vergleich
+            final_s = roster_s_date
+            if manual_s_date:
+                if not roster_s_date or manual_s_date > roster_s_date:
+                    final_s = manual_s_date
+
+            u_dict['last_training_shooting'] = final_s.isoformat() if final_s else None
+
+            user_list.append(u_dict)
+
+        return jsonify(user_list), 200
+
+    except Exception as e:
+        current_app.logger.error(f"Fehler beim Laden der Hundeführer: {e}")
+        return jsonify({"message": f"Serverfehler: {str(e)}"}), 500
+
+
+@admin_bp.route('/dog_handlers/<int:user_id>', methods=['PUT'])
+@admin_required
+def update_dog_handler_data(user_id):
+    """
+    Aktualisiert die Trainingsdaten und den manuellen/ausgeblendeten Status eines Hundeführers.
+    """
+    user = db.session.get(User, user_id)
+    if not user:
+        return jsonify({"message": "Benutzer nicht gefunden"}), 404
+
+    data = request.get_json()
+
+    try:
+        # 1. Manuelle Zuweisung (Optional)
+        if 'is_manual_dog_handler' in data:
+            user.is_manual_dog_handler = data['is_manual_dog_handler']
+
+        # 2. Ausblenden (Optional) - NEU
+        if 'is_hidden_dog_handler' in data:
+            user.is_hidden_dog_handler = data['is_hidden_dog_handler']
+
+        # 3. Letzte Quartalsausbildung
+        if 'last_training_qa' in data:
+            val = none_if_empty(data['last_training_qa'])
+            # Datum parsen falls String
+            if val and isinstance(val, str):
+                try:
+                    # Wir erwarten YYYY-MM-DD vom Frontend
+                    val = datetime.strptime(val, '%Y-%m-%d').date()
+                except ValueError:
+                    return jsonify({"message": "Ungültiges Datumsformat für QA (erwartet YYYY-MM-DD)"}), 400
+            user.last_training_qa = val
+
+        # 4. Letztes Schießen
+        if 'last_training_shooting' in data:
+            val = none_if_empty(data['last_training_shooting'])
+            if val and isinstance(val, str):
+                try:
+                    val = datetime.strptime(val, '%Y-%m-%d').date()
+                except ValueError:
+                    return jsonify({"message": "Ungültiges Datumsformat für Schießen (erwartet YYYY-MM-DD)"}), 400
+            user.last_training_shooting = val
+
+        db.session.commit()
+        return jsonify(user.to_dict()), 200
+
+    except Exception as e:
+        db.session.rollback()
+        current_app.logger.error(f"Fehler beim Update des Hundeführers {user_id}: {e}")
+        return jsonify({"message": f"Datenbankfehler: {str(e)}"}), 500
+
+
+# --- ENDE NEU ---
 
 
 # --- ROUTEN FÜR ROLLEN ---
