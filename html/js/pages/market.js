@@ -46,10 +46,10 @@ try {
         document.body.classList.add('admin-mode');
     }
 
-    // --- NEU: Oracle Modal initialisieren (Damit es auf dieser Seite verfügbar ist) ---
+    // --- NEU: Oracle Modal initialisieren ---
     initOracleModal();
 
-    // *** WICHTIG: GLOBALE ZUWEISUNGEN FÜR DIE MARKT-SEITE ***
+    // *** GLOBALE ZUWEISUNGEN FÜR DIE MARKT-SEITE ***
     window.loadHistory = loadHistory;
     window.deleteHistoryItem = deleteHistoryItem;
     window.openReactionModalMarket = openReactionModal;
@@ -57,6 +57,7 @@ try {
     window.selectCandidate = selectCandidate;
     window.cancelOffer = cancelOffer;
     window.jumpToOffer = jumpToOffer;
+    window.cancelInterestTransaction = cancelInterestTransaction; // NEU hinzugefügt
 
     // Start: Daten laden
     loadMarketView();
@@ -65,11 +66,10 @@ try {
     console.error("Market Init Error:", e);
 }
 
-// --- 2. ORACLE MODAL LOGIC (Kopie aus UI Helper für Standalone Page) ---
+// --- 2. ORACLE MODAL LOGIC ---
 function initOracleModal() {
     if (document.getElementById('dhf-oracle-modal')) return;
 
-    // 1. CSS Injection
     const style = document.createElement('style');
     style.innerHTML = `
         .oracle-modal-overlay {
@@ -119,7 +119,6 @@ function initOracleModal() {
     `;
     document.head.appendChild(style);
 
-    // 2. HTML Injection
     const html = `
         <div id="dhf-oracle-modal" class="oracle-modal-overlay">
             <div id="dhf-oracle-content" class="oracle-modal-content type-info">
@@ -132,7 +131,6 @@ function initOracleModal() {
     `;
     document.body.insertAdjacentHTML('beforeend', html);
 
-    // 3. Globale Funktionen
     window.dhfAlert = (title, text, type='info') => openOracleModal(title, text, type, null);
     window.dhfConfirm = (title, text, onYes) => openOracleModal(title, text, 'warning', onYes);
 
@@ -293,7 +291,13 @@ function createOfferElement(offer, type) {
     let actionsHtml = '';
     if (type === 'market') {
         if (offer.my_response === 'interested') {
-            actionsHtml = `<span class="status-badge status-done" title="Warte auf Bestätigung durch Anbieter"><i class="fas fa-check"></i> Interesse</span> ${jumpBtnHtml}`;
+            // FIX: Abbruch Button hinzugefügt
+            actionsHtml = `
+                <button class="btn-mini btn-cancel" title="Vorgang abbrechen" onclick="window.cancelInterestTransaction(${offer.my_response_id})">
+                    <i class="fas fa-undo"></i> Abbruch
+                </button>
+                <span class="status-badge status-done" title="Warte auf Bestätigung durch Anbieter"><i class="fas fa-check"></i> Interesse</span> ${jumpBtnHtml}
+            `;
         } else if (offer.my_response === 'declined') {
             actionsHtml = `<span class="status-badge status-rejected"><i class="fas fa-times"></i> Abgesagt</span> ${jumpBtnHtml}`;
         } else {
@@ -372,12 +376,30 @@ if (submitRespBtn) {
             if(responseModal) responseModal.style.display = 'none';
             loadMarketView();
         } catch(e) {
-            window.dhfAlert("Fehler", e.message, "error"); // <--- ORACLE ALERT
+            window.dhfAlert("Fehler", e.message, "error");
         } finally {
             submitRespBtn.disabled = false;
             submitRespBtn.textContent = 'Absenden';
         }
     };
+}
+
+// NEU: Vorgang abbrechen (Interesse zurückziehen)
+async function cancelInterestTransaction(responseId) {
+    if (!responseId) {
+        window.dhfAlert("Fehler", "Transaktions-ID nicht gefunden.", "error");
+        return;
+    }
+
+    window.dhfConfirm("Vorgang abbrechen", "Möchtest du dein Interesse an dieser Schicht wirklich zurückziehen?", async () => {
+        try {
+            await apiFetch(`/api/market/transactions/${responseId}/cancel`, 'POST');
+            loadMarketView();
+            window.dhfAlert("Erfolg", "Dein Interesse wurde zurückgezogen.", "success");
+        } catch(e) {
+            window.dhfAlert("Fehler", e.message, "error");
+        }
+    });
 }
 
 
@@ -476,16 +498,12 @@ async function openCandidatesModal(offerId, deadlineIso) {
                 candidatesListUl.appendChild(li);
             });
         }
-        if (candidatesListUl.innerHTML === '') {
-            candidatesListUl.innerHTML = '<li class="empty-state">Keine Kandidaten gefunden.</li>';
-        }
     } catch(e) {
         candidatesListUl.innerHTML = `<li class="empty-state" style="color:#e74c3c">Fehler: ${e.message}</li>`;
     }
 }
 
 async function selectCandidate(offerId, candidateId, candidateName) {
-    // FIX: dhfConfirm statt nativem confirm
     window.dhfConfirm("Tausch bestätigen", `Möchtest du die Schicht wirklich an ${candidateName} übergeben?`, async () => {
         try {
             await apiFetch(`/api/market/offer/${offerId}/select_candidate`, 'POST', { candidate_id: candidateId });
@@ -534,7 +552,6 @@ async function loadHistory() {
 }
 
 async function deleteHistoryItem(id) {
-    // FIX: dhfConfirm
     window.dhfConfirm("Löschen", "Eintrag endgültig aus der Chronik löschen?", async () => {
         try {
             await apiFetch(`/api/market/history/${id}`, 'DELETE');
@@ -552,7 +569,6 @@ function jumpToOffer(dateStr, userId) {
 }
 
 async function cancelOffer(offerId) {
-    // FIX: dhfConfirm
     window.dhfConfirm("Zurückziehen", "Angebot zurückziehen?", async () => {
         try {
             await apiFetch(`/api/market/offer/${offerId}`, 'DELETE');

@@ -132,16 +132,14 @@ export const PlanInteraction = {
         // Daten prüfen
         const shiftKey = `${user.id}-${dateStr}`;
         const currentShift = PlanState.currentShifts[shiftKey];
-        // Prüfen, ob eine echte Schicht existiert (nicht null und hat einen Typ)
         const hasActiveShift = currentShift && currentShift.shifttype_id;
 
-        // --- NEU: Marktplatz Status prüfen (Timer / Ghost) ---
-        const ghostData = (PlanState.marketTimerTargets || {})[shiftKey]; // Eingehend (Empfänger)
-        const outgoingData = (PlanState.marketTimerSources || {})[shiftKey]; // Ausgehend (Sender)
+        // Marktplatz Status prüfen (Timer / Ghost Animation)
+        const ghostData = (PlanState.marketTimerTargets || {})[shiftKey];
+        const outgoingData = (PlanState.marketTimerSources || {})[shiftKey];
 
         const isGhost = !!ghostData;
         const isOutgoing = !!outgoingData;
-        // -------------------------------------
 
         // Anfragen für diese Zelle filtern
         const queries = PlanState.currentShiftQueries.filter(q =>
@@ -163,11 +161,10 @@ export const PlanInteraction = {
             hasContent = true;
         }
 
-        // 2. Tausch-Anträge prüfen (Pending UND Approved für Rollback) - ALTES SYSTEM (Legacy)
+        // 2. Tausch-Anträge prüfen (Legacy System)
         const activeReq = PlanState.currentChangeRequests.find(req =>
             (req.status === 'pending' || req.status === 'approved') &&
             (req.shift_date ? req.shift_date.split('T')[0] : null) === dateStr &&
-            // Check: Ist der angeklickte User beteiligt?
             (
                 (req.status === 'pending' && (req.target_user_id === user.id || req.replacement_user_id === user.id)) ||
                 (req.status === 'approved' && req.replacement_user_id === user.id && req.reason_type === 'trade')
@@ -181,12 +178,10 @@ export const PlanInteraction = {
 
         // 3. Logik nach Rollen
         if ((PlanState.isPlanschreiber || PlanState.isAdmin) && PlanState.clickModalContext.isPlanGesperrt) {
-            // SPEZIALFALL: Plan gesperrt -> Nur Krankmeldung
             this._renderLockedPlanActions(sections, user, dateStr, userName, notiz);
             hasContent = true;
 
         } else if (PlanState.isAdmin) {
-            // ADMIN (Offen)
             if (wunsch) {
                 if(sections.adminWunsch) {
                     sections.adminWunsch.style.display = 'grid';
@@ -206,7 +201,6 @@ export const PlanInteraction = {
             hasContent = true;
 
         } else if (PlanState.isPlanschreiber) {
-            // PLANSCHREIBER (Offen)
             if(sections.adminShifts) {
                  sections.adminShifts.style.display = 'grid';
                  this.populateAdminShiftButtons();
@@ -216,15 +210,12 @@ export const PlanInteraction = {
             hasContent = true;
 
         } else if (PlanState.isHundefuehrer && isCellOnOwnRow) {
-            // HUNDEFÜHRER
             if (wunsch && wunsch.sender_user_id === PlanState.loggedInUser.id) {
-                // Eigener Wunsch existiert -> Zurückziehen
                 if(sections.hfDelete) {
                     sections.hfDelete.style.display = 'block';
                     const delLink = document.getElementById('cam-link-delete');
                     if(delLink) {
                         delLink.textContent = 'Wunsch-Anfrage zurückziehen';
-
                         delLink.onclick = (e) => {
                             if(e) e.stopPropagation();
                             document.getElementById('click-action-modal').style.display = 'none';
@@ -234,47 +225,43 @@ export const PlanInteraction = {
                 }
                 hasContent = true;
             } else if (!wunsch) {
-                // --- UPDATE: ZUERST PRÜFEN OB AKTIVER TAUSCH LÄUFT (TIMER/GHOST) ---
+                // --- SPEZIALFALL: AKTIVER TAUSCH (TIMER/GHOST) ---
                 if (isGhost || isOutgoing) {
                      if (sections.hfRequests) {
                          sections.hfRequests.style.display = 'block';
-                         sections.hfRequests.innerHTML = ''; // Leeren
+                         sections.hfRequests.innerHTML = '';
 
-                         // Info-Box
                          const infoBox = document.createElement('div');
                          infoBox.style.cssText = "background: rgba(52, 152, 219, 0.1); border: 1px solid #3498db; color: #3498db; padding: 10px; border-radius: 5px; text-align: center; font-size: 13px; margin-bottom: 5px;";
-                         infoBox.innerHTML = `<i class="fas fa-exchange-alt fa-spin"></i> Tausch in Bearbeitung...`;
+                         infoBox.innerHTML = `<i class="fas fa-exchange-alt fa-spin"></i> Tauschvorgang aktiv...`;
                          sections.hfRequests.appendChild(infoBox);
 
-                         // Button zum Abbrechen
+                         // Button zum Abbrechen (Nutzt die my_response_id)
                          const cancelBtn = document.createElement('button');
-                         cancelBtn.className = 'cam-button reject'; // Rot
+                         cancelBtn.className = 'cam-button reject';
                          cancelBtn.style.width = '100%';
                          cancelBtn.innerHTML = '<i class="fas fa-times"></i> Vorgang abbrechen';
 
-                         // ID finden (transaction_id oder id)
+                         // WICHTIG: Die ID korrekt aus den Ghost-Daten beziehen
                          const activeData = isGhost ? ghostData : outgoingData;
-                         const transactionId = activeData.transaction_id || activeData.id;
+                         // Wir priorisieren die response_id für den Abbruch
+                         const transactionId = activeData.response_id || activeData.transaction_id || activeData.id;
 
                          cancelBtn.onclick = () => {
-                             // --- ANPASSUNG: Custom Confirm Dialog ---
-                             window.dhfConfirm("Tausch abbrechen", "Möchtest du diesen Tauschvorgang wirklich abbrechen?", async () => {
-                                 // Button deaktivieren
+                             if (!transactionId || transactionId === 'undefined') {
+                                 window.dhfAlert("Fehler", "Keine gültige Vorgangs-ID vorhanden. Bitte Plan neu laden.", "error");
+                                 return;
+                             }
+
+                             window.dhfConfirm("Abbrechen", "Möchtest du diesen Tauschvorgang wirklich abbrechen?", async () => {
                                  cancelBtn.disabled = true;
                                  cancelBtn.textContent = "Breche ab...";
-
                                  try {
-                                     // --- ANPASSUNG: apiFetch Signatur korrigiert (String statt Objekt) ---
                                      await apiFetch(`/api/market/transactions/${transactionId}/cancel`, 'POST');
-
                                      document.getElementById('click-action-modal').style.display = 'none';
-
-                                     // Grid neu laden
                                      if(this.renderGrid) this.renderGrid();
                                  } catch(e) {
-                                     // --- ANPASSUNG: Custom Alert Dialog ---
                                      window.dhfAlert("Fehler", "Fehler beim Abbrechen: " + e.message, "error");
-
                                      cancelBtn.disabled = false;
                                      cancelBtn.innerHTML = '<i class="fas fa-times"></i> Vorgang abbrechen';
                                  }
@@ -285,7 +272,6 @@ export const PlanInteraction = {
                      hasContent = true;
 
                 } else if (hasActiveShift) {
-                    // Normale Schicht (kein Tausch) -> Hinweis
                     if (sections.hfRequests) {
                         sections.hfRequests.style.display = 'block';
                         sections.hfRequests.innerHTML = `
@@ -296,20 +282,7 @@ export const PlanInteraction = {
                     }
                     hasContent = true;
 
-                } else if (activeReq && activeReq.status === 'pending') {
-                     // Fallback für altes Tauschsystem
-                     if (sections.hfRequests) {
-                         sections.hfRequests.style.display = 'block';
-                         sections.hfRequests.innerHTML = `
-                            <div style="background: rgba(243, 156, 18, 0.1); border: 1px solid #f39c12; color: #f39c12; padding: 10px; border-radius: 5px; text-align: center; font-size: 13px;">
-                                <i class="fas fa-sync fa-spin"></i> Tausch (Legacy) in Bearbeitung.<br>
-                                Keine Wunschanfrage möglich.
-                            </div>
-                         `;
-                     }
-                     hasContent = true;
                 } else {
-                    // Alles frei -> Zeige Wunsch-Buttons
                     if(sections.hfRequests) {
                         sections.hfRequests.style.display = 'flex';
                         sections.hfRequests.innerHTML = '';
@@ -324,8 +297,6 @@ export const PlanInteraction = {
 
         this._positionModal(cell, modal);
     },
-
-    // --- Helper für Modal-Inhalt ---
 
     _renderTradeSection(req, anchorElement) {
         const tradeSection = document.createElement('div');
@@ -357,11 +328,8 @@ export const PlanInteraction = {
             `;
         }
 
-        const modal = document.getElementById('click-action-modal');
         if (anchorElement && anchorElement.parentNode) {
             anchorElement.parentNode.insertBefore(tradeSection, anchorElement);
-        } else {
-            modal.appendChild(tradeSection);
         }
     },
 
@@ -386,8 +354,6 @@ export const PlanInteraction = {
                 document.getElementById('click-action-modal').style.display = 'none';
                 if (PlanHandlers.handleLockedClick) {
                     PlanHandlers.handleLockedClick(user.id, dateStr, userName);
-                } else {
-                    alert("Handler nicht gefunden. Bitte neu laden.");
                 }
             };
             container.appendChild(btn);
@@ -402,9 +368,6 @@ export const PlanInteraction = {
         const link = document.getElementById('cam-link-notiz');
         if(link) {
             link.textContent = notiz ? '❓ Text-Notiz ansehen...' : '❓ Text-Notiz erstellen...';
-            link.dataset.targetQueryId = notiz ? notiz.id : "";
-
-            // FIX: Klick-Handler hinzufügen
             link.onclick = (e) => {
                 e.stopPropagation();
                 document.getElementById('click-action-modal').style.display = 'none';
@@ -413,9 +376,7 @@ export const PlanInteraction = {
         }
     },
 
-    // --- REPARIERTE MODAL ÖFFNEN LOGIK ---
     openQueryModal(existingQuery) {
-        // Kontext für Speichern setzen
         const context = PlanState.clickModalContext;
         PlanState.modalQueryContext = {
             userId: context.userId,
@@ -444,46 +405,34 @@ export const PlanInteraction = {
 
         if(!modal) return;
 
-        // 1. FIX: Close Button Handler explizit setzen (überschreiben)
         if (closeBtn) {
-            closeBtn.onclick = () => {
-                modal.style.display = 'none';
-            };
+            closeBtn.onclick = () => { modal.style.display = 'none'; };
         }
 
-        // Reset UI
         title.textContent = existingQuery ? "Notiz / Anfrage Details" : "Neue Notiz / Anfrage";
         info.textContent = `${context.userName} am ${new Date(context.dateStr).toLocaleDateString('de-DE')}`;
         statusEl.textContent = "";
         msgInput.value = "";
 
-        // Ziel-Auswahl anzeigen?
         if (targetSelection) {
             if (!existingQuery && (PlanState.isAdmin || PlanState.isHundefuehrer)) {
                 targetSelection.style.display = 'block';
-                const radioUser = document.getElementById('target-type-user');
-                if(radioUser) radioUser.checked = true;
             } else {
                 targetSelection.style.display = 'none';
             }
         }
 
-
         if (existingQuery) {
-            // Ansicht: Existierend
             newContainer.style.display = 'none';
             existingContainer.style.display = 'block';
             replyForm.style.display = 'block';
-
             existingMsg.textContent = existingQuery.message;
 
-            // Admin Aktionen
             if (PlanState.isAdmin || PlanState.isPlanschreiber) {
                 adminActions.style.display = 'flex';
                 resolveBtn.onclick = () => PlanHandlers.resolveShiftQuery(existingQuery.id, () => modal.style.display='none');
                 deleteBtn.onclick = () => PlanHandlers.deleteShiftQuery(existingQuery.id, () => modal.style.display='none');
             } else if (PlanState.isHundefuehrer && existingQuery.sender_user_id === PlanState.loggedInUser.id) {
-                // HF darf eigene löschen
                 adminActions.style.display = 'flex';
                 resolveBtn.style.display = 'none';
                 deleteBtn.textContent = 'Anfrage zurückziehen';
@@ -492,46 +441,36 @@ export const PlanInteraction = {
                 adminActions.style.display = 'none';
             }
 
-            // Replies laden
             if (repliesList) {
                 repliesList.innerHTML = '<li style="color:#aaa;">Lade Verlauf...</li>';
                 this.loadAndRenderModalConversation(existingQuery.id);
             }
 
-            // 2. FIX: Reply Handler sauber setzen (Direkt PlanApi statt PlanHandler nutzen)
             if (replyBtn) {
-                // Wir überschreiben onclick, kein Klonen nötig
                 replyBtn.onclick = async () => {
                     const txt = document.getElementById('reply-message-input').value.trim();
-                    if(!txt) { alert("Bitte Text eingeben."); return; }
-
+                    if(!txt) return;
                     replyBtn.disabled = true;
-                    replyBtn.textContent = 'Sende...';
-
                     try {
                         await PlanApi.sendQueryReply(existingQuery.id, txt);
                         document.getElementById('reply-message-input').value = '';
                         this.loadAndRenderModalConversation(existingQuery.id);
                     } catch (e) {
-                        alert("Fehler: " + e.message);
+                        window.dhfAlert("Fehler", e.message, "error");
                     } finally {
                         replyBtn.disabled = false;
-                        replyBtn.textContent = 'Antwort senden';
                     }
                 };
             }
 
         } else {
-            // Ansicht: Neu
             existingContainer.style.display = 'none';
             replyForm.style.display = 'none';
             newContainer.style.display = 'block';
-
-            // Submit Handler für neue Anfragen
             if (submitBtn) {
                  submitBtn.onclick = () => {
                      const txt = msgInput.value;
-                     if(!txt) { statusEl.textContent = "Bitte Text eingeben."; return; }
+                     if(!txt) return;
                      PlanHandlers.saveShiftQuery(txt, () => modal.style.display='none');
                  };
             }
@@ -573,13 +512,9 @@ export const PlanInteraction = {
             btn.textContent = def.abbrev;
 
             btn.onclick = () => {
-                const modal = document.getElementById('click-action-modal');
-                if (modal) modal.style.display = 'none';
-
+                document.getElementById('click-action-modal').style.display = 'none';
                 if (def.isAll) {
                     PlanState.modalContext = { userId: PlanState.clickModalContext.userId, dateStr: PlanState.clickModalContext.dateStr };
-                    document.getElementById('shift-modal-title').textContent = "Alle Schichten";
-                    document.getElementById('shift-modal-info').textContent = `Für: ${PlanState.clickModalContext.userName}`;
                     document.getElementById('shift-modal').style.display = 'block';
                 } else {
                     const st = PlanState.allShiftTypesList.find(s => s.abbreviation === def.abbrev);
@@ -609,7 +544,6 @@ export const PlanInteraction = {
             buttons.forEach(def => {
                 const btn = document.createElement('button');
                 btn.className = 'cam-shift-button';
-
                 const limit = usage[def.abbr];
                 let disabled = false;
                 let info = '';
@@ -649,6 +583,7 @@ export const PlanInteraction = {
             try {
                 await PlanApi.approveShiftChangeRequest(reqId);
                 document.getElementById('click-action-modal').style.display = 'none';
+                if(this.renderGrid) this.renderGrid();
             } catch (e) {
                 window.dhfAlert("Fehler", e.message, "error");
             }
@@ -656,7 +591,7 @@ export const PlanInteraction = {
     },
 
     async confirmRejectTrade(reqId) {
-        window.dhfConfirm("Aktion bestätigen", "Diesen Vorgang ablehnen bzw. rückgängig machen?", async () => {
+        window.dhfConfirm("Aktion bestätigen", "Diesen Vorgang ablehnen?", async () => {
             try {
                 await PlanApi.rejectShiftChangeRequest(reqId);
                 document.getElementById('click-action-modal').style.display = 'none';
@@ -684,7 +619,7 @@ export const PlanInteraction = {
 
                 li.innerHTML = `
                     <div class="reply-meta" style="color: ${isSelf ? '#3498db' : '#888'};">
-                        <strong>${reply.user_name}</strong> am ${formattedDate} Uhr
+                        <strong>${reply.user_name}</strong> am ${formattedDate}
                     </div>
                     <div class="reply-text">${reply.message}</div>
                 `;

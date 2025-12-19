@@ -12,7 +12,7 @@ import { PlanRenderer } from '../modules/schichtplan_renderer.js';
 import { StaffingModule } from '../modules/schichtplan_staffing.js';
 import { PlanHandlers } from '../modules/schichtplan_handlers.js';
 import { PredictionUI } from '../modules/prediction_ui.js';
-import { MarketModule } from '../modules/schichtplan_market.js'; // Import wichtig
+import { MarketModule } from '../modules/schichtplan_market.js';
 
 // Feature Modules
 import { PlanUIHelper } from '../modules/schichtplan_ui_helper.js';
@@ -47,7 +47,7 @@ async function initialize() {
         PredictionUI.init();
         initPetDisplay(PlanState.loggedInUser);
 
-        // --- NEU: Market Module initialisieren (Inject Modal) ---
+        // --- Market Module initialisieren (Inject Modal) ---
         MarketModule.init();
 
         // 3. MODULE INITIALISIEREN & VERKNÜPFEN
@@ -141,19 +141,19 @@ async function renderGrid(isSilent = false) {
     try {
         // --- PARALLEL DATEN LADEN ---
         const [shiftPayload, specialDatesResult, queriesResult, marketOffersResult, pendingRequestsResult] = await Promise.all([
-            // 1. Schichten & Status (enthält jetzt auch training_warnings)
+            // 1. Schichten & Status
             PlanApi.fetchShiftData(PlanState.currentYear, PlanState.currentMonth, PlanState.currentVariantId),
             // 2. Feiertage
             PlanApi.fetchSpecialDates(PlanState.currentYear, 'holiday'),
-            // 3. Queries (Text-Notizen & Wünsche) - Nur für Berechtigte
+            // 3. Queries (Text-Notizen & Wünsche)
             (PlanState.isAdmin || PlanState.isPlanschreiber || PlanState.isHundefuehrer)
                 ? PlanApi.fetchOpenQueries(PlanState.currentYear, PlanState.currentMonth)
                 : Promise.resolve([]),
-            // 4. Marktplatz Angebote
+            // 4. Marktplatz Angebote (Inkl. my_response_id)
             (PlanState.isAdmin || PlanState.isHundefuehrer)
                 ? PlanApi.fetchMarketOffers()
                 : Promise.resolve([]),
-            // 5. Change Requests (Offene Anträge für Visualisierung)
+            // 5. Change Requests (Legacy Anträge)
             (PlanState.isAdmin || PlanState.isPlanschreiber || PlanState.isHundefuehrer)
                 ? PlanApi.fetchPendingShiftChangeRequests()
                 : Promise.resolve([])
@@ -186,36 +186,39 @@ async function renderGrid(isSilent = false) {
             shiftPayload.violations.forEach(v => PlanState.currentViolations.add(`${v[0]}-${v[1]}`));
         }
 
-        // Market Offers & Ghost Targets
+        // --- MARKET OFFERS & GHOST LOGIC ---
         PlanState.currentMarketOffers = {};
-        PlanState.marketTimerTargets = {}; // Reset
-        PlanState.marketTimerSources = {}; // NEU: Reset Sources
+        PlanState.marketTimerTargets = {};
+        PlanState.marketTimerSources = {};
 
         if (marketOffersResult && Array.isArray(marketOffersResult)) {
             marketOffersResult.forEach(offer => {
-                const d = offer.shift_date.split('T')[0];
+                const d = offer.shift_date.includes('T') ? offer.shift_date.split('T')[0] : offer.shift_date;
                 const key = `${offer.offering_user_id}-${d}`;
+
+                // Das gesamte Offer-Objekt im State speichern
                 PlanState.currentMarketOffers[key] = offer;
 
-                // NEU: Ghost Logic (Beide Seiten: Sender & Empfänger)
+                // Ghost Logic (Visualisierung laufender Tausche)
                 if (offer.leading_candidate_id) {
-
-                    // 1. Empfänger (sieht "Geist")
+                    // 1. Empfänger-Perspektive (Interessent)
                     const receiverKey = `${offer.leading_candidate_id}-${d}`;
                     PlanState.marketTimerTargets[receiverKey] = {
                         abbr: offer.shift_type_abbr,
-                        from: offer.offering_user_name
+                        from: offer.offering_user_name,
+                        // FIX: Die Response-ID für den Abbruch durch den Interessenten
+                        response_id: offer.my_response_id || null
                     };
 
-                    // 2. Sender (sieht "Ausgang") - ID ist offer.offering_user_id
+                    // 2. Sender-Perspektive (Anbieter)
                     const senderKey = `${offer.offering_user_id}-${d}`;
-
-                    // Name des Empfängers finden (für Tooltip)
                     const candidateUser = PlanState.allUsers.find(u => u.id === offer.leading_candidate_id);
                     const candidateName = candidateUser ? `${candidateUser.vorname} ${candidateUser.name}` : "Unbekannt";
 
                     PlanState.marketTimerSources[senderKey] = {
-                        to: candidateName
+                        to: candidateName,
+                        // FIX: Die Offer-ID für den Abbruch durch den Anbieter
+                        offer_id: offer.id
                     };
                 }
             });
@@ -231,12 +234,10 @@ async function renderGrid(isSilent = false) {
             status: "In Bearbeitung", is_locked: false
         };
 
-        // --- NEU: Trainings-Warnungen speichern ---
-        // Das ist der entscheidende Teil für das neue Banner!
+        // Trainings-Warnungen
         PlanState.trainingWarnings = shiftPayload.training_warnings || [];
-        // ------------------------------------------
 
-        // Special Dates (Vollständiger Load)
+        // Special Dates
         PlanState.currentSpecialDates = {};
         await loadFullSpecialDates();
 
@@ -271,10 +272,11 @@ async function renderGrid(isSilent = false) {
 
         // 4. Highlight
         if(PlanState.pendingHighlight) {
+            const h = PlanState.pendingHighlight;
             setTimeout(() => {
-                PlanRenderer.highlightCells(PlanState.pendingHighlight.date, PlanState.pendingHighlight.targetUserId);
+                PlanRenderer.highlightCells(h.date, h.targetUserId);
                 PlanState.pendingHighlight = null;
-            }, 300);
+            }, 100);
         }
 
         // 5. Banner & Visuals
@@ -283,17 +285,16 @@ async function renderGrid(isSilent = false) {
 
         // 6. Market Badge im Header updaten
         const badge = document.getElementById('market-badge');
-        if (badge && PlanState.currentMarketOffers) {
+        if (badge) {
              const count = Object.keys(PlanState.currentMarketOffers).length;
              badge.textContent = count;
              badge.style.display = count > 0 ? 'inline-block' : 'none';
         }
 
     } catch (error) {
-        if(grid) grid.innerHTML = `<div style="padding: 20px; text-align: center; color: red;">Fehler beim Laden des Plans: ${error.message}</div>`;
-        console.error(error);
+        if(grid) grid.innerHTML = `<div style="padding: 20px; text-align: center; color: #e74c3c;">Fehler beim Laden des Plans: ${error.message}</div>`;
+        console.error("RenderGrid Error:", error);
     } finally {
-        // Animation Ende
         if(grid) grid.classList.remove('blur-loading');
         if(staffingGrid) staffingGrid.classList.remove('blur-loading');
     }
@@ -322,7 +323,7 @@ async function loadFullSpecialDates() {
 }
 
 async function loadColorSettings() {
-    let fetchedColors = DEFAULT_COLORS;
+    let fetchedColors = { ...DEFAULT_COLORS };
     try {
         const data = await PlanApi.fetchSettings();
         for (const key in DEFAULT_COLORS) {
@@ -390,7 +391,8 @@ window.addEventListener('click', (e) => {
         document.getElementById('query-modal'),
         document.getElementById('generator-modal'),
         document.getElementById('gen-settings-modal'),
-        document.getElementById('variant-modal')
+        document.getElementById('variant-modal'),
+        document.getElementById('plan-market-response-modal')
     ];
 
     overlayModals.forEach(m => {
