@@ -35,12 +35,13 @@ def _calculate_usage(user_id, year, month, shifttype_id, abbreviation):
     """
     Berechnet den Verbrauch eines Limits (Genehmigte Schichten + Offene Anfragen).
     """
-    # 1. Zähle echte Schichten im Plan (genehmigt)
+    # 1. Zähle echte Schichten im Plan (genehmigt) -> NUR HAUPTPLAN (variant_id=None)
     shift_count = Shift.query.filter(
         Shift.user_id == user_id,
         extract('year', Shift.date) == year,
         extract('month', Shift.date) == month,
-        Shift.shifttype_id == shifttype_id
+        Shift.shifttype_id == shifttype_id,
+        Shift.variant_id == None  # WICHTIG: Nur Hauptplan zählen!
     ).count()
 
     # 2. Zähle offene Anfragen (textbasiert: "Anfrage für: T.")
@@ -114,8 +115,8 @@ def get_notifications_summary():
             if user_role == 'Hundeführer':
                 base_query = base_query.filter(
                     or_(
-                        ShiftQuery.sender_user_id == current_user_id,
-                        ShiftQuery.target_user_id == current_user_id
+                        ShiftQuery.sender_user_id == current_user.id,
+                        ShiftQuery.target_user_id == current_user.id
                     )
                 )
 
@@ -244,18 +245,19 @@ def create_shift_query():
 
             # Prüfe, ob es eine Schicht-Wunsch-Anfrage ist (Format "Anfrage für: X")
             if message.startswith("Anfrage für:"):
-                # --- NEU: Zuerst prüfen, ob für diesen Tag bereits eine Schicht eingetragen ist ---
+                # --- ANPASSUNG: Nur im HAUPTPLAN (variant_id=None) prüfen! ---
                 existing_shift_db = Shift.query.filter_by(
                     user_id=current_user.id,
-                    date=shift_date
+                    date=shift_date,
+                    variant_id=None  # Ignoriere Schichten in Varianten
                 ).first()
 
                 # Wenn Schicht existiert und nicht 'FREI' (also shifttype_id nicht NULL)
                 if existing_shift_db and existing_shift_db.shifttype_id is not None:
-                     return jsonify({
-                         "message": "Nicht möglich: Du hast an diesem Tag bereits eine Schicht eingetragen. Bitte nutze die Tauschbörse."
-                     }), 403
-                # --- ENDE NEU ---
+                    return jsonify({
+                        "message": "Nicht möglich: Du hast an diesem Tag bereits eine Schicht eingetragen. Bitte nutze die Tauschbörse."
+                    }), 403
+                # --- ENDE ANPASSUNG ---
 
                 # Extrahiere Abkürzung
                 parts = message.split(":")
@@ -438,12 +440,23 @@ def bulk_approve_queries():
                     st_id = types_map.get(abbr)
 
                     if st_id:
-                        # Schicht erstellen oder updaten
-                        existing_shift = Shift.query.filter_by(user_id=q.target_user_id, date=q.shift_date).first()
+                        # Schicht erstellen oder updaten (IMMER HAUPTPLAN)
+                        existing_shift = Shift.query.filter_by(
+                            user_id=q.target_user_id,
+                            date=q.shift_date,
+                            variant_id=None  # Explizit Hauptplan
+                        ).first()
+
                         if existing_shift:
                             existing_shift.shifttype_id = st_id
                         else:
-                            new_shift = Shift(user_id=q.target_user_id, date=q.shift_date, shifttype_id=st_id)
+                            # Explizit variant_id=None setzen
+                            new_shift = Shift(
+                                user_id=q.target_user_id,
+                                date=q.shift_date,
+                                shifttype_id=st_id,
+                                variant_id=None
+                            )
                             db.session.add(new_shift)
                         count_shifts_created += 1
 
@@ -525,7 +538,8 @@ def bulk_delete_queries():
 
         for q in queries:
             # --- NEU: E-Mail nur, wenn noch OFFEN (also eine echte Ablehnung) ---
-            should_send_mail = (q.status == 'offen' and q.sender_user_id != current_user.id and q.sender and q.sender.email)
+            should_send_mail = (
+                        q.status == 'offen' and q.sender_user_id != current_user.id and q.sender and q.sender.email)
 
             if should_send_mail:
                 info = {
@@ -671,7 +685,8 @@ def delete_shift_query(query_id):
 
         # --- E-Mail Benachrichtigung nur bei Ablehnung (OFFEN) ---
         # Wenn Status "erledigt" ist, wird KEINE Mail gesendet (Aufräumen).
-        should_send_mail = (query.status == 'offen' and query.sender_user_id != current_user.id and query.sender and query.sender.email)
+        should_send_mail = (
+                    query.status == 'offen' and query.sender_user_id != current_user.id and query.sender and query.sender.email)
 
         if should_send_mail:
             email_subject = f"DHF-Planer: Anfrage abgelehnt/gelöscht ({date_str})"
