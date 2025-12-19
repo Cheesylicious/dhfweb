@@ -3,6 +3,7 @@
 from flask import Blueprint, request, jsonify
 from flask_login import login_required, current_user
 from datetime import datetime, date, timedelta
+from sqlalchemy import func
 from .extensions import db
 from .models import Shift, ShiftType, User
 from .models_market import ShiftMarketOffer, ShiftMarketResponse
@@ -59,8 +60,6 @@ def _check_dog_conflict(target_date, target_shift_type, user):
         return None
 
     # Alle Schichten an diesem Tag laden, wo der User den gleichen Hund hat
-    # WICHTIG: Wir schließen den User selbst aus (user.id != ...), da eigene Schichten 
-    # separat als "Doppelbelegung" geprüft werden. Hier geht es um das Tier.
     conflicting_shifts = Shift.query.join(User).join(ShiftType).filter(
         Shift.date == target_date,
         Shift.variant_id == None,
@@ -80,10 +79,7 @@ def _check_rest_period_conflict(target_date, target_shift_type, user_id):
     """
     Prüft auf Ruhezeitverletzungen (N -> T/6/S/QA Regel).
     """
-    # Kritische Schichten, die nicht auf N folgen dürfen (Ruhezeit < 11h).
-    # X und EU sind hier NICHT enthalten -> Manuelle Entscheidung möglich.
     CRITICAL_FOLLOWERS = ['T.', '6', 'S', 'QA']
-
     target_abbr = target_shift_type.abbreviation
 
     # FALL 1: Wir wollen eine T/6/S/QA Schicht annehmen -> Prüfen ob gestern N war
@@ -120,7 +116,7 @@ def _check_rest_period_conflict(target_date, target_shift_type, user_id):
 def get_market_offers():
     """
     Liefert Angebote zurück.
-    Führt vorher einen Cleanup alter Angebote durch.
+    Optimiert für Performance: Bulk-Fetch der Reaktionen und Counts zur Vermeidung von Datenbankwartezeiten.
     """
     if not _is_allowed():
         return jsonify({"message": "Zugriff verweigert."}), 403
@@ -141,6 +137,29 @@ def get_market_offers():
         query = query.filter(ShiftMarketOffer.status == 'active')
 
     offers = query.order_by(ShiftMarketOffer.created_at.desc()).all()
+    offer_ids = [o.id for o in offers]
+
+    # INNOVATIVE OPTIMIERUNG: Bulk-Abfragen für Reaktionen und Counts
+    user_responses = {}
+    interested_counts = {}
+
+    if offer_ids:
+        # 1. Eigene Antworten laden
+        resps = ShiftMarketResponse.query.filter(
+            ShiftMarketResponse.offer_id.in_(offer_ids),
+            ShiftMarketResponse.user_id == current_user.id
+        ).all()
+        user_responses = {r.offer_id: r for r in resps}
+
+        # 2. Interessenten-Counts laden
+        counts = db.session.query(
+            ShiftMarketResponse.offer_id,
+            func.count(ShiftMarketResponse.id)
+        ).filter(
+            ShiftMarketResponse.offer_id.in_(offer_ids),
+            ShiftMarketResponse.response_type == 'interested'
+        ).group_by(ShiftMarketResponse.offer_id).all()
+        interested_counts = {oid: count for oid, count in counts}
 
     results = []
     for offer in offers:
@@ -149,6 +168,7 @@ def get_market_offers():
         data['leading_candidate_id'] = None
 
         if offer.auto_accept_deadline:
+            # Hier nehmen wir den ältesten Interessenten (FIFO)
             first_interested = ShiftMarketResponse.query.filter_by(
                 offer_id=offer.id,
                 response_type='interested'
@@ -156,13 +176,13 @@ def get_market_offers():
             if first_interested:
                 data['leading_candidate_id'] = first_interested.user_id
 
-        my_response = ShiftMarketResponse.query.filter_by(offer_id=offer.id, user_id=current_user.id).first()
-        data['my_response'] = my_response.response_type if my_response else None
+        # Daten aus Bulk-Fetch zuweisen
+        resp = user_responses.get(offer.id)
+        data['my_response'] = resp.response_type if resp else None
+        data['my_response_id'] = resp.id if resp else None  # WICHTIG für "Vorgang abbrechen"
 
         if data['is_my_offer']:
-            interested_count = ShiftMarketResponse.query.filter_by(offer_id=offer.id,
-                                                                   response_type='interested').count()
-            data['interested_count'] = interested_count
+            data['interested_count'] = interested_counts.get(offer.id, 0)
 
         if status_filter == 'pending' and offer.accepted_by_user:
             data['accepted_by_name'] = f"{offer.accepted_by_user.vorname} {offer.accepted_by_user.name}"
@@ -172,12 +192,28 @@ def get_market_offers():
     return jsonify(results), 200
 
 
+@market_bp.route('/transactions/<int:response_id>/cancel', methods=['POST'])
+@login_required
+def cancel_transaction(response_id):
+    """
+    Bricht einen Vorgang ab (Interesse an einer Schicht zurückziehen).
+    """
+    if not _is_allowed():
+        return jsonify({"message": "Zugriff verweigert."}), 403
+
+    success, message = MarketService.cancel_response(response_id, current_user.id)
+
+    if success:
+        return jsonify({"message": message}), 200
+    else:
+        return jsonify({"message": message}), 400
+
+
 @market_bp.route('/offer/<int:offer_id>/react', methods=['POST'])
 @login_required
 def react_to_offer(offer_id):
     """
     Kandidat bekundet Interesse oder lehnt ab.
-    NEU: Enthält Prüfungen auf Konflikte (Hunde, Ruhezeiten).
     """
     if not _is_allowed():
         return jsonify({"message": "Zugriff verweigert"}), 403
@@ -201,7 +237,6 @@ def react_to_offer(offer_id):
         target_date = offer.shift.date
         target_shift_type = offer.shift.shift_type
 
-        # 1. Check: Habe ich schon Schicht?
         existing_shift = Shift.query.filter_by(
             user_id=current_user.id,
             date=target_date,
@@ -210,22 +245,17 @@ def react_to_offer(offer_id):
 
         if existing_shift and existing_shift.shifttype_id is not None:
             st = ShiftType.query.get(existing_shift.shifttype_id)
-            # Wenn es eine Arbeitsschicht ist (oder generell belegt), blockieren
             return jsonify({
                 "message": f"Nicht möglich: Du hast am {target_date.strftime('%d.%m.')} bereits Dienst ({st.abbreviation if st else '?'})."
             }), 400
 
-        # 2. Check: Ruhezeitverletzung (N -> T/6/S/QA)
         rest_conflict = _check_rest_period_conflict(target_date, target_shift_type, current_user.id)
         if rest_conflict:
             return jsonify({"message": f"Nicht möglich: {rest_conflict}"}), 400
 
-        # 3. Check: Hundekonflikt (Anderer User hat meinen Hund)
         dog_conflict = _check_dog_conflict(target_date, target_shift_type, current_user)
         if dog_conflict:
             return jsonify({"message": f"Nicht möglich: {dog_conflict}"}), 400
-
-    # --- ENDE CHECKS ---
 
     # Bestehende Antwort aktualisieren oder neu erstellen
     existing = ShiftMarketResponse.query.filter_by(offer_id=offer_id, user_id=current_user.id).first()
@@ -408,5 +438,3 @@ def cancel_market_offer(offer_id):
     offer.status = 'cancelled'
     db.session.commit()
     return jsonify({"message": "Angebot zurückgezogen."}), 200
-
-
