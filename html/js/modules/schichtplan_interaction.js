@@ -135,6 +135,14 @@ export const PlanInteraction = {
         // Prüfen, ob eine echte Schicht existiert (nicht null und hat einen Typ)
         const hasActiveShift = currentShift && currentShift.shifttype_id;
 
+        // --- NEU: Marktplatz Status prüfen (Timer / Ghost) ---
+        const ghostData = (PlanState.marketTimerTargets || {})[shiftKey]; // Eingehend (Empfänger)
+        const outgoingData = (PlanState.marketTimerSources || {})[shiftKey]; // Ausgehend (Sender)
+
+        const isGhost = !!ghostData;
+        const isOutgoing = !!outgoingData;
+        // -------------------------------------
+
         // Anfragen für diese Zelle filtern
         const queries = PlanState.currentShiftQueries.filter(q =>
             q.shift_date === dateStr &&
@@ -150,12 +158,12 @@ export const PlanInteraction = {
 
         let hasContent = false;
 
-        // 1. Marktplatz Modul prüfen
+        // 1. Marktplatz Modul prüfen (Buttons für Angebote in Tauschbörse)
         if (MarketModule.renderModalActions(marketSection, PlanState.clickModalContext, this.renderGrid, () => modal.style.display = 'none')) {
             hasContent = true;
         }
 
-        // 2. Tausch-Anträge prüfen (Pending UND Approved für Rollback)
+        // 2. Tausch-Anträge prüfen (Pending UND Approved für Rollback) - ALTES SYSTEM (Legacy)
         const activeReq = PlanState.currentChangeRequests.find(req =>
             (req.status === 'pending' || req.status === 'approved') &&
             (req.shift_date ? req.shift_date.split('T')[0] : null) === dateStr &&
@@ -226,8 +234,58 @@ export const PlanInteraction = {
                 }
                 hasContent = true;
             } else if (!wunsch) {
-                // UPDATE: PRÜFUNG AUF EXISTIERENDE SCHICHT
-                if (hasActiveShift) {
+                // --- UPDATE: ZUERST PRÜFEN OB AKTIVER TAUSCH LÄUFT (TIMER/GHOST) ---
+                if (isGhost || isOutgoing) {
+                     if (sections.hfRequests) {
+                         sections.hfRequests.style.display = 'block';
+                         sections.hfRequests.innerHTML = ''; // Leeren
+
+                         // Info-Box
+                         const infoBox = document.createElement('div');
+                         infoBox.style.cssText = "background: rgba(52, 152, 219, 0.1); border: 1px solid #3498db; color: #3498db; padding: 10px; border-radius: 5px; text-align: center; font-size: 13px; margin-bottom: 5px;";
+                         infoBox.innerHTML = `<i class="fas fa-exchange-alt fa-spin"></i> Tausch in Bearbeitung...`;
+                         sections.hfRequests.appendChild(infoBox);
+
+                         // Button zum Abbrechen
+                         const cancelBtn = document.createElement('button');
+                         cancelBtn.className = 'cam-button reject'; // Rot
+                         cancelBtn.style.width = '100%';
+                         cancelBtn.innerHTML = '<i class="fas fa-times"></i> Vorgang abbrechen';
+
+                         // ID finden (transaction_id oder id)
+                         const activeData = isGhost ? ghostData : outgoingData;
+                         const transactionId = activeData.transaction_id || activeData.id;
+
+                         cancelBtn.onclick = () => {
+                             // --- ANPASSUNG: Custom Confirm Dialog ---
+                             window.dhfConfirm("Tausch abbrechen", "Möchtest du diesen Tauschvorgang wirklich abbrechen?", async () => {
+                                 // Button deaktivieren
+                                 cancelBtn.disabled = true;
+                                 cancelBtn.textContent = "Breche ab...";
+
+                                 try {
+                                     // --- ANPASSUNG: apiFetch Signatur korrigiert (String statt Objekt) ---
+                                     await apiFetch(`/api/market/transactions/${transactionId}/cancel`, 'POST');
+
+                                     document.getElementById('click-action-modal').style.display = 'none';
+
+                                     // Grid neu laden
+                                     if(this.renderGrid) this.renderGrid();
+                                 } catch(e) {
+                                     // --- ANPASSUNG: Custom Alert Dialog ---
+                                     window.dhfAlert("Fehler", "Fehler beim Abbrechen: " + e.message, "error");
+
+                                     cancelBtn.disabled = false;
+                                     cancelBtn.innerHTML = '<i class="fas fa-times"></i> Vorgang abbrechen';
+                                 }
+                             });
+                         };
+                         sections.hfRequests.appendChild(cancelBtn);
+                     }
+                     hasContent = true;
+
+                } else if (hasActiveShift) {
+                    // Normale Schicht (kein Tausch) -> Hinweis
                     if (sections.hfRequests) {
                         sections.hfRequests.style.display = 'block';
                         sections.hfRequests.innerHTML = `
@@ -239,17 +297,19 @@ export const PlanInteraction = {
                     hasContent = true;
 
                 } else if (activeReq && activeReq.status === 'pending') {
+                     // Fallback für altes Tauschsystem
                      if (sections.hfRequests) {
                          sections.hfRequests.style.display = 'block';
                          sections.hfRequests.innerHTML = `
                             <div style="background: rgba(243, 156, 18, 0.1); border: 1px solid #f39c12; color: #f39c12; padding: 10px; border-radius: 5px; text-align: center; font-size: 13px;">
-                                <i class="fas fa-sync fa-spin"></i> Tausch in Bearbeitung.<br>
+                                <i class="fas fa-sync fa-spin"></i> Tausch (Legacy) in Bearbeitung.<br>
                                 Keine Wunschanfrage möglich.
                             </div>
                          `;
                      }
                      hasContent = true;
                 } else {
+                    // Alles frei -> Zeige Wunsch-Buttons
                     if(sections.hfRequests) {
                         sections.hfRequests.style.display = 'flex';
                         sections.hfRequests.innerHTML = '';
