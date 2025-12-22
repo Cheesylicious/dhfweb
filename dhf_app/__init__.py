@@ -1,5 +1,3 @@
-# dhf_app/__init__.py
-
 import os
 from flask import Flask, jsonify
 from flask_cors import CORS
@@ -24,17 +22,18 @@ def create_app(config_name='default'):
     mail.init_app(app)
 
     # NEU: SocketIO initialisieren (Echtzeit-Kommunikation)
+    # cors_allowed_origins="*" erlaubt Verbindungen von überall (analog zu deinen CORS-Einstellungen)
     socketio.init_app(app, cors_allowed_origins="*")
 
-    # 3. CORS initialisieren
+    # 3. CORS initialisieren (Wie zuvor mit dem Fix in utils.py)
     CORS(app, supports_credentials=True, origins=["http://46.224.63.203", "http://ihre-domain.de", "*"])
 
     # 4. Modelle laden (ALLE MÜSSEN HIER SEIN, DAMIT SQLALCHEMY SIE KENNT)
     from . import models
     from . import models_gamification
     from . import models_shop
-    from . import models_audit
-    from . import models_market
+    from . import models_audit  # <<< NEU: Audit-Log Modell laden
+    from . import models_market  # <<< NEU: Marktplatz Modell laden
 
     @login_manager.user_loader
     def load_user(user_id):
@@ -71,47 +70,52 @@ def create_app(config_name='default'):
     from .routes_emails import emails_bp
     app.register_blueprint(emails_bp)
 
-    # --- NEU: E-Mail Vorschau Blueprint (Regel 4) ---
-    from .routes_email_preview import preview_bp
-    app.register_blueprint(preview_bp)
-
     from .routes_variants import variants_bp
     app.register_blueprint(variants_bp)
 
     from .routes_gamification import gamification_bp
     app.register_blueprint(gamification_bp)
 
+    # --- KRITISCH: SHOP BLUEPRINT HINZUFÜGEN ---
     from .routes_shop import shop_bp
-    app.register_blueprint(shop_bp)
+    app.register_blueprint(shop_bp)  # KEIN URL-PREFIX!
 
+    # --- Schicht-Änderungsanträge ---
     from .routes.shift_change_routes import shift_change_bp
-    app.register_blueprint(shift_change_bp, url_prefix='/api/shift-change')
+    app.register_blueprint(shift_change_bp, url_prefix='/api/shift-change')  # Korrekter Prefix hier
 
+    # --- Balance / Statistik Routes ---
     from .routes.balance_routes import balance_bp
     app.register_blueprint(balance_bp)
 
+    # --- NEU: KI-Prediction Blueprint ---
     from .routes_prediction import prediction_bp
     app.register_blueprint(prediction_bp)
 
+    # --- NEU: Audit-Log Blueprint ---
     from .routes_audit import audit_bp
     app.register_blueprint(audit_bp)
 
+    # --- NEU: Tauschbörse (Market) Blueprint ---
     from .routes_market import market_bp
     app.register_blueprint(market_bp)
 
     # 6. Startup-Logik (Innerhalb des App Context)
     with app.app_context():
+        # Alle Tabellen erstellen/prüfen (jetzt, da alle Models geladen sind)
         db.create_all()
         create_default_roles(db)
         create_default_holidays(db)
         create_default_settings(db)
         create_default_email_templates(db)
+        # NEU: Standard-Items für den Shop anlegen
         create_default_shop_items(db)
 
     return app
 
 
 # --- Startup-Funktionen ---
+# (Die folgenden Funktionen sind unverändert von Ihren Vorgaben)
 
 def create_default_roles(db_instance):
     from .models import Role
@@ -231,9 +235,13 @@ def create_default_email_templates(db_instance):
 
 
 def create_default_shop_items(db_instance):
+    """
+    Erstellt Standard-Shop-Items, falls der Shop leer ist.
+    """
     from .models_shop import ShopItem
     try:
         if ShopItem.query.count() == 0:
+            # Item 1: Der Booster
             booster = ShopItem(
                 name="XP Booster (7 Tage)",
                 description="+50% mehr Erfahrungspunkte für eine Woche.",
@@ -246,6 +254,7 @@ def create_default_shop_items(db_instance):
             )
             db_instance.session.add(booster)
 
+            # Item 2: Kaffee (Kosmetisch / Karma)
             coffee = ShopItem(
                 name="Virtueller Kaffee",
                 description="Zeig deine Wertschätzung für Kollegen.",
@@ -259,6 +268,7 @@ def create_default_shop_items(db_instance):
             db_instance.session.add(coffee)
 
             db_instance.session.commit()
+            print("Standard-Shop-Items wurden erstellt.")
     except Exception as e:
         db_instance.session.rollback()
         print(f"Fehler beim Erstellen der Shop-Items: {e}")

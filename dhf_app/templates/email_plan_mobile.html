@@ -82,18 +82,6 @@
 
         td.cell { width: 45px; font-weight: bold; font-size: 15px; }
 
-        /* NEU: Optimierte Spalte für Gesamtstunden */
-        .total-col {
-            width: 1%; /* Schrumpft auf Inhalt zusammen */
-            white-space: nowrap;
-            padding: 0 8px;
-            background-color: #fcfcfc;
-            font-weight: bold;
-            font-size: 14px;
-            border-left: 2px solid #999;
-            color: #2c3e50;
-        }
-
         .staffing-label {
             text-align: left;
             padding-left: 15px;
@@ -139,7 +127,6 @@
                         {{ day.weekday }}
                     </th>
                 {% endfor %}
-                <th class="total-col">Std.</th>
             </tr>
             <tr>
                 <th class="th-main-bg"></th>
@@ -154,7 +141,6 @@
                         {{ day.day_num }}
                     </th>
                 {% endfor %}
-                <th class="total-col">Ges.</th>
             </tr>
         </thead>
         <tbody>
@@ -189,14 +175,13 @@
                         {{ cell.abbr }}
                     </td>
                 {% endfor %}
-                <td class="total-col">{{ row.total_hours }}</td>
             </tr>
             {% endfor %}
         </tbody>
 
         {% if data.staffing_rows %}
         <tfoot>
-            <tr><td colspan="{{ data.days_header|length + 3 }}" style="height: 10px; background: #999;"></td></tr>
+            <tr><td colspan="{{ data.days_header|length + 2 }}" style="height: 10px; background: #999;"></td></tr>
 
             {% for s_row in data.staffing_rows %}
             <tr>
@@ -222,7 +207,6 @@
                         {{ s_cell.count }}
                     </td>
                 {% endfor %}
-                <td class="total-col"></td>
             </tr>
             {% endfor %}
         </tfoot>
