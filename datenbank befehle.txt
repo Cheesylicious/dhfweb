@@ -1,3 +1,0 @@
-mysql -u dhf_planer_app -p
-
-USE dhf_planer_db;
