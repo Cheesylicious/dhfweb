@@ -1,0 +1,106 @@
+from .extensions import db
+from datetime import datetime
+
+    # WICHTIG: Import innerhalb von Methoden oder am Ende nutzen, wenn Zyklen entstehen,
+    # aber hier benötigen wir ShiftType für die Darstellung gelöschter Schichten.
+    # Da models.py oft models_shift_change importiert, machen wir den Import lokal in to_dict.
+
+
+class ShiftChangeRequest(db.Model):
+    __tablename__ = 'shift_change_request'
+
+    id = db.Column(db.Integer, primary_key=True)
+    original_shift_id = db.Column(db.Integer, db.ForeignKey('shift.id'), nullable=True)
+    requester_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
+    replacement_user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True)
+
+    # Speichert die ursprüngliche Schichtart für "Rückgängig machen" und Anzeige
+    backup_shifttype_id = db.Column(db.Integer, nullable=True)
+
+    # Das Datum fest speichern, damit es erhalten bleibt, wenn die Schicht gelöscht wird (bei Tausch)
+    shift_date = db.Column(db.Date, nullable=True)
+
+    reason_type = db.Column(db.String(50), default='sickness', nullable=False)
+    note = db.Column(db.String(255), nullable=True)
+    status = db.Column(db.String(20), default='pending', index=True)
+
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    processed_at = db.Column(db.DateTime, nullable=True)
+    processed_by_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True)
+
+    # Relationships
+    original_shift = db.relationship('Shift', backref=db.backref('change_requests', lazy=True))
+    requester = db.relationship('User', foreign_keys=[requester_id])
+    replacement_user = db.relationship('User', foreign_keys=[replacement_user_id])
+    processed_by = db.relationship('User', foreign_keys=[processed_by_id])
+
+    def to_dict(self):
+        # Lokaler Import um Zyklen zu vermeiden
+        from .models import ShiftType
+
+        # Datum ermitteln: Zuerst das feste Feld, Fallback auf Relation
+        shift_date_str = None
+        if self.shift_date:
+            shift_date_str = self.shift_date.isoformat()
+        elif self.original_shift:
+            shift_date_str = self.original_shift.date.isoformat()
+
+        # --- Schicht-Kürzel und Farbe ermitteln (FIX FÜR FRAGEZEICHEN) ---
+        shift_abbr = "?"
+        shift_color = "#555555"
+
+        # Priorität 1: Die noch existierende Schicht
+        if self.original_shift and self.original_shift.shift_type:
+            shift_abbr = self.original_shift.shift_type.abbreviation
+            shift_color = self.original_shift.shift_type.color
+
+        # Priorität 2: Backup ID (Wenn Schicht durch Tausch gelöscht wurde)
+        elif self.backup_shifttype_id:
+            st = db.session.get(ShiftType, self.backup_shifttype_id)
+            if st:
+                shift_abbr = st.abbreviation
+                shift_color = st.color
+        # -----------------------------------------------
+
+        original_user = "Unbekannt"
+        target_user_id = None
+
+        # User-Namen auflösen
+        # Fall 1: Über Relation zur Schicht (wenn noch vorhanden)
+        if self.original_shift and self.original_shift.user:
+            original_user = f"{self.original_shift.user.vorname} {self.original_shift.user.name}"
+            target_user_id = self.original_shift.user.id
+        # Fall 2: Wenn Schicht gelöscht, nehmen wir den Requester (das ist der ursprüngliche Besitzer)
+        elif self.requester:
+            original_user = f"{self.requester.vorname} {self.requester.name}"
+            target_user_id = self.requester.id
+        else:
+            original_user = "Gelöscht"
+
+        requester_name = "System"
+        if self.requester:
+            requester_name = f"{self.requester.vorname} {self.requester.name}"
+
+        replacement_name = "Kein Ersatz"
+        if self.replacement_user:
+            replacement_name = f"{self.replacement_user.vorname} {self.replacement_user.name}"
+
+        return {
+            "id": self.id,
+            "original_shift_id": self.original_shift_id,
+            "shift_date": shift_date_str,
+
+            "shift_abbr": shift_abbr,
+            "shift_color": shift_color,
+            "target_user_id": target_user_id,
+
+            "original_user_name": original_user,
+            "requester_name": requester_name,
+            "replacement_user_id": self.replacement_user_id,
+            "replacement_name": replacement_name,
+            "reason_type": self.reason_type,
+            "note": self.note,
+            "status": self.status,
+            "created_at": self.created_at.isoformat()
+        }
+
