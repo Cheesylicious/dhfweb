@@ -83,6 +83,15 @@
         }
         .report-btn:hover { background: #2980b9; }
 
+        /* NEU: Shadow Admin Button Style */
+        .btn-shadow {
+            background: #8e44ad; color: white; padding: 10px 15px; border: none;
+            border-radius: 5px; cursor: pointer; font-size: 15px; margin-right: 15px;
+            transition: background-color 0.3s;
+            display: none; /* Standardmäßig ausgeblendet */
+        }
+        .btn-shadow:hover { background: #9b59b6; }
+
         .nav-badge {
             background: #e74c3c; color: white; font-size: 10px; font-weight: 600;
             padding: 2px 5px; border-radius: 5px; margin-left: 8px; display: none;
@@ -387,6 +396,27 @@
             font-family: 'Georgia', serif; /* Wirkt etwas mystischer */
         }
 
+        /* User List Style im Shadow Modal */
+        .user-select-item {
+            padding: 10px;
+            border-bottom: 1px solid rgba(255,255,255,0.05);
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            transition: background 0.2s;
+        }
+        .user-select-item:hover {
+            background: rgba(255,255,255,0.1);
+        }
+        .user-select-role {
+            font-size: 11px;
+            background: #34495e;
+            padding: 2px 6px;
+            border-radius: 4px;
+            color: #bdc3c7;
+        }
+
         @keyframes oraclePopUp {
             0% { transform: scale(0); opacity: 0; }
             100% { transform: scale(1); opacity: 1; }
@@ -423,6 +453,14 @@
         <div id="user-info">
             <div id="active-pet-container" style="display: none;"></div>
             <span id="welcome-user"></span>
+
+            <button class="btn-shadow" id="stop-impersonation-btn">
+                <i class="fas fa-user-secret"></i> Admin Wiederherstellen
+            </button>
+            <button class="btn-shadow" id="start-impersonation-btn">
+                <i class="fas fa-masks-theater"></i> Login als...
+            </button>
+
             <button class="report-btn" id="global-report-btn">🐞 Problem melden</button>
             <button id="logout-btn">Abmelden</button>
         </div>
@@ -699,6 +737,24 @@
                     <button class="btn-primary" onclick="document.getElementById('oracle-modal').style.display='none'" style="background: #8e44ad; border: none; flex: 1;">
                         Schließen
                     </button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div id="impersonation-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2><i class="fas fa-user-secret"></i> Shadow Login</h2>
+                <span class="close" id="close-impersonation-modal">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="impersonate-search">Benutzer suchen:</label>
+                    <input type="text" id="impersonate-search" placeholder="Name eingeben..." autocomplete="off">
+                </div>
+                <div id="impersonate-list" style="max-height: 300px; overflow-y: auto; border: 1px solid rgba(255,255,255,0.1); border-radius: 5px;">
+                    <div style="padding: 10px; color: #777;">Tippe zum Suchen...</div>
                 </div>
             </div>
         </div>

@@ -5,6 +5,8 @@ import { apiFetch } from '../utils/api.js';
 import { initAuthCheck, logout } from '../utils/auth.js';
 // NEU: Theme Manager importieren
 import { applyTheme, startThemePreview } from '../utils/theme_manager.js';
+// NEU: Shadow Admin Modul importieren
+import { initImpersonation } from '../modules/admin_impersonation.js';
 
 let user;
 let isAdmin = false;
@@ -135,6 +137,10 @@ try {
 
     // --- NEU: Theme anwenden (Priorität: Preview > User-Einstellung > Default) ---
     applyTheme(user);
+
+    // --- NEU: Shadow Admin / Impersonation Logic starten ---
+    // (Prüft im Hintergrund, ob wir Shadow Admin sind und zeigt Buttons)
+    initImpersonation();
 
     const welcomeMsg = document.getElementById('welcome-message');
     if (welcomeMsg) welcomeMsg.textContent = `Willkommen, ${user.vorname}!`;

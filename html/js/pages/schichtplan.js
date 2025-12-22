@@ -21,7 +21,7 @@ import { PlanBanner } from '../modules/schichtplan_banner.js';
 import { PlanInteraction } from '../modules/schichtplan_interaction.js';
 import { PlanGeneratorUI } from '../modules/schichtplan_generator_ui.js';
 import { PlanSocket } from '../modules/schichtplan_socket.js';
-
+import { initImpersonation } from '../modules/admin_impersonation.js';
 
 // --- 1. HAUPTFUNKTIONEN (Startup) ---
 
@@ -37,6 +37,8 @@ async function initialize() {
         PlanState.isVisitor = authData.isVisitor;
         PlanState.isPlanschreiber = authData.isPlanschreiber;
         PlanState.isHundefuehrer = authData.isHundefuehrer;
+
+        initImpersonation();
 
         // Initiale State-Werte
         PlanState.currentVariantId = null;
