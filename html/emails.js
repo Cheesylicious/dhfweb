@@ -1,8 +1,7 @@
-// Pfad: html/emails.js
+// html/js/pages/emails.js
 
-// Korrigierte Import-Pfade für die Lage im html-Hauptverzeichnis
-import { apiFetch } from './js/utils/api.js';
-import { initAuthCheck } from './js/utils/auth.js';
+import { apiFetch } from '../../js/utils/api.js';
+import { initAuthCheck } from '../../js/utils/auth.js';
 
 let user;
 let isAdmin = false;
@@ -20,9 +19,8 @@ const placeOutput = document.getElementById('template-placeholders');
 const statusMsg = document.getElementById('status-message');
 const saveBtn = document.getElementById('save-template-btn');
 const testBtn = document.getElementById('send-test-btn');
-const previewContainer = document.getElementById('roster-image-preview');
 
-// 1. Auth & Initialisierung
+// 1. Auth
 try {
     const authData = initAuthCheck();
     user = authData.user;
@@ -38,13 +36,14 @@ try {
         throw new Error("Keine Admin-Rechte.");
     }
 
+    // Init
     loadTemplates();
 
 } catch (e) {
     console.error(e);
 }
 
-// 2. Vorlagen laden
+// 2. Laden
 async function loadTemplates() {
     templateList.innerHTML = '<li style="padding:15px;">Lade...</li>';
     try {
@@ -52,7 +51,7 @@ async function loadTemplates() {
         currentTemplates = data;
         renderList();
 
-        // Wähle die erste Vorlage automatisch aus
+        // Wähle erstes Element, falls vorhanden
         if (currentTemplates.length > 0 && !activeTemplateId) {
             selectTemplate(currentTemplates[0].id);
         }
@@ -73,40 +72,9 @@ function renderList() {
     });
 }
 
-/**
- * Lädt die Live-Vorschau des Dienstplan-Bildes, wenn die Rundmail-Vorlage gewählt ist.
- */
-function updateRosterPreview(templateKey) {
-    if (!previewContainer) return;
-
-    if (templateKey === 'plan_completed') {
-        const now = new Date();
-        const year = now.getFullYear();
-        const month = now.getMonth() + 1;
-
-        // Zeitstempel (t=...) verhindert, dass der Browser ein altes Bild aus dem Cache anzeigt
-        const imageUrl = `/api/emails/preview/roster_image?year=${year}&month=${month}&t=${Date.now()}`;
-
-        previewContainer.innerHTML = `
-            <div class="preview-title">
-                <i class="fas fa-image"></i> Aktuelle Dienstplan-Vorschau (Mobil-Bild)
-            </div>
-            <div class="preview-img-container">
-                <img src="${imageUrl}" alt="Dienstplan Vorschau" onerror="this.parentElement.innerHTML='<p style=padding:20px;>Vorschau momentan nicht verfügbar.</p>'">
-            </div>
-            <p class="small text-muted mt-2">
-                <i class="fas fa-info-circle"></i> Dieses Bild wird automatisch an die Rundmail angehängt.
-                Es zeigt die aktuellen Daten für ${month}/${year}.
-            </p>
-        `;
-    } else {
-        previewContainer.innerHTML = '';
-    }
-}
-
 function selectTemplate(id) {
     activeTemplateId = id;
-    renderList();
+    renderList(); // Update active class
 
     const tmpl = currentTemplates.find(t => t.id === id);
     if (!tmpl) return;
@@ -119,12 +87,9 @@ function selectTemplate(id) {
 
     editorForm.style.display = 'block';
     statusMsg.textContent = '';
-
-    // Vorschau aktualisieren
-    updateRosterPreview(tmpl.key);
 }
 
-// 3. Vorlage speichern
+// 3. Speichern
 saveBtn.onclick = async () => {
     if (!activeTemplateId) return;
 
@@ -140,6 +105,7 @@ saveBtn.onclick = async () => {
     try {
         const updated = await apiFetch(`/api/emails/templates/${activeTemplateId}`, 'PUT', payload);
 
+        // Update lokalen Cache
         const idx = currentTemplates.findIndex(t => t.id === activeTemplateId);
         if (idx !== -1) {
             currentTemplates[idx] = updated;
@@ -157,11 +123,11 @@ saveBtn.onclick = async () => {
     }
 };
 
-// 4. Test-E-Mail senden
+// 4. Testen
 testBtn.onclick = async () => {
     if (!activeTemplateId) return;
 
-    if (!confirm("Eine Test-E-Mail mit Dummy-Daten wird an DEINE Adresse gesendet. Fortfahren?")) {
+    if (!confirm("Eine Test-E-Mail mit Dummy-Daten wird an DEINE E-Mail-Adresse gesendet. Fortfahren?")) {
         return;
     }
 

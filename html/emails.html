@@ -46,6 +46,7 @@
             padding: 2px 5px; border-radius: 5px; margin-left: 8px; display: none;
         }
 
+        /* --- NEU: Sub-Nav Styles (Konsistent mit anderen Seiten) --- */
         .sub-nav {
             background: rgba(255, 255, 255, 0.05);
             border-bottom: 1px solid rgba(255, 255, 255, 0.1);
@@ -61,9 +62,11 @@
         .sub-nav a.active, .sub-nav a:hover {
             color: #ffffff; border-bottom-color: #3498db;
         }
+        /* --- ENDE NEU --- */
 
         main { padding: 30px; max-width: 1400px; margin: auto; }
 
+        /* Grid Layout für Editor */
         .editor-grid {
             display: grid;
             grid-template-columns: 300px 1fr;
@@ -71,6 +74,7 @@
             align-items: start;
         }
 
+        /* Linke Spalte: Liste */
         .template-list-card {
             background: rgba(255, 255, 255, 0.05);
             border: 1px solid rgba(255, 255, 255, 0.1);
@@ -99,6 +103,7 @@
             border-left: 3px solid #3498db;
         }
 
+        /* Rechte Spalte: Editor */
         .editor-card {
             background: rgba(255, 255, 255, 0.05);
             border: 1px solid rgba(255, 255, 255, 0.1);
@@ -146,38 +151,6 @@
         .btn-primary:hover, .btn-secondary:hover { opacity: 0.8; }
 
         #status-message { margin-left: 15px; font-weight: 500; }
-
-        /* NEU: Styles für Bildvorschau */
-        #roster-image-preview {
-            margin-top: 25px;
-            padding: 20px;
-            background: rgba(255, 255, 255, 0.03);
-            border-top: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 0 0 10px 10px;
-        }
-        .preview-title {
-            font-size: 16px;
-            color: #3498db;
-            margin-bottom: 15px;
-            font-weight: 600;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-        .preview-img-container {
-            text-align: center;
-            background: #2c3e50;
-            padding: 10px;
-            border-radius: 8px;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
-            overflow: hidden;
-        }
-        .preview-img-container img {
-            max-width: 100%;
-            height: auto;
-            border-radius: 4px;
-        }
-        /* ENDE NEU */
 
         #content-wrapper.restricted-view {
              max-width: 600px; margin: 50px auto; padding: 30px;
@@ -249,19 +222,18 @@
                         <textarea id="email-body"></textarea>
                     </div>
 
-                    <div style="display: flex; align-items: center; margin-bottom: 20px;">
+                    <div style="display: flex; align-items: center;">
                         <button class="btn-secondary" id="send-test-btn">Test-Mail an mich senden</button>
                         <button class="btn-primary" id="save-template-btn">Speichern</button>
                         <span id="status-message"></span>
                     </div>
-
-                    <div id="roster-image-preview"></div>
                 </div>
             </div>
         </div>
     </main>
 
     <script>
+        // --- PARTIKEL-ANIMATION ---
         const canvas = document.getElementById('particle-canvas');
         const ctx = canvas.getContext('2d');
         const nodeColor = '#3498db';
