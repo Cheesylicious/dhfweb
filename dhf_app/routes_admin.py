@@ -166,6 +166,36 @@ def test_roster_image():
 
 # --- ROUTEN FÜR BENUTZER ---
 
+@admin_bp.route('/users/simple', methods=['GET'])
+@admin_required
+def get_simple_user_list():
+    """
+    Liefert eine reduzierte Liste aller Benutzer (ID, Name, Rolle) für Auswahlmenüs (z.B. Shadow Login).
+    Optimiert für Performance: Vermeidet Urlaubsberechnung und N+1 Queries bei Rollen.
+    """
+    try:
+        # 1. Rollen vorladen für schnelles Mapping (vermeidet Join oder N+1)
+        roles = Role.query.all()
+        role_map = {r.id: r.name for r in roles}
+
+        # 2. Alle User laden
+        users = User.query.order_by(User.name, User.vorname).all()
+
+        result = []
+        for user in users:
+            role_name = role_map.get(user.role_id, "Unbekannt")
+            result.append({
+                "id": user.id,
+                "full_name": f"{user.vorname} {user.name}",
+                "role": role_name
+            })
+
+        return jsonify(result), 200
+    except Exception as e:
+        current_app.logger.error(f"Fehler bei get_simple_user_list: {e}")
+        return jsonify({"message": str(e)}), 500
+
+
 @admin_bp.route('/users', methods=['GET'])
 @login_required
 def get_users():

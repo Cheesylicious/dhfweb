@@ -22,11 +22,19 @@ def create_app(config_name='default'):
     mail.init_app(app)
 
     # NEU: SocketIO initialisieren (Echtzeit-Kommunikation)
-    # cors_allowed_origins="*" erlaubt Verbindungen von überall (analog zu deinen CORS-Einstellungen)
+    # cors_allowed_origins="*" ist für WebSockets meist okay, aber für HTTP-Requests (Fetch) kritisch.
     socketio.init_app(app, cors_allowed_origins="*")
 
-    # 3. CORS initialisieren (Wie zuvor mit dem Fix in utils.py)
-    CORS(app, supports_credentials=True, origins=["http://46.224.63.203", "http://ihre-domain.de", "*"])
+    # 3. CORS initialisieren
+    # WICHTIG: Wenn supports_credentials=True ist, darf 'origins' NICHT '*' enthalten!
+    # Wir erlauben hier explizit die IP vom Server und Localhost.
+    CORS(app, supports_credentials=True, origins=[
+        "http://46.224.63.203",      # Deine Server-IP
+        "http://46.224.63.203:5000", # Manchmal nötig mit Port
+        "http://localhost",
+        "http://localhost:5000",
+        "http://127.0.0.1:5000"
+    ])
 
     # 4. Modelle laden (ALLE MÜSSEN HIER SEIN, DAMIT SQLALCHEMY SIE KENNT)
     from . import models

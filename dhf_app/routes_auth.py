@@ -1,16 +1,14 @@
 # dhf_app/routes_auth.py
 
-from flask import Blueprint, request, jsonify, current_app
+from flask import Blueprint, request, jsonify, current_app, session
 from .models import User, Role, UpdateLog
 from .extensions import db, bcrypt
-# KORREKTUR: Importiere nur die Komponenten von flask_login, die wir BRAUCHEN
 from flask_login import login_user, logout_user, current_user
-# NEU: Importiere unseren gefixten login_required aus utils
 from .utils import login_required
-from .models_audit import log_audit  # <<< NEU: Unser zentraler Audit-Logger
+from .models_audit import log_audit
 from datetime import datetime
+import traceback
 
-# Erstellt einen Blueprint. Alle Routen hier beginnen mit /api
 auth_bp = Blueprint('auth', __name__, url_prefix='/api')
 
 
@@ -19,8 +17,13 @@ auth_bp = Blueprint('auth', __name__, url_prefix='/api')
 def check_session():
     """
     Prüft, ob der Benutzer eingeloggt ist und gibt Daten zurück.
+    Gibt zusätzlich 'is_impersonating' zurück, wenn ein Admin als anderer User agiert.
     """
-    return jsonify({"user": current_user.to_dict()}), 200
+    is_impersonating = 'original_admin_id' in session
+    return jsonify({
+        "user": current_user.to_dict(),
+        "is_impersonating": is_impersonating
+    }), 200
 
 
 @auth_bp.route('/login', methods=['POST'])
@@ -28,6 +31,9 @@ def login():
     """
     Loggt einen Benutzer ein.
     """
+    # Sicherheitsreinigung: Falls noch alte Impersonation-Daten in der Session hängen
+    session.pop('original_admin_id', None)
+
     data = request.get_json()
     user = User.query.filter_by(vorname=data.get('vorname'), name=data.get('name')).first()
 
@@ -41,8 +47,6 @@ def login():
         db.session.commit()
         return jsonify({"message": "Login erfolgreich", "user": user.to_dict()}), 200
     else:
-        # Optional: Fehlgeschlagene Logins loggen (Vorsicht: kann Logs fluten)
-        # log_audit(action="LOGIN_FAILED", details={"name": data.get('name')})
         return jsonify({"message": "Ungültige Anmeldedaten"}), 401
 
 
@@ -51,12 +55,12 @@ def login():
 def logout():
     """
     Loggt den aktuellen Benutzer aus.
+    Löscht auch eventuelle Impersonation-Sessions.
     """
     # Dauer berechnen für Details
     duration_str = ""
     if current_user.zuletzt_online:
         diff = datetime.utcnow() - current_user.zuletzt_online
-        # Formatieren als HH:MM:SS
         total_seconds = int(diff.total_seconds())
         hours, remainder = divmod(total_seconds, 3600)
         minutes, seconds = divmod(remainder, 60)
@@ -65,9 +69,10 @@ def logout():
     # Loggen VOR dem Logout, damit wir den User noch haben
     log_audit(action="LOGOUT", details={"duration": duration_str}, user=current_user)
 
-    logout_user()
-    # db.session.commit() # Nicht zwingend nötig für logout_user, aber schadet nicht
+    # Impersonation Key bereinigen
+    session.pop('original_admin_id', None)
 
+    logout_user()
     return jsonify({"message": "Erfolgreich abgemeldet"}), 200
 
 
@@ -112,31 +117,22 @@ def change_password():
         return jsonify({"message": f"Datenbankfehler: {str(e)}"}), 500
 
 
-# --- Profil-Management (Erweitert) ---
+# --- Profil-Management ---
 
 @auth_bp.route('/user/profile', methods=['GET'])
 @login_required
 def get_profile():
-    """
-    Gibt die Profildaten des aktuellen Benutzers zurück.
-    """
     return jsonify(current_user.to_dict()), 200
 
 
 @auth_bp.route('/user/profile', methods=['PUT'])
 @login_required
 def update_profile():
-    """
-    Aktualisiert E-Mail, Telefon und Geburtstag des aktuellen Benutzers.
-    """
     data = request.get_json()
-
-    # Felder auslesen
     email = data.get('email', '').strip()
     telefon = data.get('telefon', '').strip()
-    geburtstag_str = data.get('geburtstag', '').strip()  # Format YYYY-MM-DD vom Frontend
+    geburtstag_str = data.get('geburtstag', '').strip()
 
-    # Validierung E-Mail
     if email:
         existing_user = User.query.filter(User.email == email, User.id != current_user.id).first()
         if existing_user:
@@ -144,42 +140,28 @@ def update_profile():
     else:
         email = None
 
-    # Validierung Datum
     new_bday = None
     if geburtstag_str:
         try:
-            # Versuche ISO-Format (YYYY-MM-DD)
             new_bday = datetime.strptime(geburtstag_str, '%Y-%m-%d').date()
         except ValueError:
             return jsonify({"message": "Ungültiges Datumsformat für Geburtstag."}), 400
 
     try:
         changes = []
-
-        # E-Mail Update
         if current_user.email != email:
             current_user.email = email
             changes.append("E-Mail")
-
-        # Telefon Update
         if telefon == "": telefon = None
         if current_user.telefon != telefon:
             current_user.telefon = telefon
             changes.append("Telefon")
-
-        # Geburtstag Update
         if current_user.geburtstag != new_bday:
             current_user.geburtstag = new_bday
             changes.append("Geburtstag")
 
         if changes:
-            # Audit Log
-            log_audit(
-                action="PROFILE_UPDATE",
-                details={"changed_fields": changes},
-                user=current_user
-            )
-
+            log_audit(action="PROFILE_UPDATE", details={"changed_fields": changes}, user=current_user)
             db.session.commit()
             return jsonify({"message": "Profil erfolgreich aktualisiert.", "user": current_user.to_dict()}), 200
         else:
@@ -189,3 +171,114 @@ def update_profile():
         db.session.rollback()
         current_app.logger.error(f"Fehler bei Profil-Update: {str(e)}")
         return jsonify({"message": f"Datenbankfehler: {str(e)}"}), 500
+
+
+# --- Shadow Admin / Impersonation Routen ---
+
+@auth_bp.route('/impersonate', methods=['POST'])
+@login_required
+def impersonate_user():
+    """
+    Erlaubt einem Admin, sich als ein anderer Benutzer einzuloggen.
+    """
+    try:
+        # 1. Berechtigung prüfen (Robust)
+        user_role = ""
+
+        # Prüfe auf 'role' (Englisch, Standard in modernem SQLAlchemy)
+        if hasattr(current_user, 'role') and current_user.role:
+            user_role = getattr(current_user.role, 'name', str(current_user.role))
+        # Prüfe auf 'rolle' (Deutsch, falls Legacy-Code)
+        elif hasattr(current_user, 'rolle') and current_user.rolle:
+            user_role = getattr(current_user.rolle, 'name', str(current_user.rolle))
+        # Prüfe direkt über ID (Sicherster Weg)
+        elif hasattr(current_user, 'role_id') and current_user.role_id:
+            r = db.session.get(Role, current_user.role_id)
+            if r: user_role = r.name
+
+        user_role = user_role.lower()
+
+        if "admin" not in user_role and "owner" not in user_role:
+            return jsonify({"message": "Zugriff verweigert."}), 403
+
+        # 2. Ziel-User validieren
+        data = request.get_json()
+        target_user_id = data.get('user_id')
+        target_user = db.session.get(User, target_user_id)
+
+        if not target_user:
+            return jsonify({"message": "Benutzer nicht gefunden."}), 404
+
+        if target_user.id == current_user.id:
+            return jsonify({"message": "Selbst-Login nicht notwendig."}), 400
+
+        # 3. WICHTIG: Admin-ID sichern, BEVOR wir den User wechseln
+        original_admin_id = current_user.id
+
+        # 4. Audit Log schreiben UND COMMITEN
+        log_audit(
+            action="IMPERSONATION_START",
+            details={"target_user_id": target_user.id, "target_user_name": f"{target_user.vorname} {target_user.name}"},
+            user=current_user
+        )
+        db.session.commit()
+
+        # 5. Login als Ziel-User durchführen
+        login_user(target_user)
+
+        # 6. Backpack wieder in die Session packen
+        session['original_admin_id'] = original_admin_id
+
+        # 7. WICHTIG: User-Objekt zurückgeben für Frontend-Sync
+        return jsonify({
+            "message": f"Angemeldet als {target_user.vorname} {target_user.name}",
+            "redirect": "/dashboard.html",
+            "user": target_user.to_dict()  # << NEU: Damit das Frontend den User kennt
+        }), 200
+
+    except Exception as e:
+        current_app.logger.error(f"Impersonation Error: {str(e)}")
+        current_app.logger.error(traceback.format_exc())
+        db.session.rollback()
+        return jsonify({"message": f"Serverfehler beim Wechseln: {str(e)}"}), 500
+
+
+@auth_bp.route('/stop_impersonate', methods=['POST'])
+@login_required
+def stop_impersonate():
+    """
+    Beendet den Shadow-Modus.
+    """
+    try:
+        original_admin_id = session.get('original_admin_id')
+
+        if not original_admin_id:
+            return jsonify({"message": "Keine aktive Shadow-Sitzung gefunden."}), 400
+
+        admin_user = db.session.get(User, original_admin_id)
+
+        if not admin_user:
+            session.pop('original_admin_id', None)
+            logout_user()
+            return jsonify({"message": "Admin-Konto nicht gefunden."}), 401
+
+        # Zurück zum Admin
+        login_user(admin_user)
+        session.pop('original_admin_id', None)
+
+        log_audit(
+            action="IMPERSONATION_END",
+            details={"duration": "ended via stop_impersonate"},
+            user=current_user
+        )
+        db.session.commit()
+
+        return jsonify({
+            "message": "Willkommen zurück, Admin.",
+            "redirect": "/dashboard.html",
+            "user": admin_user.to_dict()  # << NEU: Damit das Frontend wieder Admin ist
+        }), 200
+
+    except Exception as e:
+        current_app.logger.error(f"Stop Impersonation Error: {str(e)}")
+        return jsonify({"message": "Fehler beim Zurückwechseln."}), 500
