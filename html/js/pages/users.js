@@ -242,7 +242,13 @@ async function loadUsers() {
             const telefon = u.telefon || '---';
             const eintritt = formatDateTime(u.eintrittsdatum, 'date') || '---';
             const aktiv = formatDateTime(u.aktiv_ab_datum, 'date') || '---';
-            const urlaub = u.urlaub_rest + ' / ' + u.urlaub_gesamt;
+
+            // --- ÄNDERUNG: Urlaub Rest (Berechnet) anzeigen ---
+            // Wenn das Backend vacation_remaining liefert (was es jetzt sollte), nutzen wir das.
+            // Falls undefined, ein ? anzeigen.
+            const restAnzeige = (u.vacation_remaining !== undefined) ? u.vacation_remaining : '?';
+            const urlaub = restAnzeige + ' / ' + u.urlaub_gesamt;
+
             const hund = u.diensthund || '---';
             const online = formatDateTime(u.zuletzt_online, 'datetime') || 'Nie';
 
@@ -306,7 +312,11 @@ if (addUserBtn) {
         aktivAbField.value = '';
         inaktivAbField.value = '';
         urlaubGesamtField.value = 0;
+
+        // --- ÄNDERUNG: Resturlaub bei "Neu" deaktiviert (wird berechnet) ---
         urlaubRestField.value = 0;
+        urlaubRestField.disabled = true; // Neu angelegte User haben per Definition noch keine verbrauchten Tage
+
         diensthundField.value = '';
         tutorialField.checked = false;
         canSeeStatsField.checked = false;
@@ -345,7 +355,13 @@ async function openEditModal(user) {
     aktivAbField.value = formatDateTime(user.aktiv_ab_datum, 'date');
     inaktivAbField.value = formatDateTime(user.inaktiv_ab_datum, 'date');
     urlaubGesamtField.value = user.urlaub_gesamt || 0;
-    urlaubRestField.value = user.urlaub_rest || 0;
+
+    // --- ÄNDERUNG: Urlaub Rest zeigt jetzt den berechneten Wert und ist READONLY ---
+    // Wenn 'vacation_remaining' vom Backend kommt, nutzen wir das. Sonst den DB-Wert 'urlaub_rest' als Fallback oder 0.
+    urlaubRestField.value = (user.vacation_remaining !== undefined) ? user.vacation_remaining : (user.urlaub_rest || 0);
+    urlaubRestField.disabled = true; // Schreibschutz
+    urlaubRestField.title = "Dieser Wert wird automatisch berechnet: (Gesamt + Übertrag) - Verbraucht.";
+
     diensthundField.value = user.diensthund || '';
     tutorialField.checked = user.tutorial_gesehen;
     canSeeStatsField.checked = user.can_see_statistics === true;
@@ -385,7 +401,10 @@ if (saveUserBtn) {
             aktiv_ab_datum: aktivAbField.value || null,
             inaktiv_ab_datum: inaktivAbField.value || null,
             urlaub_gesamt: parseInt(urlaubGesamtField.value) || 0,
-            urlaub_rest: parseInt(urlaubRestField.value) || 0,
+
+            // --- ÄNDERUNG: urlaub_rest NICHT mehr senden, da Read-Only ---
+            // urlaub_rest: parseInt(urlaubRestField.value) || 0,
+
             diensthund: diensthundField.value || null,
             tutorial_gesehen: tutorialField.checked,
             can_see_statistics: canSeeStatsField.checked,

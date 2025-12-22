@@ -499,19 +499,46 @@ export const PlanInteraction = {
         if (!container) return;
         container.innerHTML = `<div class="cam-section-title">Schicht zuweisen</div>`;
 
+        // NEU: User-Daten holen für Urlaubskontingent
+        const currentUserId = PlanState.clickModalContext.userId;
+        const user = PlanState.allUsers ? PlanState.allUsers.find(u => u.id === currentUserId) : null;
+
         const defs = [
             { abbrev: 'T.', title: 'Tag' }, { abbrev: 'N.', title: 'Nacht' },
             { abbrev: '6', title: 'Kurz' }, { abbrev: 'FREI', title: 'Frei' },
-            { abbrev: 'U', title: 'Urlaub' }, { abbrev: 'X', title: 'Wunschfrei' },
+            { abbrev: 'EU', title: 'Urlaub' },
+            { abbrev: 'X', title: 'Wunschfrei' },
             { abbrev: 'Alle...', title: 'Alle', isAll: true }
         ];
 
         defs.forEach(def => {
             const btn = document.createElement('button');
             btn.className = def.isAll ? 'cam-shift-button all' : 'cam-shift-button';
-            btn.textContent = def.abbrev;
+
+            // Standard-Text
+            let btnText = def.abbrev;
+            let isDisabled = false;
+
+            // NEU: Logik für EU (Urlaub) Limitierung
+            if (def.abbrev === 'EU' && user) {
+                const remaining = (user.vacation_remaining !== undefined) ? user.vacation_remaining : '?';
+                btnText = `EU (${remaining})`;
+
+                // Wenn kein Urlaub mehr übrig ist (<= 0), Button deaktivieren
+                if (typeof remaining === 'number' && remaining <= 0) {
+                    isDisabled = true;
+                    btn.style.opacity = 0.5;
+                    btn.title = "Kein Urlaubskontingent mehr verfügbar";
+                }
+            }
+
+            btn.textContent = btnText;
+            if (isDisabled) {
+                btn.disabled = true;
+            }
 
             btn.onclick = () => {
+                if (isDisabled) return; // Sicherheitshalber
                 document.getElementById('click-action-modal').style.display = 'none';
                 if (def.isAll) {
                     PlanState.modalContext = { userId: PlanState.clickModalContext.userId, dateStr: PlanState.clickModalContext.dateStr };

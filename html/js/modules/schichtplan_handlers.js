@@ -4,7 +4,7 @@ import { PlanState } from './schichtplan_state.js';
 import { PlanApi } from './schichtplan_api.js';
 import { PlanRenderer } from './schichtplan_renderer.js';
 import { StaffingModule } from './schichtplan_staffing.js';
-import { ChangeRequestModule } from './schichtplan_change_request.js'; // [NEU] Modul für Änderungsanträge
+import { ChangeRequestModule } from './schichtplan_change_request.js';
 import { triggerNotificationUpdate, isWunschAnfrage } from '../utils/helpers.js';
 
 /**
@@ -18,7 +18,7 @@ export const PlanHandlers = {
 
     init(reloadCallback) {
         this.reloadGridCallback = reloadCallback;
-        // [NEU] Initialisiere das Modal für Änderungsanträge
+        // Initialisiere das Modal für Änderungsanträge
         if (ChangeRequestModule && ChangeRequestModule.initModal) {
             ChangeRequestModule.initModal();
         }
@@ -50,7 +50,7 @@ export const PlanHandlers = {
         if (this.reloadGridCallback) this.reloadGridCallback();
     },
 
-    // --- LOCKED PLAN INTERACTION (NEU) ---
+    // --- LOCKED PLAN INTERACTION ---
 
     /**
      * Versucht, einen Klick auf eine Zelle in einem gesperrten Plan zu behandeln.
@@ -71,19 +71,15 @@ export const PlanHandlers = {
 
                 if (shiftData && shiftData.id) {
                     // Bestehende Schicht -> Krankmeldung/Änderung beantragen
-                    // FIX: userId wird übergeben, damit der Mitarbeiter nicht als sein eigener Ersatz vorgeschlagen wird
                     ChangeRequestModule.openRequestModal(shiftData.id, userName, dateStr, userId);
                     return true;
                 } else {
-                    // Leere Zelle -> (Optional: Hier könnte man Logik für "Nachträgliches Einspringen" einbauen)
-                    // Aktuell: Standard Blockade-Meldung für leere Zellen
-                    // NEU: Stylischer Alert
+                    // Leere Zelle -> Standard Blockade-Meldung
                     window.dhfAlert("Aktion nicht möglich", "Der Plan ist gesperrt.\nKrankmeldungen können nur für bestehende Dienste erstellt werden.", "warning");
                     return true;
                 }
             } else {
                 // Keine Berechtigung (normaler User)
-                // NEU: Stylischer Alert
                 window.dhfAlert("Plan Gesperrt", `Der Schichtplan für ${PlanState.currentMonth}/${PlanState.currentYear} ist gesperrt.`, "error");
                 return true;
             }
@@ -143,54 +139,34 @@ export const PlanHandlers = {
             PlanRenderer.refreshSingleCell(userId, dateStr);
 
             // 2. Violations aktualisieren und betroffene Zellen refreshen
-
-            // A) Alte Violations merken (um zu wissen, was bereinigt werden muss)
             const oldViolations = new Set(PlanState.currentViolations);
-
-            // B) Neue Violations setzen
             PlanState.currentViolations.clear();
             if (savedData.violations) {
-                // savedData.violations ist jetzt ein Array von [user_id, day_of_month]
                 savedData.violations.forEach(v => PlanState.currentViolations.add(`${v[0]}-${v[1]}`));
             }
-
-            // C) Vereinigung bilden aus alten und neuen Violations
-            // (Zellen, die rot sind ODER rot waren, müssen neu gezeichnet werden,
-            // da sich der Status (rot/grün) geändert hat)
             const affectedCells = new Set([...oldViolations, ...PlanState.currentViolations]);
 
-            // D) Alle betroffenen Zellen neu zeichnen
             affectedCells.forEach(violationKey => {
-                // key format ist "userId-dayOfMonth" (z.B. "5-12")
                 const parts = violationKey.split('-');
                 if(parts.length === 2) {
                     const vUserId = parseInt(parts[0]);
                     const vDay = parseInt(parts[1]);
-
-                    // Datum String rekonstruieren: YYYY-MM-DD
+                    // Datum String rekonstruieren
                     const year = PlanState.currentYear;
                     const month = String(PlanState.currentMonth).padStart(2, '0');
                     const day = String(vDay).padStart(2, '0');
                     const vDateStr = `${year}-${month}-${day}`;
-
-                    // Zeichne die Zelle
                     PlanRenderer.refreshSingleCell(vUserId, vDateStr);
                 }
             });
 
             // 3. Besetzung (Staffing) INTELLIGENT aktualisieren
-
-            // A) Alte Schicht abziehen (falls vorhanden)
             if (oldShiftAbbrev) {
                 StaffingModule.updateLocalStaffing(oldShiftAbbrev, dateStr, -1);
             }
-
-            // B) Neue Schicht hinzufügen (falls vorhanden und nicht gelöscht)
             if (!shiftWasDeleted && shiftType) {
                 StaffingModule.updateLocalStaffing(shiftType.abbreviation, dateStr, 1);
             }
-
-            // C) Tabelle neu rendern (nur die Zahlen im DOM, kein Fetch)
             StaffingModule.refreshStaffingGrid();
 
             // 4. Stunden aktualisieren
@@ -198,6 +174,15 @@ export const PlanHandlers = {
                 const oldTotal = PlanState.currentTotals[userId] || 0;
                 const diff = savedData.new_total_hours - oldTotal;
                 PlanRenderer.updateUserTotalHours(userId, diff);
+            }
+
+            // 5. Urlaubskontingent aktualisieren (NEU)
+            // Aktualisiert den lokalen User-State sofort, damit das Modal beim nächsten Öffnen stimmt
+            if (savedData.new_vacation_remaining !== undefined) {
+                const user = PlanState.allUsers.find(u => u.id === userId);
+                if (user) {
+                    user.vacation_remaining = savedData.new_vacation_remaining;
+                }
             }
 
             // Anfragen neu laden (Status könnte sich geändert haben)
@@ -247,7 +232,6 @@ export const PlanHandlers = {
         if (PlanState.isVisitor) return;
         // Sperre gilt global
         if (PlanState.currentPlanStatus.is_locked) {
-             // Optional: Allow request even if locked? Usually not.
              return;
         }
 
@@ -322,7 +306,6 @@ export const PlanHandlers = {
         // Kontext für Optimistic Update sichern
         const queryToDelete = PlanState.currentShiftQueries.find(q => q.id == queryId);
 
-        // NEU: Custom Confirm (Callback-Struktur!)
         window.dhfConfirm("Löschen", "Möchten Sie diese Anfrage wirklich löschen?", async () => {
             try {
                 await PlanApi.deleteQuery(queryId);
@@ -450,7 +433,6 @@ export const PlanHandlers = {
         const actionName = actionType === 'approve' ? 'Genehmigen' : 'Ablehnen';
 
         // NEU: Custom Confirm statt nativem confirm()
-        // WICHTIG: Die Logik verschiebt sich in den Callback, da wir nicht blockieren können
         window.dhfConfirm(actionName, `${PlanState.selectedQueryIds.size} Anfragen ${actionName}?`, async () => {
             try {
                 const ids = Array.from(PlanState.selectedQueryIds);
