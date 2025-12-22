@@ -7,7 +7,7 @@ from .extensions import db, bcrypt
 from flask_login import login_required, current_user
 from .utils import admin_required
 from datetime import datetime, date
-from sqlalchemy import desc, or_
+from sqlalchemy import desc, or_, func, extract
 # --- NEU: Import für E-Mail Service ---
 from .email_service import send_email
 # --- NEU: Import für Bild-Test ---
@@ -170,7 +170,32 @@ def test_roster_image():
 @login_required
 def get_users():
     users = User.query.order_by(User.shift_plan_sort_order, User.name).all()
-    return jsonify([user.to_dict() for user in users]), 200
+
+    # --- NEU: Urlaubsberechnung (Jahressicht) ---
+    current_year = datetime.utcnow().year
+    eu_type = ShiftType.query.filter_by(abbreviation='EU').first()
+    vacation_usage = {}
+
+    if eu_type:
+        usage_query = db.session.query(Shift.user_id, func.count(Shift.id)) \
+            .filter(
+            Shift.shifttype_id == eu_type.id,
+            extract('year', Shift.date) == current_year,
+            Shift.variant_id == None
+        ) \
+            .group_by(Shift.user_id).all()
+        vacation_usage = {uid: count for uid, count in usage_query}
+
+    result = []
+    for user in users:
+        u_dict = user.to_dict()
+        # Berechnung: Gesamt + Rest - Verbraucht
+        total_budget = (user.urlaub_gesamt or 0) + (user.urlaub_rest or 0)
+        used = vacation_usage.get(user.id, 0)
+        u_dict['vacation_remaining'] = total_budget - used
+        result.append(u_dict)
+
+    return jsonify(result), 200
 
 
 @admin_bp.route('/users', methods=['POST'])
@@ -240,7 +265,7 @@ def update_user(user_id):
             user.inaktiv_ab_datum = none_if_empty(data.get('inaktiv_ab_datum'))
 
         user.urlaub_gesamt = data.get('urlaub_gesamt', user.urlaub_gesamt)
-        user.urlaub_rest = data.get('urlaub_rest', user.urlaub_rest)
+        # user.urlaub_rest = data.get('urlaub_rest', user.urlaub_rest) # Read-Only im Frontend (berechnet), daher nicht überschreiben
         user.diensthund = data.get('diensthund', user.diensthund)
         user.tutorial_gesehen = data.get('tutorial_gesehen', user.tutorial_gesehen)
         user.shift_plan_visible = data.get('shift_plan_visible', user.shift_plan_visible)

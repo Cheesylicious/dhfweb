@@ -75,6 +75,16 @@
             border-right: 2px solid #999;
         }
 
+        /* NEU: Gesamtstunden Spalte - so breit wie nötig, aber nicht mehr */
+        td.total-col {
+            width: 1%;
+            white-space: nowrap;
+            background-color: #f0f0f0;
+            font-weight: bold;
+            text-align: center;
+            border-right: 2px solid #999;
+        }
+
         .th-main-bg {
             background-color: {{ data.config.img_header_bg }};
             border-right: 2px solid #999;
@@ -127,6 +137,7 @@
                         {{ day.weekday }}
                     </th>
                 {% endfor %}
+                <th class="th-main-bg">Gesamt</th>
             </tr>
             <tr>
                 <th class="th-main-bg"></th>
@@ -141,6 +152,7 @@
                         {{ day.day_num }}
                     </th>
                 {% endfor %}
+                <th class="th-main-bg"></th>
             </tr>
         </thead>
         <tbody>
@@ -175,13 +187,15 @@
                         {{ cell.abbr }}
                     </td>
                 {% endfor %}
+
+                <td class="total-col">{{ row.total_hours }}</td>
             </tr>
             {% endfor %}
         </tbody>
 
         {% if data.staffing_rows %}
         <tfoot>
-            <tr><td colspan="{{ data.days_header|length + 2 }}" style="height: 10px; background: #999;"></td></tr>
+            <tr><td colspan="{{ data.days_header|length + 3 }}" style="height: 10px; background: #999;"></td></tr>
 
             {% for s_row in data.staffing_rows %}
             <tr>
@@ -207,6 +221,7 @@
                         {{ s_cell.count }}
                     </td>
                 {% endfor %}
+                <td style="background-color:#fcfcfc; border-right:2px solid #999;"></td>
             </tr>
             {% endfor %}
         </tfoot>

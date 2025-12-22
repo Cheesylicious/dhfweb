@@ -369,9 +369,46 @@ def get_shifts():
 
     shifts_data = [s.to_dict() for s in shifts_current_month]
     shifts_last_month_data = [s.to_dict() for s in shifts_prev_month]
-    shifts_all_data = shifts_data + shifts_last_month_data
+
     users_data = [u.to_dict() for u in users]
+
+    # --- NEU: Berechnung des verbleibenden Urlaubs (Jahres-Sicht) ---
+    eu_type = ShiftType.query.filter_by(abbreviation='EU').first()
+    vacation_usage = {}
+
+    if eu_type:
+        # Optimierte Abfrage: Zählt EU-Schichten für das ganze Jahr pro User
+        # (Nur im Hauptplan oder Varianten? Urlaub ist normalerweise Hauptplan relevant,
+        # aber hier zählen wir erstmal alle Einträge im Jahr im Hauptplan, da Varianten temporär sind)
+        usage_query = db.session.query(Shift.user_id, func.count(Shift.id)) \
+            .filter(
+            Shift.shifttype_id == eu_type.id,
+            extract('year', Shift.date) == year,
+            Shift.variant_id == None  # Nur Hauptplan zählt für Verbrauch
+        ) \
+            .group_by(Shift.user_id).all()
+        vacation_usage = {uid: count for uid, count in usage_query}
+
+    for u_dict in users_data:
+        u_id = u_dict['id']
+        u_gesamt = u_dict.get('urlaub_gesamt') or 0
+        u_rest = u_dict.get('urlaub_rest') or 0
+        total_budget = u_gesamt + u_rest
+
+        used = vacation_usage.get(u_id, 0)
+
+        # Varianten-Check: Wenn wir in einer Variante sind, müssen wir die EU-Schichten
+        # in DIESEM Monat in der Variante zählen, und die vom Hauptplan in diesem Monat abziehen,
+        # um eine korrekte Vorschau zu haben. Das ist komplex.
+        # VEREINFACHUNG: Wir zeigen im Modal den Stand basierend auf dem Hauptplan an.
+
+        remaining = total_budget - used
+        u_dict['vacation_remaining'] = remaining
+    # ----------------------------------------------------------------
+
     shifttypes_data = [st.to_dict() for st in shift_types]
+
+    shifts_all_data = shifts_data + shifts_last_month_data
 
     totals_dict = {}
     for user in users:
@@ -641,6 +678,21 @@ def save_shift():
         response_data['new_total_hours'] = _calculate_user_total_hours(user_id, shift_date.year, shift_date.month,
                                                                        variant_id=variant_id)
 
+        # --- NEU: Urlaub direkt neu berechnen und zurückgeben ---
+        eu_type = ShiftType.query.filter_by(abbreviation='EU').first()
+        if eu_type and variant_id is None:  # Nur für Hauptplan
+            used_count = db.session.query(func.count(Shift.id)).filter(
+                Shift.user_id == user_id,
+                Shift.shifttype_id == eu_type.id,
+                extract('year', Shift.date) == shift_date.year,
+                Shift.variant_id == None
+            ).scalar()
+
+            target_user = User.query.get(user_id)
+            total_budget = (target_user.urlaub_gesamt or 0) + (target_user.urlaub_rest or 0)
+            response_data['new_vacation_remaining'] = total_budget - used_count
+        # --------------------------------------------------------
+
         # --- VIOLATIONS NEU BERECHNEN ---
         year = shift_date.year
         month = shift_date.month
@@ -881,12 +933,87 @@ def send_completion_notification():
                     'bg_priority': s.shift_type.prioritize_background
                 }
 
+        # --- GESAMTSTUNDEN (BULK-OPTIMIERT) ---
+        shift_types = ShiftType.query.all()
+        st_hours = {st.id: (st.hours or 0.0) for st in shift_types}
+        st_spill = {st.id: (st.hours_spillover or 0.0) for st in shift_types}
+        st_is_work = {st.id: st.is_work_shift for st in shift_types}
+        st_abbr_map = {st.abbreviation: st for st in shift_types}
+
+        # 1. Daten laden (nur 3 Queries für alle)
+        prev_month_last_day_date = date(year, month, 1) - timedelta(days=1)
+        shifts_prev_last_day = Shift.query.options(joinedload(Shift.shift_type)).filter(
+            Shift.date == prev_month_last_day_date,
+            Shift.variant_id == None
+        ).all()
+
+        queries_curr = ShiftQuery.query.filter(
+            extract('year', ShiftQuery.shift_date) == year,
+            extract('month', ShiftQuery.shift_date) == month,
+            ShiftQuery.status == 'offen'
+        ).all()
+
+        queries_prev = ShiftQuery.query.filter(
+            ShiftQuery.shift_date == prev_month_last_day_date,
+            ShiftQuery.status == 'offen'
+        ).all()
+
+        # 2. Rechnen (Memory)
+        user_hours_map = defaultdict(float)
+        current_month_last_day = date(year, month, days_in_month)
+
+        # A. Current Shifts
+        for s in shifts_db:
+            if s.shifttype_id and st_is_work.get(s.shifttype_id):
+                user_hours_map[s.user_id] += st_hours.get(s.shifttype_id, 0.0)
+                if s.date == current_month_last_day:
+                    user_hours_map[s.user_id] -= st_spill.get(s.shifttype_id, 0.0)
+
+        # B. Prev Shifts (Spillover Add)
+        for s in shifts_prev_last_day:
+            if s.shifttype_id and st_is_work.get(s.shifttype_id):
+                user_hours_map[s.user_id] += st_spill.get(s.shifttype_id, 0.0)
+
+        # C. Queries (Current)
+        for q in queries_curr:
+            if q.message.startswith("Anfrage für:"):
+                try:
+                    parts = q.message.split(":")
+                    if len(parts) > 1:
+                        abbr = parts[1].strip().replace('?', '')
+                        st = st_abbr_map.get(abbr)
+                        if st and st.is_work_shift:
+                            user_hours_map[q.sender_user_id] += (st.hours or 0.0)
+                            if q.shift_date == current_month_last_day:
+                                user_hours_map[q.sender_user_id] -= (st.hours_spillover or 0.0)
+                except:
+                    pass
+
+        # D. Queries (Prev)
+        for q in queries_prev:
+            if q.message.startswith("Anfrage für:"):
+                try:
+                    parts = q.message.split(":")
+                    if len(parts) > 1:
+                        abbr = parts[1].strip().replace('?', '')
+                        st = st_abbr_map.get(abbr)
+                        if st and st.is_work_shift:
+                            user_hours_map[q.sender_user_id] += (st.hours_spillover or 0.0)
+                except:
+                    pass
+
         # Matrix Rows bauen
         matrix_rows = []
         for u in all_visible_users:
+            total_val = round(user_hours_map[u.id], 2)
+            # Entferne .00 für Sauberkeit, wenn glatt
+            if total_val.is_integer():
+                total_val = int(total_val)
+
             row_data = {
                 'name': f"{u.vorname} {u.name}",  # Format muss zum 'highlight_user_name' passen!
                 'dog': u.diensthund or '',
+                'total_hours': total_val,
                 'cells': []
             }
             for day in range(1, days_in_month + 1):
@@ -899,21 +1026,18 @@ def send_completion_notification():
 
         # Staffing (Soll/Ist) berechnen
         shifts_for_calc = [s.to_dict() for s in shifts_db]
-        shift_types = ShiftType.query.order_by(ShiftType.staffing_sort_order, ShiftType.abbreviation).all()
-        shift_types_data = [st.to_dict() for st in shift_types]
-        queries_for_calc = ShiftQuery.query.filter(
-            extract('year', ShiftQuery.shift_date) == year,
-            extract('month', ShiftQuery.shift_date) == month,
-            ShiftQuery.status == 'offen'
-        ).all()
-        queries_data = [q.to_dict() for q in queries_for_calc]
+        # shift_types neu laden? Oben schon geladen, aber sortierung wichtig für anzeige
+        shift_types_sorted = sorted(shift_types, key=lambda x: (x.staffing_sort_order, x.abbreviation))
+        shift_types_data = [st.to_dict() for st in shift_types_sorted]
+
+        queries_data = [q.to_dict() for q in queries_curr]
 
         staffing_actual = _calculate_actual_staffing(shifts_for_calc, queries_data, shift_types_data, year, month)
         staffing_rows = []
         day_key_map = ['min_staff_mo', 'min_staff_di', 'min_staff_mi', 'min_staff_do', 'min_staff_fr', 'min_staff_sa',
                        'min_staff_so']
 
-        relevant_types = [st for st in shift_types if (
+        relevant_types = [st for st in shift_types_sorted if (
                 st.min_staff_mo > 0 or st.min_staff_di > 0 or st.min_staff_mi > 0 or st.min_staff_do > 0 or
                 st.min_staff_fr > 0 or st.min_staff_sa > 0 or st.min_staff_so > 0 or st.min_staff_holiday > 0
         )]
@@ -972,4 +1096,3 @@ def send_completion_notification():
         import traceback
         traceback.print_exc()
         return jsonify({"message": f"Fehler: {str(e)}"}), 500
-
