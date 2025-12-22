@@ -1,0 +1,54 @@
+/* html/css/themes.css */
+
+/* 1. STANDARD THEME (Default) */
+:root {
+    /* Diese Werte werden genutzt, wenn keine Klasse gesetzt ist */
+    --bg-body: #1a1a1a;
+    --bg-card: rgba(255, 255, 255, 0.05);
+    --bg-input: rgba(0, 0, 0, 0.2);
+    --text-main: #ffffff;
+    --text-muted: #bdc3c7;
+    --color-accent: #3498db;
+    --color-accent-hover: #2980b9;
+    --border-color: rgba(255, 255, 255, 0.1);
+    --modal-bg: rgba(30, 30, 30, 0.8);
+}
+
+/* 2. NIGHT VISION (Grün/Schwarz - Tactical) */
+body.theme-night {
+    --bg-body: #000000;
+    --bg-card: rgba(0, 20, 0, 0.9);
+    --bg-input: #001100;
+    --text-main: #00ff00; /* Neon Grün */
+    --text-muted: #008f00;
+    --color-accent: #00cc00;
+    --color-accent-hover: #00ee00;
+    --border-color: #003300;
+    --modal-bg: #001100;
+}
+
+/* 3. POLICE BLUE (Heller, offizieller Look) */
+body.theme-police {
+    --bg-body: #ecf0f1; /* Helles Grau */
+    --bg-card: #ffffff;
+    --bg-input: #dfe6e9;
+    --text-main: #2c3e50; /* Dunkelblau */
+    --text-muted: #7f8c8d;
+    --color-accent: #003366; /* Polizei Blau */
+    --color-accent-hover: #004080;
+    --border-color: #bdc3c7;
+    --modal-bg: #ffffff;
+}
+
+/* 4. FIRE FIGHTER (Dunkelgrau/Rot) */
+body.theme-fire {
+    --bg-body: #1e1e1e;
+    --bg-card: rgba(40, 10, 10, 0.9);
+    --bg-input: rgba(0, 0, 0, 0.3);
+    --text-main: #f1f1f1;
+    --text-muted: #aaa;
+    --color-accent: #c0392b; /* Rot */
+    --color-accent-hover: #e74c3c;
+    --border-color: #551111;
+    --modal-bg: #220505;
+}
