@@ -22,15 +22,22 @@ def create_app(config_name='default'):
     mail.init_app(app)
 
     # NEU: SocketIO initialisieren (Echtzeit-Kommunikation)
-    # cors_allowed_origins="*" ist für WebSockets meist okay, aber für HTTP-Requests (Fetch) kritisch.
-    socketio.init_app(app, cors_allowed_origins="*")
+    # Die Origins wurden um die neuen HTTPS-Domains ergänzt, um Verbindungsabbrüche zu vermeiden.
+    socketio.init_app(app, cors_allowed_origins=[
+        "https://dhf-planer.de",
+        "https://www.dhf-planer.de",
+        "http://localhost:5000",
+        "http://127.0.0.1:5000"
+    ])
 
     # 3. CORS initialisieren
-    # WICHTIG: Wenn supports_credentials=True ist, darf 'origins' NICHT '*' enthalten!
-    # Wir erlauben hier explizit die IP vom Server und Localhost.
+    # WICHTIG: Erlaubt nun explizit die sicheren HTTPS-Domains, damit "Failed to fetch" verschwindet.
+    # supports_credentials=True bleibt aktiv für die Session-Verwaltung.
     CORS(app, supports_credentials=True, origins=[
-        "http://46.224.63.203",      # Deine Server-IP
-        "http://46.224.63.203:5000", # Manchmal nötig mit Port
+        "https://dhf-planer.de",
+        "https://www.dhf-planer.de",
+        "http://46.224.63.203",
+        "http://46.224.63.203:5000",
         "http://localhost",
         "http://localhost:5000",
         "http://127.0.0.1:5000"
@@ -123,7 +130,6 @@ def create_app(config_name='default'):
 
 
 # --- Startup-Funktionen ---
-# (Die folgenden Funktionen sind unverändert von Ihren Vorgaben)
 
 def create_default_roles(db_instance):
     from .models import Role
@@ -147,7 +153,7 @@ def create_default_roles(db_instance):
 
 def create_default_holidays(db_instance):
     from .models import SpecialDate
-    mv_holidays = ["Neujahr", "Internationaler Frauentag", "Karfreitag", "Ostermontag", "Tag der Arbeit",
+    mv_holidays = ["Neujahr", "Internationaler Frauetag", "Karfreitag", "Ostermontag", "Tag der Arbeit",
                    "Christi Himmelfahrt", "Pfingstmontag", "Tag der Deutschen Einheit", "Reformationstag",
                    "Erster Weihnachtsfeiertag", "Zweiter Weihnachtsfeiertag"]
     try:

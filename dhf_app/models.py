@@ -57,7 +57,12 @@ class User(db.Model, UserMixin):
     last_training_qa = db.Column(db.Date, nullable=True)  # Letzte Quartalsausbildung
     last_training_shooting = db.Column(db.Date, nullable=True)  # Letztes Schießen
     is_manual_dog_handler = db.Column(db.Boolean, default=False)  # Manuell zur Hundeführer-Liste hinzugefügt
-    is_hidden_dog_handler = db.Column(db.Boolean, default=False) # NEU: Hundeführer ausblenden (z.B. bei Austritt)
+    is_hidden_dog_handler = db.Column(db.Boolean, default=False)  # NEU: Hundeführer ausblenden (z.B. bei Austritt)
+    # ----------------------------------------------------------------------
+
+    # --- NEU: Bot-Schutz Mechanik (Fehlversuche) ---
+    failed_login_attempts = db.Column(db.Integer, default=0, nullable=False)
+    last_failed_login = db.Column(db.DateTime, nullable=True)
     # ----------------------------------------------------------------------
 
     # HINWEIS: Die Beziehung (relationship) zu den Stats wird durch den backref
@@ -97,20 +102,21 @@ class User(db.Model, UserMixin):
             "force_password_change": self.force_password_change,
             "can_see_statistics": self.can_see_statistics,
 
-            # --- KRITISCHE ERGÄNZUNG FÜR DEN SHOP & DASHBOARD ---
-            "experience_points": current_xp,  # Das Feld, das das Frontend sucht
+            # --- XP & Gamification ---
+            "experience_points": current_xp,
             "current_level": current_level,
             "current_rank": current_rank,
             "active_pet_asset": self.active_pet_asset,
-            # NEU: Aktives Theme übergeben
             "active_theme": self.active_theme,
 
-            # --- NEU: Hundeführer-Daten ---
+            # --- Hundeführer-Daten ---
             "last_training_qa": self.safe_date_iso(self.last_training_qa),
             "last_training_shooting": self.safe_date_iso(self.last_training_shooting),
             "is_manual_dog_handler": self.is_manual_dog_handler,
-            "is_hidden_dog_handler": self.is_hidden_dog_handler
-            # ------------------------------
+            "is_hidden_dog_handler": self.is_hidden_dog_handler,
+
+            # --- Bot-Schutz Status ---
+            "failed_login_attempts": self.failed_login_attempts
         }
 
 
@@ -181,9 +187,6 @@ class PlanVariant(db.Model):
         }
 
 
-# --- ENDE NEU ---
-
-
 class Shift(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
@@ -201,19 +204,12 @@ class Shift(db.Model):
     # --- ENDE NEU ---
 
     # --- NEU: Verknüpfung zur Variante ---
-    # Wenn NULL: Gehört zum Hauptplan (öffentlich sichtbar).
-    # Wenn gesetzt: Gehört zu einer spezifischen Entwurfs-Variante.
     variant_id = db.Column(db.Integer, db.ForeignKey('plan_variant.id'), nullable=True)
     variant = db.relationship('PlanVariant', backref=db.backref('shifts', cascade="all, delete-orphan"))
     # --- ENDE NEU ---
 
     user = db.relationship('User', backref=db.backref('shifts', lazy=True))
     shift_type = db.relationship('ShiftType')
-
-    # HINWEIS: Wir entfernen hier den UniqueConstraint ('user_id', 'date'),
-    # da ein User nun am selben Tag in verschiedenen Varianten Schichten haben kann.
-    # Die Eindeutigkeit (1 Schicht pro Tag pro Variante) muss von der Anwendungslogik sichergestellt werden.
-    # __table_args__ = (db.UniqueConstraint('user_id', 'date', name='_user_date_uc'),)
 
     def to_dict(self):
         abbr = ""
@@ -229,7 +225,7 @@ class Shift(db.Model):
             "shifttype_id": self.shifttype_id,
             "shifttype_abbreviation": abbr,
             "is_locked": self.is_locked,
-            "is_trade": self.is_trade,  # <<< HIER ÜBERGEBEN
+            "is_trade": self.is_trade,
             "variant_id": self.variant_id
         }
 
@@ -262,7 +258,6 @@ class GlobalSetting(db.Model):
     """
     id = db.Column(db.Integer, primary_key=True)
     key = db.Column(db.String(100), unique=True, nullable=False)
-    # ÄNDERUNG: Text statt String(255), um große JSON-Konfigurationen zu speichern
     value = db.Column(db.Text, nullable=True)
 
     def to_dict(self):
@@ -275,7 +270,6 @@ class GlobalSetting(db.Model):
 class UpdateLog(db.Model):
     """
     Protokolliert wichtige administrative Änderungen und System-Updates.
-    (Nur noch manuelle Einträge)
     """
     id = db.Column(db.Integer, primary_key=True)
     area = db.Column(db.String(100), nullable=False, index=True)
@@ -291,16 +285,15 @@ class UpdateLog(db.Model):
         }
 
 
-# --- NEU: Activity Log (Für den 'Logs' Reiter) ---
 class ActivityLog(db.Model):
     """
     Protokolliert detaillierte Benutzeraktivitäten (Login, Logout, PW-Change, etc.).
     """
     id = db.Column(db.Integer, primary_key=True)
-    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True)  # Nullable, falls User gelöscht wird
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=True)
     user = db.relationship('User')
-    action = db.Column(db.String(50), nullable=False)  # Typ: LOGIN, LOGOUT, UPDATE_PROFILE, etc.
-    details = db.Column(db.String(255), nullable=True)  # Z.B. "Dauer: 5min", "E-Mail geändert"
+    action = db.Column(db.String(50), nullable=False)
+    details = db.Column(db.String(255), nullable=True)
     ip_address = db.Column(db.String(50), nullable=True)
     timestamp = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
 
@@ -313,9 +306,6 @@ class ActivityLog(db.Model):
             "ip_address": self.ip_address,
             "timestamp": self.timestamp.isoformat()
         }
-
-
-# --- ENDE NEU ---
 
 
 class FeedbackReport(db.Model):
@@ -435,7 +425,6 @@ class UserShiftLimit(db.Model):
     shifttype_id = db.Column(db.Integer, db.ForeignKey('shift_type.id'), nullable=False)
     monthly_limit = db.Column(db.Integer, default=0, nullable=False)
 
-    # Relationships
     user = db.relationship('User', backref=db.backref('shift_limits', lazy=True, cascade="all, delete-orphan"))
     shift_type = db.relationship('ShiftType')
 
@@ -459,7 +448,7 @@ class GlobalAnnouncement(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     message = db.Column(db.Text, nullable=True)
     updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
-    updated_by = db.Column(db.String(100), nullable=True)  # Name des Admins
+    updated_by = db.Column(db.String(100), nullable=True)
 
     def to_dict(self):
         return {
@@ -485,19 +474,17 @@ class UserAnnouncementAck(db.Model):
         }
 
 
-# --- NEU: E-Mail Vorlagen Modell ---
 class EmailTemplate(db.Model):
     """
     Speichert anpassbare E-Mail-Vorlagen für das System.
     """
     id = db.Column(db.Integer, primary_key=True)
-    key = db.Column(db.String(50), unique=True, nullable=False,
-                    index=True)  # Eindeutiger Schlüssel (z.B. 'password_reset')
-    name = db.Column(db.String(100), nullable=False)  # Angezeigter Name für den Admin
-    subject = db.Column(db.String(255), nullable=False)  # Betreffzeile
-    body = db.Column(db.Text, nullable=False)  # E-Mail Inhalt (HTML oder Text)
-    description = db.Column(db.String(255), nullable=True)  # Erklärung, wann diese Mail gesendet wird
-    available_placeholders = db.Column(db.String(255), nullable=True)  # JSON-String oder CSV der verfügbaren Variablen
+    key = db.Column(db.String(50), unique=True, nullable=False, index=True)
+    name = db.Column(db.String(100), nullable=False)
+    subject = db.Column(db.String(255), nullable=False)
+    body = db.Column(db.Text, nullable=False)
+    description = db.Column(db.String(255), nullable=True)
+    available_placeholders = db.Column(db.String(255), nullable=True)
 
     def to_dict(self):
         return {

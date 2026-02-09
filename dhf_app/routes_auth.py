@@ -6,7 +6,7 @@ from .extensions import db, bcrypt
 from flask_login import login_user, logout_user, current_user
 from .utils import login_required
 from .models_audit import log_audit
-from datetime import datetime
+from datetime import datetime, timedelta
 import traceback
 
 auth_bp = Blueprint('auth', __name__, url_prefix='/api')
@@ -29,25 +29,69 @@ def check_session():
 @auth_bp.route('/login', methods=['POST'])
 def login():
     """
-    Loggt einen Benutzer ein.
+    Loggt einen Benutzer ein mit integriertem Bot-Schutz (Puzzle-Captcha ab 2 Fehlversuchen).
+    Inklusive automatischer Rücksetzung des Zählers nach 1 Stunde Inaktivität.
     """
     # Sicherheitsreinigung: Falls noch alte Impersonation-Daten in der Session hängen
     session.pop('original_admin_id', None)
 
     data = request.get_json()
-    user = User.query.filter_by(vorname=data.get('vorname'), name=data.get('name')).first()
+    vorname = data.get('vorname')
+    name = data.get('name')
+    passwort = data.get('passwort')
+    captcha_solved = data.get('captcha_solved', False)  # Flag vom Frontend Puzzle
 
-    if user and bcrypt.check_password_hash(user.passwort_hash, data.get('passwort')):
+    user = User.query.filter_by(vorname=vorname, name=name).first()
+
+    if not user:
+        return jsonify({"message": "Ungültige Anmeldedaten"}), 401
+
+    # --- BOT-SCHUTZ & TIMER LOGIK ---
+    jetzt = datetime.utcnow()
+
+    # Automatischer Reset des Zählers nach 1 Stunde
+    if user.failed_login_attempts > 0 and user.last_failed_login:
+        zeit_seit_fehler = jetzt - user.last_failed_login
+        if zeit_seit_fehler > timedelta(hours=1):
+            user.failed_login_attempts = 0
+            # Wir committen hier noch nicht, da gleich noch die Passwortprüfung folgt
+
+    # Wenn der User (immer noch) 2 oder mehr Fehlversuche hat, muss das Puzzle gelöst sein
+    if user.failed_login_attempts >= 2:
+        if not captcha_solved:
+            return jsonify({
+                "message": "Bot-Schutz: Bitte lösen Sie das Puzzle.",
+                "require_captcha": True
+            }), 403
+
+    # Passwort prüfen
+    if bcrypt.check_password_hash(user.passwort_hash, passwort):
+        # Erfolg: Login durchführen
         login_user(user, remember=True)
 
-        # Aktivität loggen mit dem neuen Audit-System
+        # Zähler für Fehlversuche zurücksetzen
+        user.failed_login_attempts = 0
+        user.zuletzt_online = jetzt
+
+        # Aktivität loggen
         log_audit(action="LOGIN", user=user)
 
-        user.zuletzt_online = datetime.utcnow()
         db.session.commit()
         return jsonify({"message": "Login erfolgreich", "user": user.to_dict()}), 200
     else:
-        return jsonify({"message": "Ungültige Anmeldedaten"}), 401
+        # Fehler: Zähler erhöhen
+        user.failed_login_attempts += 1
+        user.last_failed_login = jetzt
+
+        # Prüfen, ob durch diesen Fehlversuch die Captcha-Pflicht ab jetzt gilt
+        require_captcha = user.failed_login_attempts >= 2
+
+        db.session.commit()
+
+        return jsonify({
+            "message": "Ungültige Anmeldedaten",
+            "require_captcha": require_captcha
+        }), 401
 
 
 @auth_bp.route('/logout', methods=['POST'])
@@ -185,13 +229,10 @@ def impersonate_user():
         # 1. Berechtigung prüfen (Robust)
         user_role = ""
 
-        # Prüfe auf 'role' (Englisch, Standard in modernem SQLAlchemy)
         if hasattr(current_user, 'role') and current_user.role:
             user_role = getattr(current_user.role, 'name', str(current_user.role))
-        # Prüfe auf 'rolle' (Deutsch, falls Legacy-Code)
         elif hasattr(current_user, 'rolle') and current_user.rolle:
             user_role = getattr(current_user.rolle, 'name', str(current_user.rolle))
-        # Prüfe direkt über ID (Sicherster Weg)
         elif hasattr(current_user, 'role_id') and current_user.role_id:
             r = db.session.get(Role, current_user.role_id)
             if r: user_role = r.name
@@ -233,7 +274,7 @@ def impersonate_user():
         return jsonify({
             "message": f"Angemeldet als {target_user.vorname} {target_user.name}",
             "redirect": "/dashboard.html",
-            "user": target_user.to_dict()  # << NEU: Damit das Frontend den User kennt
+            "user": target_user.to_dict()
         }), 200
 
     except Exception as e:
@@ -276,7 +317,7 @@ def stop_impersonate():
         return jsonify({
             "message": "Willkommen zurück, Admin.",
             "redirect": "/dashboard.html",
-            "user": admin_user.to_dict()  # << NEU: Damit das Frontend wieder Admin ist
+            "user": admin_user.to_dict()
         }), 200
 
     except Exception as e:
