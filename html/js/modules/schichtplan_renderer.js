@@ -143,6 +143,8 @@ export const PlanRenderer = {
                 isShiftRequestCell = true;
                 shiftRequestText = wunschQuery.message.substring("Anfrage für:".length).trim();
             }
+            // Auch Hundeführer sehen das Fragezeichen bei Notizen
+            if (notizQuery) showQuestionMark = true;
         }
 
         const dayHasSpecialBg = eventType || isWeekend;
@@ -216,21 +218,30 @@ export const PlanRenderer = {
             cell.appendChild(icon);
         }
 
-        // 4. Notiz Icon
+        // 4. Notiz Icon (FIX: Absolut positioniert unten rechts)
         if (showQuestionMark) {
-             const iconSpan = document.createElement('span');
-             iconSpan.className = 'shift-query-icon';
-             iconSpan.textContent = '❓';
+             const iconDiv = document.createElement('div');
+             iconDiv.className = 'shift-query-icon';
+             iconDiv.textContent = '❓';
+
+             // Styles direkt setzen, um "N...." Layout-Bug zu beheben
+             iconDiv.style.position = 'absolute';
+             iconDiv.style.bottom = '2px';
+             iconDiv.style.right = '2px';
+             iconDiv.style.fontSize = '12px'; // Klein und fein
+             iconDiv.style.lineHeight = '1';
+             iconDiv.style.zIndex = '25';
+             iconDiv.style.cursor = 'help';
 
              // Tooltip Logik
              if (notizQuery) {
                  if (notizQuery.target_user_id === null) {
-                     iconSpan.title = "Thema des Tages / Allgemeine Notiz";
+                     iconDiv.title = "Thema des Tages / Allgemeine Notiz";
                  } else {
-                     iconSpan.title = "Persönliche Notiz";
+                     iconDiv.title = "Persönliche Notiz";
                  }
              }
-             cell.appendChild(iconSpan);
+             cell.appendChild(iconDiv);
         }
 
         // --- 5. HANDSCHLAG (TRADE) ICON ---

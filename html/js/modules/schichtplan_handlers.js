@@ -290,7 +290,19 @@ export const PlanHandlers = {
             const queries = await PlanApi.fetchOpenQueries(PlanState.currentYear, PlanState.currentMonth);
             PlanState.currentShiftQueries = queries;
 
-            if (targetUserId) PlanRenderer.refreshSingleCell(targetUserId, dateStr);
+            // BUGFIX: Sofort-Update der Anzeige
+            if (targetUserId) {
+                // Einzelne Zelle aktualisieren
+                PlanRenderer.refreshSingleCell(targetUserId, dateStr);
+            } else {
+                // "Thema des Tages": Alle sichtbaren User an diesem Tag aktualisieren
+                PlanState.allUsers.forEach(user => {
+                    if(user.shift_plan_visible) {
+                        PlanRenderer.refreshSingleCell(user.id, dateStr);
+                    }
+                });
+            }
+
             triggerNotificationUpdate();
 
             if(closeModalsFn) closeModalsFn();
@@ -303,7 +315,7 @@ export const PlanHandlers = {
     async deleteShiftQuery(queryId, closeModalsFn) {
         if (!queryId) return;
 
-        // Kontext für Optimistic Update sichern
+        // Kontext für Optimistic Update sichern, BEVOR gelöscht wird
         const queryToDelete = PlanState.currentShiftQueries.find(q => q.id == queryId);
 
         window.dhfConfirm("Löschen", "Möchten Sie diese Anfrage wirklich löschen?", async () => {
@@ -329,6 +341,13 @@ export const PlanHandlers = {
                                 StaffingModule.refreshStaffingGrid();
                             }
                         }
+                    } else {
+                        // BUGFIX: Wenn "Thema des Tages" (target_user_id === null) gelöscht wird -> Alles aktualisieren
+                        PlanState.allUsers.forEach(user => {
+                            if(user.shift_plan_visible) {
+                                PlanRenderer.refreshSingleCell(user.id, queryToDelete.shift_date);
+                            }
+                        });
                     }
                 }
 
@@ -342,13 +361,29 @@ export const PlanHandlers = {
     },
 
     async resolveShiftQuery(queryId, closeModalsFn) {
+        // Query vor dem Update finden, um zu wissen, ob es "Allgemein" war
+        const queryToResolve = PlanState.currentShiftQueries.find(q => q.id == queryId);
+
         try {
             await PlanApi.updateQueryStatus(queryId, 'erledigt');
 
             const queries = await PlanApi.fetchOpenQueries(PlanState.currentYear, PlanState.currentMonth);
             PlanState.currentShiftQueries = queries;
 
-            if (PlanState.modalQueryContext && PlanState.modalQueryContext.userId) {
+            // BUGFIX: Sofort-Update
+            if (queryToResolve) {
+                if (queryToResolve.target_user_id) {
+                    PlanRenderer.refreshSingleCell(queryToResolve.target_user_id, queryToResolve.shift_date);
+                } else {
+                    // War eine allgemeine Notiz -> ganze Spalte refreshen
+                    PlanState.allUsers.forEach(user => {
+                        if(user.shift_plan_visible) {
+                            PlanRenderer.refreshSingleCell(user.id, queryToResolve.shift_date);
+                        }
+                    });
+                }
+            } else if (PlanState.modalQueryContext && PlanState.modalQueryContext.userId) {
+                // Fallback falls Query nicht im State gefunden wurde (unwahrscheinlich)
                 PlanRenderer.refreshSingleCell(PlanState.modalQueryContext.userId, PlanState.modalQueryContext.dateStr);
             }
 

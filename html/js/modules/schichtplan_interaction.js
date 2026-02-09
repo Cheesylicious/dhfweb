@@ -192,7 +192,7 @@ export const PlanInteraction = {
             }
 
             if(sections.adminShifts) {
-                sections.adminShifts.style.display = 'grid';
+                sections.adminShifts.style.display = 'block'; // WICHTIG: Block für flexibles Layout
                 this.populateAdminShiftButtons();
                 hasContent = true;
             }
@@ -202,7 +202,7 @@ export const PlanInteraction = {
 
         } else if (PlanState.isPlanschreiber) {
             if(sections.adminShifts) {
-                 sections.adminShifts.style.display = 'grid';
+                 sections.adminShifts.style.display = 'block';
                  this.populateAdminShiftButtons();
                  hasContent = true;
             }
@@ -511,9 +511,18 @@ export const PlanInteraction = {
             { abbrev: 'Alle...', title: 'Alle', isAll: true }
         ];
 
+        // Wrapper für Schicht-Buttons (Flex-Layout für bessere Optik)
+        const shiftBtnWrapper = document.createElement('div');
+        shiftBtnWrapper.style.display = 'flex';
+        shiftBtnWrapper.style.flexWrap = 'wrap';
+        shiftBtnWrapper.style.gap = '5px';
+        shiftBtnWrapper.style.marginBottom = '10px';
+        container.appendChild(shiftBtnWrapper);
+
         defs.forEach(def => {
             const btn = document.createElement('button');
             btn.className = def.isAll ? 'cam-shift-button all' : 'cam-shift-button';
+            btn.style.flex = '1 0 45%'; // Flexibel: ca. 2 Buttons pro Zeile
 
             // Standard-Text
             let btnText = def.abbrev;
@@ -550,8 +559,33 @@ export const PlanInteraction = {
                     }
                 }
             };
-            container.appendChild(btn);
+            shiftBtnWrapper.appendChild(btn);
         });
+
+        // --- NEU: LOCK TOGGLE BUTTON (Für Handy-Bedienung) ---
+        // Status prüfen
+        const currentShiftKey = `${PlanState.clickModalContext.userId}-${PlanState.clickModalContext.dateStr}`;
+        const currentShift = PlanState.currentShifts[currentShiftKey];
+        const isLocked = currentShift && currentShift.is_locked;
+
+        const lockBtn = document.createElement('button');
+        lockBtn.className = 'cam-button'; // Basis-Klasse nutzen
+        lockBtn.style.width = '100%';
+        lockBtn.style.marginTop = '5px';
+
+        // Farben: Grün zum Entsperren, Orange zum Sperren
+        lockBtn.style.backgroundColor = isLocked ? '#27ae60' : '#e67e22';
+        lockBtn.style.color = 'white';
+
+        lockBtn.innerHTML = isLocked
+            ? '<i class="fas fa-unlock"></i> Entsperren'
+            : '<i class="fas fa-lock"></i> Sperren';
+
+        lockBtn.onclick = () => {
+             document.getElementById('click-action-modal').style.display = 'none';
+             PlanHandlers.toggleShiftLock(PlanState.clickModalContext.userId, PlanState.clickModalContext.dateStr);
+        };
+        container.appendChild(lockBtn);
     },
 
     async populateHfButtons() {
