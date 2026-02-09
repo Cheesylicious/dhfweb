@@ -1,7 +1,8 @@
 // js/utils/constants.js
 
 // API und Speicher-Schlüssel
-export const API_URL = 'http://46.224.63.203:5000';
+// KORREKTUR: Leerer String nutzt relativen Pfad, um HTTPS-Blockaden (Mixed Content) zu vermeiden.
+export const API_URL = '';
 export const SHORTCUT_STORAGE_KEY = 'dhf_shortcuts';
 export const COLOR_STORAGE_KEY = 'dhf_color_settings';
 export const DHF_HIGHLIGHT_KEY = 'dhf_highlight_goto';

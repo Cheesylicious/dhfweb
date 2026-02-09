@@ -9,13 +9,12 @@
 
         body {
             font-family: 'Poppins', sans-serif;
-            /* Hintergrundfarbe aus Ihrer .py-Datei */
             background-color: #1a1a1a;
             display: grid;
             place-items: center;
             min-height: 100vh;
             margin: 0;
-            overflow: hidden; /* Verhindert Scrollbalken durch Canvas */
+            overflow: hidden;
         }
 
         /* Das Canvas-Element für die Animation */
@@ -25,7 +24,6 @@
             left: 0;
             width: 100%;
             height: 100%;
-            /* Liegt hinter allem anderen */
             z-index: -1;
         }
 
@@ -33,10 +31,8 @@
         #login-box {
             background: rgba(255, 255, 255, 0.05);
             border: 1px solid rgba(255, 255, 255, 0.1);
-            /* Wichtiger Effekt: Macht den Hintergrund unscharf */
             backdrop-filter: blur(10px);
             -webkit-backdrop-filter: blur(10px);
-
             padding: 30px 35px;
             border-radius: 10px;
             box-shadow: 0 4px 30px rgba(0, 0, 0, 0.2);
@@ -57,7 +53,6 @@
         label {
             display: block;
             margin-bottom: 8px;
-            /* Textfarbe aus Ihrer .py-Datei */
             color: #bdc3c7;
             font-weight: 300;
         }
@@ -65,9 +60,9 @@
         input {
             width: 100%;
             padding: 12px;
-            box-sizing: border-box; /* Verhindert Überlappung */
+            box-sizing: border-box;
             background: rgba(0, 0, 0, 0.2);
-            border: 1px solid #3498db; /* Akzentfarbe aus .py-Datei */
+            border: 1px solid #3498db;
             border-radius: 5px;
             color: #ffffff;
             font-family: 'Poppins', sans-serif;
@@ -81,7 +76,6 @@
         button {
             width: 100%;
             padding: 12px;
-            /* Akzentfarbe aus Ihrer .py-Datei */
             background: #3498db;
             color: white;
             border: none;
@@ -101,7 +95,27 @@
             margin-top: 15px;
             text-align: center;
             font-weight: 300;
-            /* Farbe wird per JS gesetzt (rot/grün) */
+        }
+
+        /* --- NEU: Bot-Schutz Container --- */
+        #captcha-wrapper {
+            display: none;
+            margin-bottom: 20px;
+            padding: 10px;
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 8px;
+            border: 1px solid #f1c40f;
+        }
+        #captcha-container {
+            width: 100%;
+            height: auto;
+        }
+        .captcha-label {
+            color: #f1c40f;
+            font-size: 13px;
+            text-align: center;
+            margin-bottom: 10px;
+            display: block;
         }
     </style>
 </head>
@@ -124,10 +138,17 @@
             <input type="password" id="passwort">
         </div>
 
+        <div id="captcha-wrapper">
+            <span class="captcha-label">Bot-Schutz: Puzzle lösen</span>
+            <div id="captcha-container"></div>
+        </div>
+
         <button onclick="login()">Anmelden</button>
 
         <div id="status"></div>
     </div>
+
+    <script src="js/modules/captcha.js"></script>
 
     <script>
         // --- START: PARTIKEL-ANIMATION (Unverändert) ---
@@ -169,73 +190,75 @@
         // --- ENDE: PARTIKEL-ANIMATION ---
 
 
-        // --- START: LOGIN-LOGIK (ANGEPASST) ---
+        // --- START: LOGIN-LOGIK ---
 
-        const API_URL = 'http://46.224.63.203:5000';
+        const API_URL = '';
         const statusEl = document.getElementById('status');
         const loginBox = document.getElementById('login-box');
+        const captchaWrapper = document.getElementById('captcha-wrapper');
 
-        // --- KORREKTUR: Sofortige Session-Prüfung beim Laden ---
+        // Globaler Status für das Puzzle
+        let isCaptchaRequired = false;
+        let captchaSolved = false;
+        let captchaInstance = null; // Speichert das Interface zum Resetten
+
         (async function checkUserSession() {
-
-            // Verstecke die Login-Box, während wir prüfen
             loginBox.style.display = 'none';
 
             if (window.location.search.includes('logout=true')) {
                 localStorage.removeItem('dhf_user');
                 statusEl.textContent = 'Erfolgreich abgemeldet.';
                 statusEl.style.color = '#2ecc71';
-                loginBox.style.display = 'block'; // Zeige Box wieder an
+                loginBox.style.display = 'block';
                 return;
             }
 
             try {
-                // Rufe die neue API-Route auf
                 const response = await fetch(API_URL + '/api/check_session', {
                     method: 'GET',
-                    credentials: 'include' // WICHTIG: Sendet das Cookie
+                    credentials: 'include'
                 });
 
                 if (response.ok) {
                     const data = await response.json();
-
-                    // Speichere die *aktuellen* User-Daten im localStorage
                     localStorage.setItem('dhf_user', JSON.stringify(data.user));
-
-                    // Prüfe das Flag (genau wie in der login() Funktion)
                     if (data.user && data.user.force_password_change === true) {
                         window.location.href = 'change_password.html';
                     } else {
                         window.location.href = 'dashboard.html';
                     }
                 } else {
-                    // response.ok ist false (z.B. 401 Unauthorized)
-                    // Der Benutzer ist nicht eingeloggt. Zeige die Login-Box an.
                     localStorage.removeItem('dhf_user');
                     loginBox.style.display = 'block';
                 }
             } catch (err) {
-                // Server nicht erreichbar etc.
                 statusEl.textContent = 'Server-Fehler: ' + err.message;
                 statusEl.style.color = '#e74c3c';
-                loginBox.style.display = 'block'; // Zeige Box trotzdem an
+                loginBox.style.display = 'block';
             }
         })();
-        // --- ENDE KORREKTUR ---
 
 
         function getAuthData() {
             return {
                 vorname: document.getElementById('vorname').value,
                 name: document.getElementById('name').value,
-                passwort: document.getElementById('passwort').value
+                passwort: document.getElementById('passwort').value,
+                captcha_solved: captchaSolved
             };
         }
 
         async function login() {
             const authData = getAuthData();
+
+            if (isCaptchaRequired && !captchaSolved) {
+                statusEl.textContent = 'Bitte erst das Puzzle lösen.';
+                statusEl.style.color = '#f1c40f';
+                return;
+            }
+
             statusEl.textContent = 'Melde an...';
-            statusEl.style.color = '#bdc3c7'; // (Helles Grau)
+            statusEl.style.color = '#bdc3c7';
 
             try {
                 const response = await fetch(API_URL + '/api/login', {
@@ -247,27 +270,50 @@
 
                 const data = await response.json();
 
+                // Falls der Server ein Captcha fordert
+                if ((response.status === 403 || response.status === 401) && data.require_captcha) {
+                    isCaptchaRequired = true;
+                    captchaWrapper.style.display = 'block';
+
+                    if (typeof initCaptcha === 'function') {
+                        // Initialisiere und merke die Instanz für spätere Resets
+                        captchaInstance = initCaptcha('captcha-container', () => {
+                            captchaSolved = true;
+                            statusEl.textContent = 'Puzzle gelöst!';
+                            statusEl.style.color = '#2ecc71';
+                        });
+                    }
+
+                    statusEl.textContent = 'Bot-Schutz aktiv. Bitte lösen Sie das Puzzle.';
+                    statusEl.style.color = '#f1c40f';
+                    return;
+                }
+
                 if (response.ok) {
                     statusEl.textContent = 'Erfolg! Leite weiter...';
-                    statusEl.style.color = '#2ecc71'; // (Grün)
+                    statusEl.style.color = '#2ecc71';
                     localStorage.setItem('dhf_user', JSON.stringify(data.user));
 
-                    // Diese Logik (die wir vorher eingebaut haben) ist weiterhin KORREKT
-                    // Sie fängt den *aktiven* Login-Versuch ab.
                     if (data.user && data.user.force_password_change === true) {
                         window.location.href = 'change_password.html';
                     } else {
                         window.location.href = 'dashboard.html';
                     }
-
                 } else {
                     statusEl.textContent = 'Fehler: ' + (data.message || 'Unbekannter Fehler');
-                    statusEl.style.color = '#e74c3c'; // (Rot)
+                    statusEl.style.color = '#e74c3c';
+
+                    // KRITISCH: Bei falschem Passwort Puzzle zurücksetzen
+                    captchaSolved = false;
+                    if (captchaInstance && typeof captchaInstance.reset === 'function') {
+                        captchaInstance.reset();
+                    }
+
                     localStorage.removeItem('dhf_user');
                 }
             } catch (err) {
                 statusEl.textContent = 'Server-Fehler: ' + err.message;
-                statusEl.style.color = '#e74c3c'; // (Rot)
+                statusEl.style.color = '#e74c3c';
             }
         }
 
