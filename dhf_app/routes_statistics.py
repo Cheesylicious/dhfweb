@@ -1,28 +1,22 @@
 # dhf_app/routes_statistics.py
 
 from flask import Blueprint, request, jsonify, current_app
-from sqlalchemy import func, extract, desc, and_
+from sqlalchemy import func, extract, desc, and_, or_
 from .models import Shift, ShiftType, User
 from .extensions import db
-# --- KORREKTUR: Neuer Decorator ---
 from .utils import stats_permission_required
-# --- ENDE KORREKTUR ---
-from datetime import datetime
+from datetime import datetime, date
 
 # Erstellt einen Blueprint für Statistik-Routen
 statistics_bp = Blueprint('statistics', __name__, url_prefix='/api/statistics')
 
 
 @statistics_bp.route('/rankings', methods=['GET'])
-@stats_permission_required  # <<< GEÄNDERT
+@stats_permission_required
 def get_shift_rankings():
     """
     Liefert eine Rangliste (Ranking) der Mitarbeiter pro Schichtart.
-    Berechnet die Anzahl der Schichten pro Typ effizient über SQL-Aggregation.
-
-    Parameter (Query String):
-    - year: (Optional) Filtert nach Jahr (z.B. 2025). Standard: Aktuelles Jahr.
-    - month: (Optional) Filtert nach Monat. Wenn weggelassen, wird das ganze Jahr betrachtet.
+    Filtert archivierte Mitarbeiter aus, die vor dem gewählten Jahr inaktiv wurden.
     """
     try:
         # Filter-Parameter auslesen
@@ -34,9 +28,10 @@ def get_shift_rankings():
         else:
             year = int(year)
 
+        # Startdatum des Jahres für den Inaktivitäts-Check
+        start_of_year = date(year, 1, 1)
+
         # Basis-Query erstellen
-        # Wir wählen: Schichtkürzel, User-Daten und die Anzahl (COUNT)
-        # Performance: Wir lassen die Datenbank zählen, statt Python-Loops zu nutzen.
         query = db.session.query(
             ShiftType.abbreviation,
             ShiftType.name.label('type_name'),
@@ -51,16 +46,29 @@ def get_shift_rankings():
             User, Shift.user_id == User.id
         )
 
-        # Filter anwenden
-        filters = [extract('year', Shift.date) == year]
+        # Filterliste
+        filters = []
 
+        # 1. Jahr (Pflicht)
+        filters.append(extract('year', Shift.date) == year)
+
+        # 2. Monat (Optional)
         if month:
             filters.append(extract('month', Shift.date) == int(month))
 
-        # WICHTIG: Durch den JOIN mit der Shift-Tabelle fallen User,
-        # die KEINE Schichten in diesem Zeitraum haben, automatisch heraus.
-        # Das erfüllt die Anforderung, Besucher oder inaktive User ohne Schichten nicht anzuzeigen.
+        # 3. Keine Entwürfe/Varianten zählen
+        filters.append(Shift.variant_id.is_(None))
 
+        # 4. KORREKTUR: Archivierte User ausblenden
+        # Ein User wird angezeigt, wenn er:
+        # a) Kein Inaktiv-Datum hat (inaktiv_ab_datum IS NULL)
+        # b) ODER das Inaktiv-Datum im aktuellen Jahr oder in der Zukunft liegt
+        filters.append(or_(
+            User.inaktiv_ab_datum.is_(None),
+            User.inaktiv_ab_datum >= start_of_year
+        ))
+
+        # Filter anwenden
         query = query.filter(and_(*filters))
 
         # Gruppierung: Erst nach Schichtart, dann nach User
@@ -70,7 +78,6 @@ def get_shift_rankings():
         results = query.order_by(ShiftType.staffing_sort_order, ShiftType.abbreviation, desc('count')).all()
 
         # Datenstrukturieren für das Frontend
-        # Zielformat: { "T.": { "meta": {...}, "rankings": [ {user, count}, ... ] }, "N.": ... }
         stats_data = {}
 
         for row in results:
@@ -105,11 +112,11 @@ def get_shift_rankings():
 
 
 @statistics_bp.route('/user_details/<int:user_id>', methods=['GET'])
-@stats_permission_required  # <<< GEÄNDERT
+@stats_permission_required
 def get_user_statistics(user_id):
     """
     Liefert detaillierte Statistiken für einen einzelnen Benutzer (Drill-Down).
-    Zeigt die Verteilung aller Schichten dieses Users an.
+    Liefert auch die konkreten Datumswerte (dates) zurück, um 'Geister-Einträge' zu identifizieren.
     """
     try:
         year = request.args.get('year')
@@ -118,33 +125,43 @@ def get_user_statistics(user_id):
         else:
             year = int(year)
 
-        # Gesamtanzahl Schichten pro Typ für diesen User
-        query = db.session.query(
-            ShiftType.abbreviation,
-            ShiftType.name,
-            ShiftType.color,
-            func.count(Shift.id).label('count'),
-            func.sum(ShiftType.hours).label('total_hours')  # Berechnet auch gleich die Stunden
-        ).join(
+        # Wir holen die echten Schicht-Objekte, um die Daten zu sammeln
+        shifts = db.session.query(Shift, ShiftType).join(
             ShiftType, Shift.shifttype_id == ShiftType.id
         ).filter(
             Shift.user_id == user_id,
-            extract('year', Shift.date) == year
-        ).group_by(ShiftType.id).all()
+            extract('year', Shift.date) == year,
+            Shift.variant_id.is_(None)  # WICHTIG: Keine Varianten
+        ).order_by(Shift.date).all()
 
-        details = []
-        total_year_hours = 0.0
+        # Daten in Python aggregieren
+        stats_map = {}  # shifttype_id -> {meta, count, hours, dates list}
 
-        for row in query:
-            h = row.total_hours if row.total_hours else 0.0
-            total_year_hours += h
-            details.append({
-                "type": row.abbreviation,
-                "name": row.name,
-                "color": row.color,
-                "count": row.count,
-                "hours": round(h, 1)
-            })
+        for shift, shift_type in shifts:
+            sid = shift_type.id
+            if sid not in stats_map:
+                stats_map[sid] = {
+                    "type": shift_type.abbreviation,
+                    "name": shift_type.name,
+                    "color": shift_type.color,
+                    "count": 0,
+                    "hours": 0.0,
+                    "dates": []
+                }
+
+            # Werte addieren
+            stats_map[sid]["count"] += 1
+            if shift_type.hours:
+                stats_map[sid]["hours"] += shift_type.hours
+
+            # Datum hinzufügen
+            stats_map[sid]["dates"].append(shift.date.isoformat())
+
+        # In Liste umwandeln
+        details = list(stats_map.values())
+
+        # Gesamtstunden berechnen
+        total_year_hours = sum(d['hours'] for d in details)
 
         # Sortieren nach Häufigkeit
         details.sort(key=lambda x: x['count'], reverse=True)
