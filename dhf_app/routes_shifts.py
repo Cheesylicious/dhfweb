@@ -378,8 +378,6 @@ def get_shifts():
 
     if eu_type:
         # Optimierte Abfrage: Zählt EU-Schichten für das ganze Jahr pro User
-        # (Nur im Hauptplan oder Varianten? Urlaub ist normalerweise Hauptplan relevant,
-        # aber hier zählen wir erstmal alle Einträge im Jahr im Hauptplan, da Varianten temporär sind)
         usage_query = db.session.query(Shift.user_id, func.count(Shift.id)) \
             .filter(
             Shift.shifttype_id == eu_type.id,
@@ -396,11 +394,6 @@ def get_shifts():
         total_budget = u_gesamt + u_rest
 
         used = vacation_usage.get(u_id, 0)
-
-        # Varianten-Check: Wenn wir in einer Variante sind, müssen wir die EU-Schichten
-        # in DIESEM Monat in der Variante zählen, und die vom Hauptplan in diesem Monat abziehen,
-        # um eine korrekte Vorschau zu haben. Das ist komplex.
-        # VEREINFACHUNG: Wir zeigen im Modal den Stand basierend auf dem Hauptplan an.
 
         remaining = total_budget - used
         u_dict['vacation_remaining'] = remaining
@@ -633,9 +626,15 @@ def save_shift():
                 db.session.delete(existing_shift)
             else:
                 existing_shift.shifttype_id = shifttype_id
+                # Snapshot Update
+                user = db.session.get(User, user_id)
+                existing_shift.dog_id = user.active_dog_id if user else None
                 db.session.add(existing_shift)
         elif not is_free:
             new_shift = Shift(user_id=user_id, shifttype_id=shifttype_id, date=shift_date, variant_id=variant_id)
+            # Snapshot Creation
+            user = db.session.get(User, user_id)
+            new_shift.dog_id = user.active_dog_id if user else None
             db.session.add(new_shift)
             db.session.flush()
             saved_shift_id = new_shift.id
@@ -648,7 +647,6 @@ def save_shift():
             st_new = ShiftType.query.get(shifttype_id)
             if st_new: new_val = st_new.abbreviation
 
-        # Nur loggen wenn sich was geändert hat
         if old_val != new_val:
             action = "SHIFT_UPDATE"
             if old_val == "FREI":
@@ -656,7 +654,6 @@ def save_shift():
             elif new_val == "FREI":
                 action = "SHIFT_DELETE"
 
-            # Betroffenen User finden (für den Log-Text, nicht den Akteur)
             target_user = User.query.get(user_id)
             target_name = f"{target_user.vorname} {target_user.name}" if target_user else f"User {user_id}"
 
@@ -676,11 +673,11 @@ def save_shift():
             response_data = {"message": "Gelöscht"}
 
         response_data['new_total_hours'] = _calculate_user_total_hours(user_id, shift_date.year, shift_date.month,
-                                                                       variant_id=variant_id)
+                                                                      variant_id=variant_id)
 
-        # --- NEU: Urlaub direkt neu berechnen und zurückgeben ---
+        # --- NEU: Urlaub ---
         eu_type = ShiftType.query.filter_by(abbreviation='EU').first()
-        if eu_type and variant_id is None:  # Nur für Hauptplan
+        if eu_type and variant_id is None:
             used_count = db.session.query(func.count(Shift.id)).filter(
                 Shift.user_id == user_id,
                 Shift.shifttype_id == eu_type.id,
@@ -693,7 +690,7 @@ def save_shift():
             response_data['new_vacation_remaining'] = total_budget - used_count
         # --------------------------------------------------------
 
-        # --- VIOLATIONS NEU BERECHNEN ---
+        # --- VIOLATIONS ---
         year = shift_date.year
         month = shift_date.month
         current_month_start = date(year, month, 1)
@@ -731,21 +728,18 @@ def save_shift():
 
         response_data['violations'] = list(violations_set)
 
-        # --- SOCKET EMIT START ---
-        # Sende Update an alle Clients
         socket_payload = {
             'type': 'single',
             'user_id': user_id,
             'date': shift_date.isoformat(),
             'shifttype_id': shifttype_id,
             'variant_id': variant_id,
-            'data': response_data,  # Enthält neue Stunden und Violations!
+            'data': response_data,
             'is_deleted': True if not saved_shift_id else False
         }
         socketio.emit('shift_update', socket_payload)
-        # --- SOCKET EMIT END ---
 
-        return jsonify(response_data), 200 if saved_shift_id else 200
+        return jsonify(response_data), 200
 
     except Exception as e:
         db.session.rollback()
@@ -769,10 +763,7 @@ def update_plan_status():
         status_obj.is_locked = data.get('is_locked', status_obj.is_locked)
         db.session.commit()
 
-        # --- SOCKET EMIT START ---
         socketio.emit('plan_status_update', status_obj.to_dict())
-        # --- SOCKET EMIT END ---
-
         return jsonify(status_obj.to_dict()), 200
     except Exception as e:
         db.session.rollback()
@@ -788,30 +779,16 @@ def get_short_weekday(year, month, day):
 
 # --- ASYNC TASK FÜR MAILS ---
 def _send_notification_task(app, user_email_map, render_data, year, month):
-    """
-    Läuft im Hintergrund.
-    1. Generiert für jeden User ein PERSONALISIERTES Bild.
-    2. Sendet die Mail.
-    """
     with app.app_context():
         try:
-            print(f"[Mail-Task] Starte Versand an {len(user_email_map)} Empfänger...")
-
-            # Basis-Daten
-            # (render_data enthält bereits 'config' und 'staffing_rows')
-
             for user_id, user_info in user_email_map.items():
                 email = user_info['email']
-                name = user_info['name']  # z.B. "Max Mustermann" (wie in der Tabelle)
+                name = user_info['name']
                 vorname = user_info['vorname']
 
-                # 1. Bild personalisieren: Highlight-Name setzen
-                # Wir kopieren das Dict, um Race Conditions zu vermeiden (obwohl wir eh sequentiell sind)
                 user_render_data = render_data.copy()
                 user_render_data['highlight_user_name'] = name
 
-                # 2. Bild generieren
-                # Das dauert ca. 0.5 - 1s pro User
                 image_bytes = generate_roster_image_bytes(user_render_data, year, month)
 
                 if image_bytes:
@@ -821,7 +798,6 @@ def _send_notification_task(app, user_email_map, render_data, year, month):
                         'data': image_bytes
                     }]
 
-                    # 3. Mail senden
                     context = {
                         "vorname": vorname,
                         "name": name,
@@ -834,28 +810,16 @@ def _send_notification_task(app, user_email_map, render_data, year, month):
                         context=context,
                         attachments=attachments
                     )
-                    print(f"[Mail-Task] Gesendet an {email} (Highlight: {name})")
-                else:
-                    print(f"[Mail-Task] Fehler: Bild konnte für {email} nicht generiert werden.")
-
-            # Log
             _log_update_event("Rundmail",
-                              f"Dienstplan {month}/{year} an {len(user_email_map)} Mitarbeiter gesendet (Personalisiert).")
+                              f"Dienstplan {month}/{year} an {len(user_email_map)} Mitarbeiter gesendet.")
             db.session.commit()
-
         except Exception as e:
             print(f"[Mail-Task] CRASH: {e}")
-            import traceback
-            traceback.print_exc()
 
 
 @shifts_bp.route('/shifts/send_completion_notification', methods=['POST'])
 @admin_required
 def send_completion_notification():
-    """
-    Startet den Hintergrund-Prozess für den Rundmail-Versand.
-    Bereitet alle Daten vor, damit der Thread unabhängig ist.
-    """
     data = request.get_json() or {}
     try:
         year = int(data.get('year'))
@@ -868,12 +832,10 @@ def send_completion_notification():
         return jsonify({"message": "Planstatus nicht gefunden."}), 404
 
     try:
-        # User laden
         users_with_email = User.query.filter(User.email != None, User.email != "").all()
         if not users_with_email:
             return jsonify({"message": "Keine Benutzer mit E-Mail-Adresse gefunden."}), 404
 
-        # Map bauen für den Thread: ID -> {email, name, vorname}
         user_email_map = {}
         for u in users_with_email:
             user_email_map[u.id] = {
@@ -882,10 +844,8 @@ def send_completion_notification():
                 'vorname': u.vorname
             }
 
-        # --- DATEN VORBEREITEN (Einmalig, für alle gleich) ---
         days_in_month = calendar.monthrange(year, month)[1]
         days_header = []
-
         special_dates = SpecialDate.query.filter(
             extract('year', SpecialDate.date) == year,
             extract('month', SpecialDate.date) == month
@@ -902,7 +862,6 @@ def send_completion_notification():
                 'event_type': evt_type
             })
 
-        # Sichtbare User für die Matrix
         current_month_end_date = date(year, month, days_in_month)
         prev_month_end_date = date(year, month, 1) - timedelta(days=1)
         users_query = User.query.filter(
@@ -915,7 +874,6 @@ def send_completion_notification():
             if u.inaktiv_ab_datum is None or u.inaktiv_ab_datum > prev_month_end_date:
                 all_visible_users.append(u)
 
-        # Schichten laden
         shifts_db = Shift.query.options(joinedload(Shift.shift_type)).filter(
             extract('year', Shift.date) == year,
             extract('month', Shift.date) == month,
@@ -933,85 +891,34 @@ def send_completion_notification():
                     'bg_priority': s.shift_type.prioritize_background
                 }
 
-        # --- GESAMTSTUNDEN (BULK-OPTIMIERT) ---
         shift_types = ShiftType.query.all()
         st_hours = {st.id: (st.hours or 0.0) for st in shift_types}
         st_spill = {st.id: (st.hours_spillover or 0.0) for st in shift_types}
         st_is_work = {st.id: st.is_work_shift for st in shift_types}
         st_abbr_map = {st.abbreviation: st for st in shift_types}
 
-        # 1. Daten laden (nur 3 Queries für alle)
-        prev_month_last_day_date = date(year, month, 1) - timedelta(days=1)
+        user_hours_map = defaultdict(float)
+        current_month_last_day = date(year, month, days_in_month)
         shifts_prev_last_day = Shift.query.options(joinedload(Shift.shift_type)).filter(
-            Shift.date == prev_month_last_day_date,
+            Shift.date == prev_month_end_date,
             Shift.variant_id == None
         ).all()
 
-        queries_curr = ShiftQuery.query.filter(
-            extract('year', ShiftQuery.shift_date) == year,
-            extract('month', ShiftQuery.shift_date) == month,
-            ShiftQuery.status == 'offen'
-        ).all()
-
-        queries_prev = ShiftQuery.query.filter(
-            ShiftQuery.shift_date == prev_month_last_day_date,
-            ShiftQuery.status == 'offen'
-        ).all()
-
-        # 2. Rechnen (Memory)
-        user_hours_map = defaultdict(float)
-        current_month_last_day = date(year, month, days_in_month)
-
-        # A. Current Shifts
         for s in shifts_db:
             if s.shifttype_id and st_is_work.get(s.shifttype_id):
                 user_hours_map[s.user_id] += st_hours.get(s.shifttype_id, 0.0)
                 if s.date == current_month_last_day:
                     user_hours_map[s.user_id] -= st_spill.get(s.shifttype_id, 0.0)
-
-        # B. Prev Shifts (Spillover Add)
         for s in shifts_prev_last_day:
             if s.shifttype_id and st_is_work.get(s.shifttype_id):
                 user_hours_map[s.user_id] += st_spill.get(s.shifttype_id, 0.0)
 
-        # C. Queries (Current)
-        for q in queries_curr:
-            if q.message.startswith("Anfrage für:"):
-                try:
-                    parts = q.message.split(":")
-                    if len(parts) > 1:
-                        abbr = parts[1].strip().replace('?', '')
-                        st = st_abbr_map.get(abbr)
-                        if st and st.is_work_shift:
-                            user_hours_map[q.sender_user_id] += (st.hours or 0.0)
-                            if q.shift_date == current_month_last_day:
-                                user_hours_map[q.sender_user_id] -= (st.hours_spillover or 0.0)
-                except:
-                    pass
-
-        # D. Queries (Prev)
-        for q in queries_prev:
-            if q.message.startswith("Anfrage für:"):
-                try:
-                    parts = q.message.split(":")
-                    if len(parts) > 1:
-                        abbr = parts[1].strip().replace('?', '')
-                        st = st_abbr_map.get(abbr)
-                        if st and st.is_work_shift:
-                            user_hours_map[q.sender_user_id] += (st.hours_spillover or 0.0)
-                except:
-                    pass
-
-        # Matrix Rows bauen
         matrix_rows = []
         for u in all_visible_users:
             total_val = round(user_hours_map[u.id], 2)
-            # Entferne .00 für Sauberkeit, wenn glatt
-            if total_val.is_integer():
-                total_val = int(total_val)
-
+            if total_val.is_integer(): total_val = int(total_val)
             row_data = {
-                'name': f"{u.vorname} {u.name}",  # Format muss zum 'highlight_user_name' passen!
+                'name': f"{u.vorname} {u.name}",
                 'dog': u.diensthund or '',
                 'total_hours': total_val,
                 'cells': []
@@ -1024,75 +931,17 @@ def send_completion_notification():
                     row_data['cells'].append({'abbr': '', 'color': 'transparent'})
             matrix_rows.append(row_data)
 
-        # Staffing (Soll/Ist) berechnen
-        shifts_for_calc = [s.to_dict() for s in shifts_db]
-        # shift_types neu laden? Oben schon geladen, aber sortierung wichtig für anzeige
-        shift_types_sorted = sorted(shift_types, key=lambda x: (x.staffing_sort_order, x.abbreviation))
-        shift_types_data = [st.to_dict() for st in shift_types_sorted]
-
-        queries_data = [q.to_dict() for q in queries_curr]
-
-        staffing_actual = _calculate_actual_staffing(shifts_for_calc, queries_data, shift_types_data, year, month)
-        staffing_rows = []
-        day_key_map = ['min_staff_mo', 'min_staff_di', 'min_staff_mi', 'min_staff_do', 'min_staff_fr', 'min_staff_sa',
-                       'min_staff_so']
-
-        relevant_types = [st for st in shift_types_sorted if (
-                st.min_staff_mo > 0 or st.min_staff_di > 0 or st.min_staff_mi > 0 or st.min_staff_do > 0 or
-                st.min_staff_fr > 0 or st.min_staff_sa > 0 or st.min_staff_so > 0 or st.min_staff_holiday > 0
-        )]
-
-        for st in relevant_types:
-            row_cells = []
-            for day in range(1, days_in_month + 1):
-                date_obj = date(year, month, day)
-                day_of_week = date_obj.weekday()
-                is_holiday_for_calc = (
-                        date_obj.day in special_dates_map and special_dates_map[date_obj.day] == 'holiday')
-                if is_holiday_for_calc:
-                    soll = st.min_staff_holiday
-                else:
-                    soll = getattr(st, day_key_map[day_of_week])
-
-                ist = 0
-                if st.id in staffing_actual and day in staffing_actual[st.id]:
-                    ist = staffing_actual[st.id][day]
-
-                status_key = "ok"
-                if soll > 0:
-                    if ist == 0:
-                        status_key = "err"  # Rot: Keiner da
-                    elif ist < soll:
-                        status_key = "warn"  # Gelb: Teilbesetzung
-                    elif ist > soll:
-                        status_key = "warn"  # Gelb: Überbelegung
-                    else:
-                        status_key = "ok"  # Grün: Passt
-
-                    row_cells.append({'count': ist, 'status': status_key, 'is_empty': False})
-                else:
-                    row_cells.append({'count': '', 'status': 'none', 'is_empty': True})
-            staffing_rows.append({'name': f"{st.abbreviation} ({st.name})", 'cells': row_cells})
-
-        # Basis-Render-Daten
         render_data = {
             'year': year,
             'month_name': date(year, month, 1).strftime('%B'),
             'days_header': days_header,
             'rows': matrix_rows,
-            'staffing_rows': staffing_rows
         }
 
-        # --- THREAD STARTEN ---
         app = current_app._get_current_object()
         thread = threading.Thread(target=_send_notification_task, args=(app, user_email_map, render_data, year, month))
         thread.start()
 
-        return jsonify(
-            {"message": f"Versand gestartet! {len(user_email_map)} E-Mails werden im Hintergrund verarbeitet."}), 200
-
+        return jsonify({"message": f"Versand gestartet!"}), 200
     except Exception as e:
-        current_app.logger.error(f"Fehler bei Init Rundmail: {str(e)}")
-        import traceback
-        traceback.print_exc()
         return jsonify({"message": f"Fehler: {str(e)}"}), 500

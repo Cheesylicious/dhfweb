@@ -21,8 +21,7 @@ def create_app(config_name='default'):
     login_manager.init_app(app)
     mail.init_app(app)
 
-    # NEU: SocketIO initialisieren (Echtzeit-Kommunikation)
-    # Die Origins wurden um die neuen HTTPS-Domains ergänzt, um Verbindungsabbrüche zu vermeiden.
+    # SocketIO initialisieren
     socketio.init_app(app, cors_allowed_origins=[
         "https://dhf-planer.de",
         "https://www.dhf-planer.de",
@@ -31,8 +30,6 @@ def create_app(config_name='default'):
     ])
 
     # 3. CORS initialisieren
-    # WICHTIG: Erlaubt nun explizit die sicheren HTTPS-Domains, damit "Failed to fetch" verschwindet.
-    # supports_credentials=True bleibt aktiv für die Session-Verwaltung.
     CORS(app, supports_credentials=True, origins=[
         "https://dhf-planer.de",
         "https://www.dhf-planer.de",
@@ -43,18 +40,19 @@ def create_app(config_name='default'):
         "http://127.0.0.1:5000"
     ])
 
-    # 4. Modelle laden (ALLE MÜSSEN HIER SEIN, DAMIT SQLALCHEMY SIE KENNT)
+    # 4. Modelle laden
     from . import models
     from . import models_gamification
     from . import models_shop
-    from . import models_audit  # <<< NEU: Audit-Log Modell laden
-    from . import models_market  # <<< NEU: Marktplatz Modell laden
+    from . import models_audit
+    from . import models_market
+    from . import models_dogs
 
     @login_manager.user_loader
     def load_user(user_id):
         return db.session.get(models.User, int(user_id))
 
-    # 5. Blueprints registrieren (OHNE URL PREFIX, da die Routen schon /api/... enthalten)
+    # 5. Blueprints registrieren
     from .routes_auth import auth_bp
     app.register_blueprint(auth_bp)
 
@@ -91,39 +89,35 @@ def create_app(config_name='default'):
     from .routes_gamification import gamification_bp
     app.register_blueprint(gamification_bp)
 
-    # --- KRITISCH: SHOP BLUEPRINT HINZUFÜGEN ---
     from .routes_shop import shop_bp
-    app.register_blueprint(shop_bp)  # KEIN URL-PREFIX!
+    app.register_blueprint(shop_bp)
 
-    # --- Schicht-Änderungsanträge ---
     from .routes.shift_change_routes import shift_change_bp
-    app.register_blueprint(shift_change_bp, url_prefix='/api/shift-change')  # Korrekter Prefix hier
+    app.register_blueprint(shift_change_bp, url_prefix='/api/shift-change')
 
-    # --- Balance / Statistik Routes ---
     from .routes.balance_routes import balance_bp
     app.register_blueprint(balance_bp)
 
-    # --- NEU: KI-Prediction Blueprint ---
     from .routes_prediction import prediction_bp
     app.register_blueprint(prediction_bp)
 
-    # --- NEU: Audit-Log Blueprint ---
     from .routes_audit import audit_bp
     app.register_blueprint(audit_bp)
 
-    # --- NEU: Tauschbörse (Market) Blueprint ---
     from .routes_market import market_bp
     app.register_blueprint(market_bp)
 
-    # 6. Startup-Logik (Innerhalb des App Context)
+    # --- NEU: Hunde-Verwaltung Blueprint ---
+    from .routes_dogs import dogs_bp
+    app.register_blueprint(dogs_bp)
+
+    # 6. Startup-Logik
     with app.app_context():
-        # Alle Tabellen erstellen/prüfen (jetzt, da alle Models geladen sind)
         db.create_all()
         create_default_roles(db)
         create_default_holidays(db)
         create_default_settings(db)
         create_default_email_templates(db)
-        # NEU: Standard-Items für den Shop anlegen
         create_default_shop_items(db)
 
     return app
@@ -188,50 +182,13 @@ def create_default_settings(db_instance):
 
 def create_default_email_templates(db_instance):
     from .models import EmailTemplate
-
     defaults = [
-        {
-            "key": "query_resolved",
-            "name": "Anfrage erledigt / genehmigt",
-            "subject": "DHF-Planer: Anfrage erledigt ({datum})",
-            "body": "Hallo {vorname},\n\ndeine Anfrage für {datum} wurde bearbeitet und als 'Erledigt' markiert.\n\nDeine Nachricht: \"{nachricht}\"\n\nBitte prüfe den Schichtplan für Details.\n\nViele Grüße,\nDein Admin",
-            "description": "Wird gesendet, wenn eine Anfrage auf 'Erledigt' gesetzt wird.",
-            "placeholders": "{vorname}, {name}, {datum}, {nachricht}"
-        },
-        {
-            "key": "query_rejected",
-            "name": "Anfrage abgelehnt / gelöscht",
-            "subject": "DHF-Planer: Anfrage abgelehnt ({datum})",
-            "body": "Hallo {vorname},\n\ndeine Anfrage für den {datum} wurde gelöscht (abgelehnt).\n\nDeine Nachricht war: \"{nachricht}\"\n\nViele Grüße,\nDein Admin",
-            "description": "Wird gesendet, wenn eine Anfrage gelöscht wird.",
-            "placeholders": "{vorname}, {name}, {datum}, {nachricht}"
-        },
-        {
-            "key": "query_reply",
-            "name": "Neue Antwort auf Anfrage",
-            "subject": "DHF-Planer: Neue Antwort zur Anfrage ({datum})",
-            "body": "Hallo {vorname},\n\nes gibt eine neue Antwort zu deiner Anfrage für den {datum}.\n\nAntwort:\n\"{nachricht}\"\n\nBitte logge dich ein, um zu antworten.",
-            "description": "Wird gesendet, wenn jemand auf eine Anfrage antwortet.",
-            "placeholders": "{vorname}, {datum}, {nachricht}"
-        },
-        {
-            "key": "bulk_approved",
-            "name": "Massen-Genehmigung Zusammenfassung",
-            "subject": "DHF-Planer: Deine Anfragen wurden genehmigt",
-            "body": "Hallo {vorname},\n\nfolgende Anfragen wurden genehmigt und im Plan eingetragen:\n\n{nachricht}\n\nBitte prüfe den Schichtplan.\n\nViele Grüße,\nDein Admin",
-            "description": "Zusammenfassung bei Massen-Genehmigung.",
-            "placeholders": "{vorname}, {nachricht} (Liste der Termine)"
-        },
-        {
-            "key": "plan_completed",
-            "name": "Schichtplan Fertiggestellt (Rundmail)",
-            "subject": "DHF-Planer: Schichtplan {monat}/{jahr} ist fertig",
-            "body": "Hallo {vorname},\n\nder Schichtplan für {monat}/{jahr} wurde fertiggestellt und ist nun einsehbar.\n\nBitte prüfe deine Dienste.\n\n{plan_preview}\n\nViele Grüße,\nDein Admin",
-            "description": "Wird gesendet, wenn der Admin den Button 'E-Mail an alle' im Schichtplan klickt.",
-            "placeholders": "{vorname}, {name}, {monat}, {jahr}, {plan_preview}"
-        }
+        {"key": "query_resolved", "name": "Anfrage erledigt / genehmigt", "subject": "DHF-Planer: Anfrage erledigt ({datum})", "body": "Hallo {vorname},\n\ndeine Anfrage für {datum} wurde bearbeitet und als 'Erledigt' markiert.", "description": "Wird gesendet, wenn eine Anfrage auf 'Erledigt' gesetzt wird.", "placeholders": "{vorname}, {name}, {datum}, {nachricht}"},
+        {"key": "query_rejected", "name": "Anfrage abgelehnt / gelöscht", "subject": "DHF-Planer: Anfrage abgelehnt ({datum})", "body": "Hallo {vorname},\n\ndeine Anfrage für den {datum} wurde gelöscht.", "description": "Wird gesendet, wenn eine Anfrage gelöscht wird.", "placeholders": "{vorname}, {name}, {datum}, {nachricht}"},
+        {"key": "query_reply", "name": "Neue Antwort auf Anfrage", "subject": "DHF-Planer: Neue Antwort zur Anfrage ({datum})", "body": "Hallo {vorname},\n\nes gibt eine neue Antwort zu deiner Anfrage für den {datum}.", "description": "Wird gesendet, wenn jemand auf eine Anfrage antwortet.", "placeholders": "{vorname}, {datum}, {nachricht}"},
+        {"key": "bulk_approved", "name": "Massen-Genehmigung Zusammenfassung", "subject": "DHF-Planer: Deine Anfragen wurden genehmigt", "body": "Hallo {vorname},\n\nfolgende Anfragen wurden genehmigt und im Plan eingetragen.", "description": "Zusammenfassung bei Massen-Genehmigung.", "placeholders": "{vorname}, {nachricht}"},
+        {"key": "plan_completed", "name": "Schichtplan Fertiggestellt (Rundmail)", "subject": "DHF-Planer: Schichtplan {monat}/{jahr} ist fertig", "body": "Hallo {vorname},\n\nder Schichtplan für {monat}/{jahr} wurde fertiggestellt.", "description": "Wird gesendet, wenn der Admin den Button 'E-Mail an alle' im Schichtplan klickt.", "placeholders": "{vorname}, {name}, {monat}, {jahr}, {plan_preview}"}
     ]
-
     try:
         for t in defaults:
             existing = EmailTemplate.query.filter_by(key=t['key']).first()
@@ -255,7 +212,6 @@ def create_default_shop_items(db_instance):
     from .models_shop import ShopItem
     try:
         if ShopItem.query.count() == 0:
-            # Item 1: Der Booster
             booster = ShopItem(
                 name="XP Booster (7 Tage)",
                 description="+50% mehr Erfahrungspunkte für eine Woche.",
@@ -268,7 +224,6 @@ def create_default_shop_items(db_instance):
             )
             db_instance.session.add(booster)
 
-            # Item 2: Kaffee (Kosmetisch / Karma)
             coffee = ShopItem(
                 name="Virtueller Kaffee",
                 description="Zeig deine Wertschätzung für Kollegen.",

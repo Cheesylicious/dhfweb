@@ -292,7 +292,7 @@ def update_user(user_id):
         user.eintrittsdatum = data.get('eintrittsdatum', user.eintrittsdatum)
         user.aktiv_ab_datum = none_if_empty(data.get('aktiv_ab_datum', user.aktiv_ab_datum))
         if 'inaktiv_ab_datum' in data:
-            user.inaktiv_ab_datum = none_if_empty(data.get('inaktiv_ab_datum'))
+            user.inaktiv_ab_datum = none_if_empty(data['inaktiv_ab_datum'])
 
         user.urlaub_gesamt = data.get('urlaub_gesamt', user.urlaub_gesamt)
         # user.urlaub_rest = data.get('urlaub_rest', user.urlaub_rest) # Read-Only im Frontend (berechnet), daher nicht überschreiben
@@ -542,6 +542,10 @@ def update_dog_handler_data(user_id):
     data = request.get_json()
 
     try:
+        # --- NEU: Diensthund aktualisieren ---
+        if 'diensthund' in data:
+            user.diensthund = none_if_empty(data['diensthund'])
+
         # 1. Manuelle Zuweisung (Optional)
         if 'is_manual_dog_handler' in data:
             user.is_manual_dog_handler = data['is_manual_dog_handler']

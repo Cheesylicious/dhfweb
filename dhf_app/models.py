@@ -34,7 +34,10 @@ class User(db.Model, UserMixin):
 
     urlaub_gesamt = db.Column(db.Integer, default=0)
     urlaub_rest = db.Column(db.Integer, default=0)
+    
+    # Altes Textfeld (wird als Fallback/Legacy vorerst behalten)
     diensthund = db.Column(db.String(100), nullable=True)
+    
     tutorial_gesehen = db.Column(db.Boolean, default=False)
     password_geaendert = db.Column(db.DateTime, nullable=True)
     zuletzt_online = db.Column(db.DateTime, nullable=True)
@@ -50,19 +53,25 @@ class User(db.Model, UserMixin):
     # --- Kosmetische Items ---
     active_pet_asset = db.Column(db.String(100), nullable=True)  # Animierte Figur
 
-    # NEU: Aktives Theme (Design)
+    # Aktives Theme (Design)
     active_theme = db.Column(db.String(50), default='theme-default', nullable=True)
 
-    # --- NEU: Felder für Hundeführer-Verwaltung (Ausbildung & Schießen) ---
+    # --- Felder für Hundeführer-Verwaltung (Ausbildung & Schießen) ---
     last_training_qa = db.Column(db.Date, nullable=True)  # Letzte Quartalsausbildung
     last_training_shooting = db.Column(db.Date, nullable=True)  # Letztes Schießen
     is_manual_dog_handler = db.Column(db.Boolean, default=False)  # Manuell zur Hundeführer-Liste hinzugefügt
-    is_hidden_dog_handler = db.Column(db.Boolean, default=False)  # NEU: Hundeführer ausblenden (z.B. bei Austritt)
+    is_hidden_dog_handler = db.Column(db.Boolean, default=False)  # Hundeführer ausblenden (z.B. bei Austritt)
     # ----------------------------------------------------------------------
 
-    # --- NEU: Bot-Schutz Mechanik (Fehlversuche) ---
+    # --- Bot-Schutz Mechanik (Fehlversuche) ---
     failed_login_attempts = db.Column(db.Integer, default=0, nullable=False)
     last_failed_login = db.Column(db.DateTime, nullable=True)
+    # ----------------------------------------------------------------------
+
+    # --- NEU: Verknüpfung zur eigenständigen Hundeverwaltung ---
+    active_dog_id = db.Column(db.Integer, db.ForeignKey('dog.id'), nullable=True)
+    # WICHTIG: String 'Dog' verhindert Zirkel-Import
+    active_dog = db.relationship('Dog', foreign_keys=[active_dog_id], lazy=True)
     # ----------------------------------------------------------------------
 
     # HINWEIS: Die Beziehung (relationship) zu den Stats wird durch den backref
@@ -114,6 +123,10 @@ class User(db.Model, UserMixin):
             "last_training_shooting": self.safe_date_iso(self.last_training_shooting),
             "is_manual_dog_handler": self.is_manual_dog_handler,
             "is_hidden_dog_handler": self.is_hidden_dog_handler,
+
+            # --- Neue Hunde-Architektur ---
+            "active_dog_id": self.active_dog_id,
+            "active_dog_name": self.active_dog.name if self.active_dog else None,
 
             # --- Bot-Schutz Status ---
             "failed_login_attempts": self.failed_login_attempts
@@ -191,7 +204,7 @@ class Shift(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'), nullable=False)
 
-    # --- UPDATE: Nullable=True erlaubt Sperren von "leeren" Zellen ---
+    # UPDATE: Nullable=True erlaubt Sperren von "leeren" Zellen
     shifttype_id = db.Column(db.Integer, db.ForeignKey('shift_type.id'), nullable=True)
 
     date = db.Column(db.Date, nullable=False)
@@ -199,14 +212,18 @@ class Shift(db.Model):
     # --- Sperr-Flag ---
     is_locked = db.Column(db.Boolean, default=False, nullable=False)
 
-    # --- NEU: Tausch-Flag (Visualisierung Handschlag) ---
+    # --- Tausch-Flag (Visualisierung Handschlag) ---
     is_trade = db.Column(db.Boolean, default=False, nullable=False)
-    # --- ENDE NEU ---
 
-    # --- NEU: Verknüpfung zur Variante ---
+    # --- Verknüpfung zur Variante ---
     variant_id = db.Column(db.Integer, db.ForeignKey('plan_variant.id'), nullable=True)
     variant = db.relationship('PlanVariant', backref=db.backref('shifts', cascade="all, delete-orphan"))
-    # --- ENDE NEU ---
+
+    # --- NEU: Historisierung des Diensthundes ---
+    dog_id = db.Column(db.Integer, db.ForeignKey('dog.id'), nullable=True)
+    # WICHTIG: String 'Dog' verhindert Zirkel-Import
+    dog = db.relationship('Dog', foreign_keys=[dog_id], lazy=True)
+    # ----------------------------------------------------------------------
 
     user = db.relationship('User', backref=db.backref('shifts', lazy=True))
     shift_type = db.relationship('ShiftType')
@@ -226,7 +243,9 @@ class Shift(db.Model):
             "shifttype_abbreviation": abbr,
             "is_locked": self.is_locked,
             "is_trade": self.is_trade,
-            "variant_id": self.variant_id
+            "variant_id": self.variant_id,
+            "dog_id": self.dog_id,
+            "dog_name": self.dog.name if self.dog else None
         }
 
 
