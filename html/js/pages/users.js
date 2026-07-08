@@ -15,7 +15,6 @@ try {
     user = authData.user;
     isAdmin = authData.isAdmin;
 
-    // Zugriffsschutz für Nicht-Admins
     if (!isAdmin) {
         const navShiftplan = document.getElementById('nav-shiftplan');
         if (navShiftplan) navShiftplan.classList.remove('active');
@@ -33,58 +32,47 @@ try {
         const subNavUsers = document.getElementById('sub-nav-users');
         if (subNavUsers) subNavUsers.style.display = 'none';
 
-        // Stoppt die weitere Ausführung, damit keine API-Calls gemacht werden
         throw new Error("Nicht-Admin darf Benutzerverwaltung nicht sehen.");
     }
-
-} catch (e) {
-    console.error("Initialisierung von users.js gestoppt:", e.message);
-    // Skript hier beenden, wenn Auth fehlschlägt oder Rechte fehlen
+} catch (error) {
+    // catch block empty, auth handles redirect if needed
 }
 
-// --- 2. DOM-Elemente ---
-const userTableBody = document.getElementById('user-table-body');
+// --- GLOBALE ELEMENTE ---
 const modal = document.getElementById('user-modal');
-const modalTitle = document.getElementById('modal-title');
-const modalStatus = document.getElementById('modal-status');
-const addUserBtn = document.getElementById('add-user-btn');
+const closeModalBtn = document.querySelector('.close');
+const userTableBody = document.getElementById('user-table-body');
 const saveUserBtn = document.getElementById('save-user-btn');
-const closeModalBtn = document.getElementById('close-user-modal');
+const addUserBtn = document.getElementById('add-user-btn');
 
-// Formular Felder
+// Formular-Felder
 const userIdField = document.getElementById('user-id');
 const vornameField = document.getElementById('user-vorname');
 const nameField = document.getElementById('user-name');
 const emailField = document.getElementById('user-email');
 const passwortField = document.getElementById('user-passwort');
 const roleField = document.getElementById('user-role');
-const geburtstagField = document.getElementById('user-geburtstag');
-const telefonField = document.getElementById('user-telefon');
-const eintrittsdatumField = document.getElementById('user-eintrittsdatum');
-const aktivAbField = document.getElementById('user-aktiv-ab');
-const inaktivAbField = document.getElementById('user-inaktiv-ab');
-const canSeeStatsField = document.getElementById('user-can-see-stats');
-const urlaubGesamtField = document.getElementById('user-urlaub-gesamt');
-const urlaubRestField = document.getElementById('user-urlaub-rest');
-const diensthundField = document.getElementById('user-diensthund');
-const tutorialField = document.getElementById('user-tutorial');
+const userTelefonField = document.getElementById('user-telefon');
+const userEintrittsdatumField = document.getElementById('user-eintrittsdatum');
+const userAktivAbField = document.getElementById('user-aktiv-ab');
+const userInaktivAbField = document.getElementById('user-inaktiv-ab');
+const userUrlaubGesamtField = document.getElementById('user-urlaub-gesamt');
+const userUrlaubRestField = document.getElementById('user-urlaub-rest');
+const userDiensthundField = document.getElementById('user-diensthund'); 
+const userTutorialField = document.getElementById('user-tutorial');
+const userCanSeeStatsField = document.getElementById('user-can-see-stats');
 const passGeaendertField = document.getElementById('user-pass-geaendert');
 const zuletztOnlineField = document.getElementById('user-zuletzt-online');
 const forcePwResetBtn = document.getElementById('force-pw-reset-btn');
-
-// NEU: Checkbox für manuelle Hundeführer-Zuweisung
 const isManualDogHandlerField = document.getElementById('user-is-manual-dog-handler');
-
-// Container für dynamische Sichtbarkeit (Limits Bereich)
 const limitsWrapper = document.getElementById('limits-wrapper');
+const modalStatus = document.getElementById('modal-status');
 
 // Spalten-Konfiguration
 const columnModal = document.getElementById('column-modal');
 const toggleColumnsBtn = document.getElementById('toggle-columns-btn');
 const saveColumnToggleBtn = document.getElementById('save-column-toggle');
 const columnCheckboxes = document.querySelectorAll('.col-toggle-cb');
-
-// Test-Mail
 const sendTestMailBtn = document.getElementById('send-test-mail-btn');
 
 // --- 3. Hilfsfunktionen ---
@@ -169,7 +157,35 @@ async function loadRolesIntoDropdown(selectedRoleId = null) {
     }
 }
 
-// --- LIMITS LADEN (Optimiertes Layout für Grid) ---
+// Hunde ins Dropdown laden
+async function loadDogsIntoDropdown(selectedDogName = '') {
+    try {
+        const allDogs = await apiFetch('/api/dogs');
+        userDiensthundField.innerHTML = '<option value="">-- Kein Diensthund --</option>';
+        
+        allDogs.forEach(dog => {
+            const option = document.createElement('option');
+            option.value = dog.name; 
+            option.textContent = dog.name;
+            if (dog.name === selectedDogName) {
+                option.selected = true;
+            }
+            userDiensthundField.appendChild(option);
+        });
+        
+        // Falls der Nutzer einen Hund eingetragen hat, der gelöscht wurde
+        if (selectedDogName && !allDogs.find(d => d.name === selectedDogName)) {
+            const option = document.createElement('option');
+            option.value = selectedDogName;
+            option.textContent = selectedDogName + " (Archiviert/Gelöscht)";
+            option.selected = true;
+            userDiensthundField.appendChild(option);
+        }
+    } catch(e) {
+        console.error("Fehler beim Laden der Hunde:", e);
+    }
+}
+
 async function loadUserLimits(userId) {
     const container = document.getElementById('limits-container');
     if (!container) return;
@@ -186,9 +202,8 @@ async function loadUserLimits(userId) {
         }
 
         limits.forEach(limit => {
-             // Erstelle eine "Limit Card" für das Grid
              const card = document.createElement('div');
-             card.className = 'limit-card'; // Style aus HTML (background, border)
+             card.className = 'limit-card'; 
 
              card.innerHTML = `
                  <label for="limit-${limit.shifttype_id}" style="display:block; margin-bottom:5px; font-size:12px; color:#bdc3c7; font-weight:600;">
@@ -228,7 +243,6 @@ async function saveUserLimits(userId) {
 }
 
 async function loadUsers() {
-    // Falls das Element nicht existiert (z.B. falsche Seite oder Auth-Fehler), abbrechen
     if (!userTableBody) return;
 
     try {
@@ -243,9 +257,6 @@ async function loadUsers() {
             const eintritt = formatDateTime(u.eintrittsdatum, 'date') || '---';
             const aktiv = formatDateTime(u.aktiv_ab_datum, 'date') || '---';
 
-            // --- ÄNDERUNG: Urlaub Rest (Berechnet) anzeigen ---
-            // Wenn das Backend vacation_remaining liefert (was es jetzt sollte), nutzen wir das.
-            // Falls undefined, ein ? anzeigen.
             const restAnzeige = (u.vacation_remaining !== undefined) ? u.vacation_remaining : '?';
             const urlaub = restAnzeige + ' / ' + u.urlaub_gesamt;
 
@@ -272,7 +283,6 @@ async function loadUsers() {
         });
         applyColumnPreferences();
     } catch (error) {
-        // Fehler nur anzeigen, wenn es nicht am fehlenden Auth liegt (das fängt initAuthCheck ab)
         console.error(error);
         if(userTableBody) {
              userTableBody.innerHTML = `<tr><td colspan="10" style="text-align:center; color: #e74c3c;">Fehler beim Laden: ${error.message}</td></tr>`;
@@ -293,13 +303,11 @@ if (userTableBody) {
     });
 }
 
-// "Neuer Benutzer" Button
 if (addUserBtn) {
     addUserBtn.onclick = async () => {
         modalTitle.textContent = 'Neuen Benutzer erstellen';
         modalStatus.textContent = '';
 
-        // Felder leeren
         userIdField.value = '';
         vornameField.value = '';
         nameField.value = '';
@@ -313,36 +321,30 @@ if (addUserBtn) {
         inaktivAbField.value = '';
         urlaubGesamtField.value = 0;
 
-        // --- ÄNDERUNG: Resturlaub bei "Neu" deaktiviert (wird berechnet) ---
         urlaubRestField.value = 0;
-        urlaubRestField.disabled = true; // Neu angelegte User haben per Definition noch keine verbrauchten Tage
+        urlaubRestField.disabled = true; 
 
-        diensthundField.value = '';
         tutorialField.checked = false;
         canSeeStatsField.checked = false;
 
-        // NEU: Hundeführer Checkbox Reset
         if (isManualDogHandlerField) isManualDogHandlerField.checked = false;
 
-        // Read-Only Infos leeren
         passGeaendertField.value = 'Wird autom. gesetzt';
         zuletztOnlineField.value = 'Nie';
 
-        // UI Anpassungen für "Neu"
-        if(limitsWrapper) limitsWrapper.style.display = 'none'; // Limits erst nach Erstellung
-        if(forcePwResetBtn) forcePwResetBtn.style.display = 'none'; // Kein Reset ohne ID
+        if(limitsWrapper) limitsWrapper.style.display = 'none'; 
+        if(forcePwResetBtn) forcePwResetBtn.style.display = 'none'; 
 
         await loadRolesIntoDropdown();
+        await loadDogsIntoDropdown(''); 
         openModal(modal);
     };
 }
 
-// "Bearbeiten" Button Logik
 async function openEditModal(user) {
     modalTitle.textContent = 'Benutzer bearbeiten';
     modalStatus.textContent = '';
 
-    // Felder füllen
     userIdField.value = user.id;
     vornameField.value = user.vorname;
     nameField.value = user.name;
@@ -356,17 +358,13 @@ async function openEditModal(user) {
     inaktivAbField.value = formatDateTime(user.inaktiv_ab_datum, 'date');
     urlaubGesamtField.value = user.urlaub_gesamt || 0;
 
-    // --- ÄNDERUNG: Urlaub Rest zeigt jetzt den berechneten Wert und ist READONLY ---
-    // Wenn 'vacation_remaining' vom Backend kommt, nutzen wir das. Sonst den DB-Wert 'urlaub_rest' als Fallback oder 0.
     urlaubRestField.value = (user.vacation_remaining !== undefined) ? user.vacation_remaining : (user.urlaub_rest || 0);
-    urlaubRestField.disabled = true; // Schreibschutz
+    urlaubRestField.disabled = true; 
     urlaubRestField.title = "Dieser Wert wird automatisch berechnet: (Gesamt + Übertrag) - Verbraucht.";
 
-    diensthundField.value = user.diensthund || '';
     tutorialField.checked = user.tutorial_gesehen;
     canSeeStatsField.checked = user.can_see_statistics === true;
 
-    // NEU: Hundeführer Checkbox laden
     if (isManualDogHandlerField) {
         isManualDogHandlerField.checked = user.is_manual_dog_handler === true;
     }
@@ -374,15 +372,14 @@ async function openEditModal(user) {
     passGeaendertField.value = formatDateTime(user.password_geaendert, 'datetime') || 'Unbekannt';
     zuletztOnlineField.value = formatDateTime(user.zuletzt_online, 'datetime') || 'Nie';
 
-    // UI Anpassungen für "Edit"
     if(limitsWrapper) {
         limitsWrapper.style.display = 'block';
-        // Wir setzen hier einen Timeout, um sicherzugehen, dass das Modal gerendert ist
         setTimeout(() => loadUserLimits(user.id), 50);
     }
     if(forcePwResetBtn) forcePwResetBtn.style.display = 'inline-block';
 
     await loadRolesIntoDropdown(user.role_id);
+    await loadDogsIntoDropdown(user.diensthund || ''); 
     openModal(modal);
 }
 
@@ -401,14 +398,9 @@ if (saveUserBtn) {
             aktiv_ab_datum: aktivAbField.value || null,
             inaktiv_ab_datum: inaktivAbField.value || null,
             urlaub_gesamt: parseInt(urlaubGesamtField.value) || 0,
-
-            // --- ÄNDERUNG: urlaub_rest NICHT mehr senden, da Read-Only ---
-            // urlaub_rest: parseInt(urlaubRestField.value) || 0,
-
-            diensthund: diensthundField.value || null,
+            diensthund: userDiensthundField.value || null, 
             tutorial_gesehen: tutorialField.checked,
             can_see_statistics: canSeeStatsField.checked,
-            // NEU: Manuelles Hundeführer-Flag senden
             is_manual_dog_handler: isManualDogHandlerField ? isManualDogHandlerField.checked : false
         };
 
@@ -421,27 +413,22 @@ if (saveUserBtn) {
             let savedUser = null;
 
             if (id) {
-                // UPDATE
                 savedUser = await apiFetch(`/api/users/${id}`, 'PUT', payload);
 
-                // --- HACK: Damit das Flag sicher gespeichert wird, rufen wir den spezifischen Endpoint auf,
-                // falls die normale User-Route das Feld nicht verarbeitet.
                 if (payload.is_manual_dog_handler !== undefined) {
                      try {
                          await apiFetch(`/api/dog_handlers/${id}`, 'PUT', {
                              is_manual_dog_handler: payload.is_manual_dog_handler
                          });
                      } catch(ignore) {
-                         console.warn("Konnte Hundeführer-Status nicht separat speichern (vielleicht Route nicht aktiv?)", ignore);
+                         console.warn("Konnte Hundeführer-Status nicht separat speichern", ignore);
                      }
                 }
 
-                // Limits nur speichern, wenn sichtbar (also im Edit Mode)
                 if (limitsWrapper && limitsWrapper.style.display !== 'none') {
                      await saveUserLimits(id);
                 }
             } else {
-                // CREATE
                 if (!payload.passwort) {
                     modalStatus.textContent = "Passwort ist für neue User erforderlich.";
                     saveUserBtn.disabled = false;
@@ -449,7 +436,6 @@ if (saveUserBtn) {
                 }
                 savedUser = await apiFetch('/api/users', 'POST', payload);
 
-                // Bei Create müssen wir evtl. auch das Flag setzen (ID wird von Response benötigt)
                 if (savedUser && savedUser.id && payload.is_manual_dog_handler) {
                     try {
                         await apiFetch(`/api/dog_handlers/${savedUser.id}`, 'PUT', {
@@ -503,7 +489,6 @@ if (forcePwResetBtn) {
     };
 }
 
-// --- NEU: Event Listener für den Test-Mail Button ---
 if (sendTestMailBtn) {
     sendTestMailBtn.onclick = async () => {
         if (!confirm("Test-E-Mail an ALLE Benutzer mit E-Mail-Adresse senden?")) {
@@ -525,14 +510,12 @@ if (sendTestMailBtn) {
     };
 }
 
-// --- Init ---
 if (closeModalBtn) closeModalBtn.onclick = () => closeModal(modal);
 window.addEventListener('click', (event) => {
     if (event.target == modal) closeModal(modal);
     if (event.target == columnModal) closeModal(columnModal);
 });
 
-// Start (Nur wenn Admin)
 if (isAdmin) {
     loadUsers();
     applyColumnPreferences();

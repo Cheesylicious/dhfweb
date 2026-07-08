@@ -1,65 +1,401 @@
-<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01//EN" "http://www.w3.org/TR/html4/strict.dtd">
-<html>
+<!DOCTYPE html>
+<html lang="de">
 <head>
-  <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
-  <meta http-equiv="Content-Style-Type" content="text/css">
-  <title></title>
-  <meta name="Generator" content="Cocoa HTML Writer">
-  <meta name="CocoaVersion" content="2685.6">
-  <style type="text/css">
-    p.p1 {margin: 0.0px 0.0px 0.0px 0.0px; font: 12.0px 'Helvetica Neue'; -webkit-text-stroke: #000000}
-    p.p2 {margin: 0.0px 0.0px 0.0px 0.0px; font: 12.0px 'Helvetica Neue'; -webkit-text-stroke: #000000; min-height: 15.0px}
-    span.s1 {font-kerning: none}
-  </style>
+    <meta charset="UTF-8">
+    <title>Hundeverwaltung - DHF-Planer</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap');
+        
+        body { 
+            font-family: 'Poppins', sans-serif; 
+            margin: 0; 
+            background: #1a1a1a; 
+            color: #ffffff; 
+            overflow-x: hidden;
+        }
+
+        /* --- BACKGROUND ANIMATION --- */
+        #particle-canvas {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%; z-index: -1;
+        }
+
+        /* --- HEADER & NAVIGATION --- */
+        header {
+            background: rgba(255, 255, 255, 0.05);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            padding: 15px 30px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+        header h1 { margin: 0; color: #ffffff; font-size: 24px; }
+        header nav { display: flex; gap: 20px; align-items: center; }
+        header nav a {
+            text-decoration: none; color: #bdc3c7; font-weight: 500; font-size: 16px;
+            padding: 10px; border-radius: 5px; transition: background-color 0.3s, color 0.3s;
+            display: inline-flex; align-items: center;
+        }
+        header nav a.active, header nav a:hover {
+            background-color: rgba(255, 255, 255, 0.1); color: #ffffff;
+        }
+        #user-info { display: flex; align-items: center; gap: 15px; color: #bdc3c7; }
+        #logout-btn {
+            background: #e74c3c; color: white; padding: 10px 15px; border: none;
+            border-radius: 5px; cursor: pointer; font-size: 15px; transition: background-color 0.3s;
+        }
+        #logout-btn:hover { background: #c0392b; }
+        .report-btn {
+            background: #3498db; color: white; padding: 10px 15px; border: none;
+            border-radius: 5px; cursor: pointer; font-size: 15px; transition: background-color 0.3s;
+        }
+        .report-btn:hover { background: #2980b9; }
+
+        /* Sub-Nav */
+        .sub-nav {
+            background: rgba(255, 255, 255, 0.05);
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            padding: 0 30px;
+            margin-bottom: 30px;
+            display: flex;
+            align-items: center;
+            z-index: 100000;
+            position: relative;
+        }
+        .dropdown { position: relative; display: inline-block; z-index: 100001; }
+        .dropdown .dropbtn {
+            font-family: 'Poppins', sans-serif; text-decoration: none; color: #bdc3c7; 
+            font-weight: 500; font-size: 16px; padding: 15px 20px; background: none; 
+            border: none; cursor: pointer; border-bottom: 3px solid transparent; transition: color 0.3s;
+        }
+        .dropdown-content {
+            display: none; position: absolute; background: rgba(30, 30, 30, 0.9);
+            backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.1); min-width: 200px;
+            box-shadow: 0px 8px 16px 0px rgba(0,0,0,0.2); border-radius: 5px; left: 0;
+        }
+        .dropdown-content a {
+            color: #bdc3c7; padding: 12px 16px; text-decoration: none; display: block;
+            font-size: 15px; transition: background-color 0.3s, color 0.3s;
+        }
+        .dropdown-content a:hover { background-color: rgba(255, 255, 255, 0.05); color: #ffffff; }
+        .dropdown:hover .dropdown-content { display: block; }
+        .dropdown:hover .dropbtn, .dropbtn.active { color: #ffffff; border-bottom-color: #3498db; }
+        .dropdown-content a.active { background-color: rgba(52, 152, 219, 0.2); font-weight: 600; color: #3498db; }
+
+
+        /* --- HAUPTINHALT --- */
+        main { padding: 0 30px 30px 30px; max-width: 1200px; margin: auto; position: relative; z-index: 1;}
+        .card { background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 10px; padding: 20px; backdrop-filter: blur(10px);}
+        table { width: 100%; border-collapse: collapse; margin-top: 20px; }
+        th, td { padding: 15px; border-bottom: 1px solid rgba(255, 255, 255, 0.1); text-align: left; }
+        .btn-add, .btn-primary { background: #3498db; color: white; padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer; font-family: 'Poppins', sans-serif;}
+        .btn-add:hover, .btn-primary:hover { opacity: 0.8; }
+        .btn-danger { background: #e74c3c; color: white; padding: 5px 10px; border: none; border-radius: 5px; cursor: pointer; }
+        
+        /* Modal & Formulare */
+        .modal { display: none; position: fixed; z-index: 200000; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); }
+        .modal-content { background: #1e1e1e; margin: 5% auto; padding: 20px; width: 650px; border-radius: 10px; max-height: 85vh; overflow-y: auto;}
+        input, select, textarea { width: 100%; padding: 10px; margin: 5px 0 15px 0; background: #333; border: 1px solid #555; color: white; border-radius: 4px; box-sizing: border-box;}
+        
+        /* Modal Header (X-Button) */
+        .modal-header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #444; margin-bottom: 15px; padding-bottom: 10px; }
+        .modal-header h2 { margin: 0; font-size: 22px; }
+        .close-modal { color: #aaa; font-size: 28px; font-weight: bold; cursor: pointer; transition: color 0.3s; }
+        .close-modal:hover { color: #fff; }
+
+        /* Tabs */
+        .tab-container { display: flex; border-bottom: 1px solid #444; margin-bottom: 20px; }
+        .tab-btn { background: none; border: none; color: #bdc3c7; padding: 10px 20px; cursor: pointer; font-size: 16px; border-bottom: 3px solid transparent; }
+        .tab-btn.active { color: #3498db; border-bottom-color: #3498db; font-weight: bold; }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+
+        /* --- NEU: Filter-Leiste Historie (Pills) --- */
+        .event-filter-container {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-bottom: 15px;
+            padding-bottom: 5px;
+        }
+        .event-filter-btn {
+            background: rgba(255,255,255,0.05);
+            border: 1px solid #444;
+            color: #bdc3c7;
+            padding: 6px 14px;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 13px;
+            font-family: 'Poppins', sans-serif;
+            transition: all 0.2s ease;
+        }
+        .event-filter-btn:hover { background: rgba(255,255,255,0.1); color: #fff; }
+        .event-filter-btn.active { background: #3498db; color: #fff; border-color: #3498db; font-weight: 600; box-shadow: 0 2px 8px rgba(52, 152, 219, 0.3); }
+        
+        /* Dynamischer Avatar Hover Zoom */
+        .dog-avatar { 
+            width: 40px; height: 40px; border-radius: 50%; object-fit: cover; 
+            vertical-align: middle; margin-right: 10px; border: 2px solid #3498db;
+            transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275), box-shadow 0.3s ease;
+            cursor: pointer;
+            position: relative;
+            z-index: 1;
+        }
+        .dog-avatar:hover {
+            transform: scale(4.5); 
+            box-shadow: 0 10px 30px rgba(0,0,0,0.8), 0 0 20px rgba(52, 152, 219, 0.8);
+            z-index: 1000;
+        }
+        
+        .event-table { font-size: 13px; }
+        .event-table td { padding: 8px; }
+    </style>
 </head>
 <body>
-<p class="p1"><span class="s1">&lt;!DOCTYPE html&gt;</span></p>
-<p class="p1"><span class="s1">&lt;html lang="de"&gt;</span></p>
-<p class="p1"><span class="s1">&lt;head&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">    </span>&lt;meta charset="UTF-8"&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">    </span>&lt;title&gt;Hundeverwaltung - DHF-Planer&lt;/title&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">    </span>&lt;style&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&amp;display=swap');</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>body { font-family: 'Poppins', sans-serif; margin: 0; background: #1a1a1a; color: #ffffff; }</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>main { padding: 30px; max-width: 1200px; margin: auto; }</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>.card { background: rgba(255, 255, 255, 0.05); border: 1px solid rgba(255, 255, 255, 0.1); border-radius: 10px; padding: 20px; }</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>table { width: 100%; border-collapse: collapse; margin-top: 20px; }</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>th, td { padding: 15px; border-bottom: 1px solid rgba(255, 255, 255, 0.1); text-align: left; }</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>.btn-add { background: #27ae60; color: white; padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer; }</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>.modal { display: none; position: fixed; z-index: 100; left: 0; top: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.8); }</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>.modal-content { background: #1e1e1e; margin: 5% auto; padding: 20px; width: 500px; border-radius: 10px; }</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>input, select, textarea { width: 100%; padding: 10px; margin: 5px 0 15px 0; background: #333; border: 1px solid #555; color: white; border-radius: 4px; }</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">    </span>&lt;/style&gt;</span></p>
-<p class="p1"><span class="s1">&lt;/head&gt;</span></p>
-<p class="p1"><span class="s1">&lt;body&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">    </span>&lt;main&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>&lt;div class="card"&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>&lt;h2&gt;Diensthunde verwalten&lt;/h2&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>&lt;button class="btn-add" id="add-dog-btn"&gt;+ Hund anlegen&lt;/button&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>&lt;table id="dogs-table"&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                </span>&lt;thead&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                    </span>&lt;tr&gt;&lt;th&gt;Name&lt;/th&gt;&lt;th&gt;Rasse&lt;/th&gt;&lt;th&gt;Chip&lt;/th&gt;&lt;th&gt;Besitzer&lt;/th&gt;&lt;th&gt;Aktionen&lt;/th&gt;&lt;/tr&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                </span>&lt;/thead&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">                </span>&lt;tbody id="dogs-table-body"&gt;&lt;/tbody&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>&lt;/table&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>&lt;/div&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">    </span>&lt;/main&gt;</span></p>
-<p class="p2"><span class="s1"></span><br></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">    </span>&lt;div id="dog-modal" class="modal"&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>&lt;div class="modal-content"&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>&lt;h2 id="modal-title"&gt;Hund bearbeiten&lt;/h2&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>&lt;input type="hidden" id="dog-id"&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>&lt;label&gt;Name&lt;/label&gt;&lt;input type="text" id="dog-name"&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>&lt;label&gt;Rasse&lt;/label&gt;&lt;input type="text" id="dog-breed"&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>&lt;label&gt;Chipnummer&lt;/label&gt;&lt;input type="text" id="dog-chip"&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>&lt;label&gt;Geburtsdatum&lt;/label&gt;&lt;input type="date" id="dog-birth"&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>&lt;label&gt;Besitzer (User-ID)&lt;/label&gt;&lt;input type="number" id="dog-owner"&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>&lt;button class="btn-add" id="save-dog-btn"&gt;Speichern&lt;/button&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>&lt;button onclick="document.getElementById('dog-modal').style.display='none'"&gt;Abbrechen&lt;/button&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>&lt;/div&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">    </span>&lt;/div&gt;</span></p>
-<p class="p1"><span class="s1"><span class="Apple-converted-space">    </span>&lt;script type="module" src="js/pages/dogs.js"&gt;&lt;/script&gt;</span></p>
-<p class="p1"><span class="s1">&lt;/body&gt;</span></p>
-<p class="p1"><span class="s1">&lt;/html&gt;</span></p>
+
+    <canvas id="particle-canvas"></canvas>
+
+    <header>
+        <h1>DHF-Planer</h1>
+        <nav id="main-nav"> 
+            <a href="dashboard.html" id="nav-dashboard" style="display: none;">Dashboard</a>
+            <a href="users.html" id="nav-users" style="display: none;">Benutzerverwaltung</a>
+            <a href="emails.html" id="nav-emails" style="display: none;">E-Mails</a>
+            <a href="logs.html" id="nav-logs" style="display: none;">Logs</a>
+            <a href="feedback.html" id="nav-feedback" style="display: none;">Meldungen</a>
+            <a href="statistik.html" id="nav-statistik" style="display: none;">Statistik</a>
+            <a href="schichtplan.html" id="nav-shiftplan">Schichtplan</a> 
+        </nav>
+        <div id="user-info">
+            <span id="welcome-user">Lade...</span>
+            <button class="report-btn" id="global-report-btn">🐞 Problem melden</button>
+            <button id="logout-btn">Abmelden</button>
+        </div>
+    </header>
+
+    <div class="sub-nav">
+        <a href="schichtplan.html" style="color: #bdc3c7;">&laquo; Zurück zum Plan</a>
+        <div class="dropdown" id="settings-dropdown">
+            <button class="dropbtn active">Einstellungen &raquo;</button>
+            <div class="dropdown-content" id="settings-dropdown-content">
+                <a href="einstellungen.html" class="admin-only">Mitarbeiter Sortierung</a>
+                <a href="schichtarten.html" class="admin-only">Schichtarten</a>
+                <a href="shortcuts.html" class="admin-only">Shortcuts</a>
+                <a href="feiertage.html" class="admin-only">Feiertage & Sondertermine</a>
+                <a href="farbeeinstellungen.html" class="admin-only">Farbeinstellungen</a>
+                <a href="dogs.html" class="active admin-only">Diensthunde</a>
+            </div>
+        </div>
+    </div>
+
+    <main>
+        <div class="card">
+            <h2><i class="fas fa-paw"></i> Diensthunde verwalten</h2>
+            <button class="btn-add" id="add-dog-btn">+ Neuen Hund anlegen</button>
+            <table id="dogs-table">
+                <thead>
+                    <tr><th>Hund</th><th>Rasse</th><th>Chip</th><th>Hundeführer</th><th>Aktionen</th></tr>
+                </thead>
+                <tbody id="dogs-table-body"></tbody>
+            </table>
+        </div>
+    </main>
+
+    <div id="dog-modal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h2 id="modal-title">Hund bearbeiten</h2>
+                <span class="close-modal" onclick="document.getElementById('dog-modal').style.display='none'">&times;</span>
+            </div>
+            
+            <div class="tab-container">
+                <button class="tab-btn active" data-tab="tab-stammdaten">Stammdaten</button>
+                <button class="tab-btn" data-tab="tab-akte" id="btn-tab-akte" style="display:none;">Akte / Termine</button>
+                <button class="tab-btn" data-tab="tab-foto" id="btn-tab-foto" style="display:none;">Foto</button>
+            </div>
+
+            <div id="tab-stammdaten" class="tab-content active">
+                <input type="hidden" id="dog-id">
+                
+                <label>Name des Hundes *</label>
+                <input type="text" id="dog-name" required>
+                
+                <div style="display: flex; gap: 10px;">
+                    <div style="flex:1;"><label>Rasse</label><input type="text" id="dog-breed"></div>
+                    <div style="flex:1;"><label>Fellfarbe</label><input type="text" id="dog-color"></div>
+                </div>
+
+                <div style="display: flex; gap: 10px;">
+                    <div style="flex:1;"><label>Gewicht (kg)</label><input type="number" step="0.1" id="dog-weight"></div>
+                    <div style="flex:1;"><label>Größe (cm)</label><input type="number" step="0.1" id="dog-size"></div>
+                </div>
+
+                <label>Chipnummer</label>
+                <input type="text" id="dog-chip">
+                
+                <label>Geburtsdatum</label>
+                <input type="date" id="dog-birth">
+                
+                <div style="display: flex; gap: 10px;">
+                    <div style="flex:1;">
+                        <label>1. Hundeführer</label>
+                        <select id="dog-owner">
+                            <option value="">-- Kein Hundeführer --</option>
+                        </select>
+                    </div>
+                    <div style="flex:1;">
+                        <label>2. Hundeführer (Optional)</label>
+                        <select id="dog-owner-2">
+                            <option value="">-- Kein 2. Hundeführer --</option>
+                        </select>
+                    </div>
+                </div>
+
+                <div style="margin-top: 15px; border-top: 1px solid #444; padding-top: 15px; text-align: right;">
+                    <button class="btn-primary" id="save-dog-btn">Stammdaten speichern</button>
+                    <button onclick="document.getElementById('dog-modal').style.display='none'" style="padding: 10px; border-radius: 5px; cursor: pointer; background: #555; color: white; border: none; margin-left: 10px;">Schließen</button>
+                </div>
+            </div>
+
+            <div id="tab-akte" class="tab-content">
+                <div style="background: rgba(255,255,255,0.05); padding: 15px; border-radius: 5px; margin-bottom: 20px;">
+                    <h4>Neuen Eintrag hinzufügen</h4>
+                    
+                    <div style="display: flex; gap: 10px;">
+                        <div style="flex:1;">
+                            <label>Datum *</label>
+                            <input type="date" id="event-date">
+                        </div>
+                        <div style="flex:1;">
+                            <label>Nächster Termin (Fällig am)</label>
+                            <input type="date" id="event-due-date" title="Lassen Sie dieses Feld leer, wenn kein Folgetermin ansteht.">
+                        </div>
+                        <div style="flex:1;">
+                            <label>Typ *</label>
+                            <select id="event-type">
+                                <option value="Sonstiges" selected>Sonstiges</option>
+                                <option value="Impfung">Impfung</option>
+                                <option value="DPO Prüfung">DPO Prüfung</option>
+                                <option value="Tierarzt">Tierarztbesuch</option>
+                                <option value="Medikament (Bravecto etc.)">Medikament (Bravecto etc.)</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- DYNAMIC: DPO Prüfung -->
+                    <div id="dpo-fields" style="display: none; gap: 10px; margin-top: 5px;">
+                        <div style="flex:1;">
+                            <label style="color:#3498db;">Prüfung abgelegt mit: *</label>
+                            <select id="dpo-handler"></select>
+                        </div>
+                        <div style="flex:1;">
+                            <label style="color:#3498db;">Ergebnis: *</label>
+                            <select id="dpo-result">
+                                <option value="">-- Bitte wählen --</option>
+                                <option value="Bestanden">Bestanden</option>
+                                <option value="Nicht bestanden">Nicht bestanden</option>
+                            </select>
+                        </div>
+                    </div>
+
+                    <!-- DYNAMIC: Impfung -->
+                    <div id="vaccine-fields" style="display: none; margin-top: 5px;">
+                        <label style="color:#3498db;">Impf-Präparat (Intervall) *</label>
+                        <select id="vaccine-type">
+                            <option value="">-- Bitte wählen --</option>
+                            <option value="Tollwut (3 Jahre)">Tollwut (3 Jahre)</option>
+                            <option value="Tollwut (1 Jahr)">Tollwut (1 Jahr)</option>
+                            <option value="SHPPi / L4 (Komplett - 1 Jahr)">SHPPi / L4 (Komplett - 1 Jahr)</option>
+                            <option value="SHP (Staupe, Hepatitis, Parvovirose - 3 Jahre)">SHP (3 Jahre)</option>
+                            <option value="L4 (Leptospirose - 1 Jahr)">L4 (1 Jahr)</option>
+                        </select>
+                    </div>
+
+                    <label id="notes-label" style="margin-top: 15px; display:block;">Notiz / Ergebnis</label>
+                    <input type="text" id="event-notes" placeholder="Optionale Anmerkung...">
+                    
+                    <button class="btn-primary" id="add-event-btn" style="width: 100%; margin-top: 15px;">Eintrag speichern</button>
+                </div>
+
+                <div style="display: flex; justify-content: space-between; align-items: flex-end; margin-bottom: 10px;">
+                    <h4 style="margin-bottom: 0;">Historie & Termine</h4>
+                </div>
+                
+                <!-- NEU: Filter Leiste -->
+                <div class="event-filter-container">
+                    <button class="event-filter-btn active" data-filter="Alle">Alle Einträge</button>
+                    <button class="event-filter-btn" data-filter="Impfung">Impfungen</button>
+                    <button class="event-filter-btn" data-filter="DPO Prüfung">DPO Prüfungen</button>
+                    <button class="event-filter-btn" data-filter="Tierarzt">Tierarztbesuche</button>
+                    <button class="event-filter-btn" data-filter="Medikament (Bravecto etc.)">Medikamente</button>
+                    <button class="event-filter-btn" data-filter="Sonstiges">Sonstiges</button>
+                </div>
+
+                <table class="event-table">
+                    <thead><tr><th style="min-width: 80px;">Datum</th><th>Typ</th><th>Information / Notiz</th><th style="min-width: 100px;">Fällig am</th><th></th></tr></thead>
+                    <tbody id="events-table-body"></tbody>
+                </table>
+            </div>
+
+            <div id="tab-foto" class="tab-content" style="text-align: center;">
+                <img id="dog-photo-preview" src="" style="width: 200px; height: 200px; object-fit: cover; border-radius: 10px; margin-bottom: 20px; display: none; border: 3px solid #3498db;">
+                <p id="no-photo-text" style="color: #888;">Noch kein Foto vorhanden.</p>
+                
+                <input type="file" id="dog-photo-input" accept="image/*" style="display: block; margin: auto;">
+                <button class="btn-primary" id="upload-photo-btn" style="margin-top: 15px;">Foto hochladen & speichern</button>
+            </div>
+
+        </div>
+    </div>
+
+    <!-- Skripte -->
+    <script>
+        const canvas = document.getElementById('particle-canvas');
+        const ctx = canvas.getContext('2d');
+        let particlesArray;
+        function setCanvasSize() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; }
+        setCanvasSize();
+        class Particle {
+            constructor(x, y, dx, dy, size) { this.x = x; this.y = y; this.dx = dx; this.dy = dy; this.size = size; }
+            draw() { ctx.beginPath(); ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2, false); ctx.fillStyle = '#3498db'; ctx.fill(); }
+            update() { 
+                if (this.x > canvas.width || this.x < 0) this.dx = -this.dx; 
+                if (this.y > canvas.height || this.y < 0) this.dy = -this.dy; 
+                this.x += this.dx; this.y += this.dy; this.draw(); 
+            }
+        }
+        function initParticles() {
+            particlesArray = []; 
+            let count = Math.min((canvas.height * canvas.width) / 9000, 100);
+            for (let i = 0; i < count; i++) {
+                particlesArray.push(new Particle(
+                    Math.random() * canvas.width, Math.random() * canvas.height, 
+                    (Math.random() * 0.4) - 0.2, (Math.random() * 0.4) - 0.2, (Math.random() * 2) + 1
+                ));
+            }
+        }
+        function connect() {
+            for (let a = 0; a < particlesArray.length; a++) {
+                for (let b = a; b < particlesArray.length; b++) {
+                    let dist = ((particlesArray[a].x - particlesArray[b].x) ** 2) + ((particlesArray[a].y - particlesArray[b].y) ** 2);
+                    if (dist < 22500) { 
+                        ctx.strokeStyle = '#ecf0f1'; ctx.globalAlpha = 1 - (dist / 22500); 
+                        ctx.beginPath(); ctx.moveTo(particlesArray[a].x, particlesArray[a].y); ctx.lineTo(particlesArray[b].x, particlesArray[b].y); ctx.stroke(); 
+                    }
+                }
+            }
+            ctx.globalAlpha = 1.0;
+        }
+        function animate() { requestAnimationFrame(animate); ctx.clearRect(0, 0, canvas.width, canvas.height); particlesArray.forEach(p => p.update()); connect(); }
+        window.addEventListener('resize', () => { setCanvasSize(); initParticles(); });
+        initParticles(); animate();
+    </script>
+    <script type="module" src="js/pages/dogs.js"></script>
+    <script type="module" src="shared_feedback.js" defer></script>
 </body>
 </html>

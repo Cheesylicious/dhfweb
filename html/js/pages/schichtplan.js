@@ -145,7 +145,7 @@ async function renderGrid(isSilent = false) {
 
     try {
         // --- PARALLEL DATEN LADEN ---
-        const [shiftPayload, specialDatesResult, queriesResult, marketOffersResult, pendingRequestsResult] = await Promise.all([
+        const [shiftPayload, specialDatesResult, queriesResult, marketOffersResult, pendingRequestsResult, dogDuesResult] = await Promise.all([
             // 1. Schichten & Status
             PlanApi.fetchShiftData(PlanState.currentYear, PlanState.currentMonth, PlanState.currentVariantId),
             // 2. Feiertage
@@ -161,6 +161,10 @@ async function renderGrid(isSilent = false) {
             // 5. Change Requests (Legacy Anträge)
             (PlanState.isAdmin || PlanState.isPlanschreiber || PlanState.isHundefuehrer)
                 ? PlanApi.fetchPendingShiftChangeRequests()
+                : Promise.resolve([]),
+            // 6. Diensthund-Warnungen (Fälligkeiten)
+            (PlanState.isAdmin || PlanState.isHundefuehrer)
+                ? apiFetch('/api/dogs/upcoming_dues').catch(() => [])
                 : Promise.resolve([])
         ]);
 
@@ -211,7 +215,6 @@ async function renderGrid(isSilent = false) {
                     PlanState.marketTimerTargets[receiverKey] = {
                         abbr: offer.shift_type_abbr,
                         from: offer.offering_user_name,
-                        // FIX: Die Response-ID für den Abbruch durch den Interessenten
                         response_id: offer.my_response_id || null
                     };
 
@@ -222,7 +225,6 @@ async function renderGrid(isSilent = false) {
 
                     PlanState.marketTimerSources[senderKey] = {
                         to: candidateName,
-                        // FIX: Die Offer-ID für den Abbruch durch den Anbieter
                         offer_id: offer.id
                     };
                 }
@@ -296,6 +298,9 @@ async function renderGrid(isSilent = false) {
              badge.style.display = count > 0 ? 'inline-block' : 'none';
         }
 
+        // 7. NEU: Diensthund-Warnungen (Fälligkeiten) rendern
+        renderDogAlerts(dogDuesResult);
+
     } catch (error) {
         if(grid) grid.innerHTML = `<div style="padding: 20px; text-align: center; color: #e74c3c;">Fehler beim Laden des Plans: ${error.message}</div>`;
         console.error("RenderGrid Error:", error);
@@ -303,6 +308,67 @@ async function renderGrid(isSilent = false) {
         if(grid) grid.classList.remove('blur-loading');
         if(staffingGrid) staffingGrid.classList.remove('blur-loading');
     }
+}
+
+// --- NEU: DIENSTHUND WARNUNGEN RENDERN ---
+function renderDogAlerts(alerts) {
+    const container = document.getElementById('dog-alerts-container');
+    if (!container) return;
+    
+    container.innerHTML = ''; // Vorherige löschen
+    
+    if (!alerts || alerts.length === 0) return;
+
+    alerts.forEach(alert => {
+        const dueObj = new Date(alert.due_date);
+        const dueStr = dueObj.toLocaleDateString('de-DE');
+        
+        const isOverdue = alert.days_left < 0;
+        const isToday = alert.days_left === 0;
+
+        let statusText = `Fällig in ${alert.days_left} Tagen`;
+        let bgColor = 'linear-gradient(135deg, #f39c12, #e67e22)'; // Orange (Warnung)
+        let icon = 'fa-exclamation-triangle';
+
+        if (isOverdue) {
+            statusText = `Seit ${Math.abs(alert.days_left)} Tagen überfällig!`;
+            bgColor = 'linear-gradient(135deg, #e74c3c, #c0392b)'; // Rot (Gefahr)
+            icon = 'fa-skull-crossbones';
+        } else if (isToday) {
+            statusText = `Heute fällig!`;
+            bgColor = 'linear-gradient(135deg, #e74c3c, #c0392b)'; // Rot (Gefahr)
+            icon = 'fa-exclamation-circle';
+        }
+
+        // Mache den Titel im Banner etwas spezifischer, falls Details existieren
+        let typeDisplay = alert.event_type;
+        if (alert.details && alert.details.trim() !== '') {
+            let cleanDetail = alert.details.replace('Präparat: ', '').replace('Grund: ', '').trim();
+            if (cleanDetail.length > 30) cleanDetail = cleanDetail.substring(0, 30) + '...';
+            typeDisplay += ` (${cleanDetail})`;
+        }
+
+        const banner = document.createElement('div');
+        banner.className = 'dog-alert-banner';
+        banner.style.background = bgColor;
+        banner.title = "Klicken, um die Diensthunde-Akte zu öffnen";
+        
+        banner.innerHTML = `
+            <i class="fas ${icon}"></i>
+            <div class="alert-content">
+                <span style="font-size: 16px;"><strong>${alert.dog_name}:</strong> ${typeDisplay} - ${dueStr}</span><br>
+                <small style="opacity: 0.9;">${statusText}</small>
+            </div>
+            <div class="alert-action">Akte öffnen &raquo;</div>
+        `;
+        
+        // Klick leitet mit Parametern weiter, damit sich direkt die Akte öffnet!
+        banner.onclick = () => {
+            window.location.href = `dogs.html?open_dog=${alert.dog_id}&tab=akte`;
+        };
+        
+        container.appendChild(banner);
+    });
 }
 
 

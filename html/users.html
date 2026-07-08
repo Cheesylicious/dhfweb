@@ -448,6 +448,8 @@
             <a href="statistik.html" id="nav-statistik" style="display: none;">Statistik</a>
 
             <a href="schichtplan.html" id="nav-shiftplan">Schichtplan</a>
+            
+            <a href="dogs.html" id="nav-dogs" style="display: none;">Diensthunde</a>
         </nav>
         <div id="user-info">
             <span id="welcome-user"></span>
@@ -460,6 +462,7 @@
         <a href="users.html" id="sub-nav-users-link" class="active">Benutzer</a>
         <a href="dog_handlers.html">Hundeführer</a>
         <a href="roles.html">Rollen</a>
+        <a href="dogs.html">Diensthunde</a>
     </div>
 
     <main>
@@ -548,7 +551,13 @@
                             <div class="form-group"><label for="user-urlaub-gesamt">Urlaub Gesamt:</label><input type="number" id="user-urlaub-gesamt"></div>
                             <div class="form-group"><label for="user-urlaub-rest">Urlaub Rest:</label><input type="number" id="user-urlaub-rest"></div>
                         </div>
-                        <div class="form-group"><label for="user-diensthund">Diensthund (Name):</label><input type="text" id="user-diensthund"></div>
+                        
+                        <div class="form-group">
+                            <label for="user-diensthund">Diensthund (Name):</label>
+                            <select id="user-diensthund">
+                                <option value="">-- Kein Diensthund --</option>
+                            </select>
+                        </div>
 
                         <div class="form-group" style="display:flex; align-items:center; margin-top: 10px;">
                             <input type="checkbox" id="user-is-manual-dog-handler">
@@ -621,8 +630,17 @@
         </div>
     </div>
 
+    <script>
+        try {
+            const lsUser = JSON.parse(localStorage.getItem('dhf_user'));
+            if (lsUser && lsUser.role && (lsUser.role.name === 'admin' || lsUser.role.name === 'Hundeführer')) {
+                document.getElementById('nav-dogs').style.display = 'inline-flex';
+            }
+        } catch(e){}
+    </script>
+
     <script type="module" src="shared_feedback.js" defer></script>
     <script type="module" src="shared_notifications.js" defer></script>
     <script type="module" src="js/pages/users.js" defer></script>
-    </body>
+</body>
 </html>

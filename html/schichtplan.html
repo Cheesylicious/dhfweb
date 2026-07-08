@@ -185,7 +185,7 @@
 
         .plan-nav {
             display: flex;
-            justify-content: space-between; /* Hält Elemente auseinander */
+            justify-content: space-between;
             align-items: center;
             padding: 20px;
             background-color: #fcfcfc;
@@ -194,16 +194,13 @@
             gap: 15px;
         }
 
-        /* Linke Seite (Button) */
         .plan-nav-left {
             flex: 1;
             display: flex;
             justify-content: flex-start;
-            /* Sorgt dafür, dass die linke Seite nicht mehr Platz als nötig einnimmt */
             min-width: 150px;
         }
 
-        /* Rechte Seite (Button) */
         .plan-nav-right {
             flex: 1;
             display: flex;
@@ -213,18 +210,16 @@
             min-width: 150px;
         }
 
-        /* Mitte (Zentriert) */
         .plan-nav-center {
             display: flex;
-            flex-direction: column; /* Monat oben, Status unten */
+            flex-direction: column; 
             align-items: center;
             justify-content: center;
-            flex-grow: 2; /* Nimmt zentralen Platz ein */
+            flex-grow: 2; 
             gap: 10px;
-            position: relative; /* WICHTIG für Dropdown Positionierung */
+            position: relative; 
         }
 
-        /* --- NEU: Varianten Tabs --- */
         .variant-tabs {
             display: flex;
             gap: 5px;
@@ -270,9 +265,7 @@
             background: #d4edda;
             color: #155724;
         }
-        /* --- ENDE NEU --- */
 
-        /* --- NEU: Style für den klickbaren Monatsnamen --- */
         #current-month-label {
             margin: 0;
             font-size: 24px;
@@ -287,7 +280,6 @@
             background-color: #eef2f7;
             color: #3498db;
         }
-        /* Pfeil nach unten Icon andeuten */
         #current-month-label::after {
             content: ' ▼';
             font-size: 14px;
@@ -295,7 +287,6 @@
             vertical-align: middle;
         }
 
-        /* --- NEU: Month Picker Dropdown --- */
         #month-picker-dropdown {
             display: none;
             position: absolute;
@@ -363,13 +354,11 @@
             border-color: #3498db;
             font-weight: 600;
         }
-        /* --- ENDE NEU --- */
 
         #plan-status-container {
             display: flex;
             align-items: center;
             gap: 10px;
-            /* (Hintergrund entfernt, Badge ist jetzt prominent) */
         }
 
         .plan-nav button {
@@ -384,9 +373,8 @@
             background: #e0e0e0;
         }
 
-        /* Admin-Buttons im Status-Container */
         #plan-status-container .btn-admin-action {
-            display: none; /* Standardmäßig versteckt */
+            display: none; 
             padding: 6px 12px;
             font-size: 13px;
             font-weight: 500;
@@ -399,17 +387,15 @@
             display: inline-block;
         }
 
-        /* Spezifische Button-Stile */
         #plan-lock-btn {
-            background-color: #f8d7da; /* Hellrot */
+            background-color: #f8d7da; 
             color: #721c24;
         }
         #plan-lock-btn.locked {
-            background-color: #e74c3c; /* Kräftiges Rot */
+            background-color: #e74c3c; 
             color: white;
         }
 
-        /* --- NEU: Status Button Styles (Kombiniert Anzeige & Toggle) --- */
         #plan-status-toggle-btn {
             font-weight: 700;
             padding: 8px 14px;
@@ -418,31 +404,25 @@
             border-radius: 5px;
             cursor: pointer;
             transition: all 0.3s;
-            /* Standard (falls keine Klasse) */
             background-color: #f0f0f0;
             color: #333;
         }
-        /* Wenn "In Bearbeitung" */
         #plan-status-toggle-btn.status-in-bearbeitung {
-            background-color: #fff3cd; /* Gelb */
+            background-color: #fff3cd; 
             color: #856404;
             border-color: #ffeeba;
         }
-        /* Wenn "Fertiggestellt" */
         #plan-status-toggle-btn.status-fertiggestellt {
-            background-color: #d4edda; /* Grün */
+            background-color: #d4edda; 
             color: #155724;
             border-color: #c3e6cb;
         }
-        /* Wenn User kein Admin ist -> Button sieht aus wie ein Badge (nicht klickbar) */
         #plan-status-toggle-btn:disabled {
             cursor: default;
-            opacity: 1; /* Keine Ausgrauung */
+            opacity: 1; 
             box-shadow: none;
         }
-        /* --- ENDE NEU --- */
 
-        /* --- NEU: Massen-Bearbeitung Button --- */
         #plan-bulk-mode-btn {
             background-color: #e2e6ea;
             color: #333;
@@ -455,25 +435,18 @@
             box-shadow: inset 0 0 5px rgba(0,0,0,0.2);
         }
 
-        /* --- NEU: E-Mail Senden Button --- */
         #plan-send-mail-btn {
-            background-color: #6f42c1; /* Lila */
+            background-color: #6f42c1; 
             color: white;
-            display: none; /* Initial versteckt, wird per JS gesteuert */
+            display: none; 
         }
-        /* --- ENDE NEU --- */
-
 
         #save-staffing-order-btn { display: none; }
-
 
         #unified-grid-wrapper {
             overflow-x: auto;
         }
 
-        #schichtplan-grid-container {
-            /* overflow-x: auto; */ /* <-- ENTFERNT */
-        }
         #schichtplan-grid {
             display: grid;
         }
@@ -506,17 +479,14 @@
         .grid-header.day-color-training { background-color: var(--training-bg-color, #daffdb) !important; color: var(--text-color, #333); }
         .grid-header.day-color-shooting { background-color: var(--shooting-bg-color, #ffb0b0) !important; color: var(--text-color, #333); }
 
-        /* --- NEU: DPO Markierung (Rahmen & Label) --- */
         .day-border-dpo {
-            /* Inset-Shadow für den Rahmen, damit das Layout nicht springt */
             box-shadow: inset 0 0 0 3px var(--dpo-border-color, #ff0000) !important;
             z-index: 5 !important;
         }
         .grid-header.day-border-dpo {
             box-shadow: inset 0 0 0 3px var(--dpo-border-color, #ff0000) !important;
-            color: var(--dpo-border-color, #ff0000) !important; /* Text in Rahmenfarbe */
+            color: var(--dpo-border-color, #ff0000) !important; 
 
-            /* Flexbox für vertikale Stapelung (Label über Tag) */
             display: flex !important;
             flex-direction: column;
             justify-content: center;
@@ -535,7 +505,6 @@
             text-transform: uppercase;
             letter-spacing: 1px;
         }
-        /* --- ENDE NEU --- */
 
         .current-day-highlight {
             box-shadow: inset 2px 0 0 0 #3498db, inset -2px 0 0 0 #3498db !important;
@@ -563,8 +532,8 @@
         }
         .grid-header-uebertrag {
             font-weight: 600;
-            background: #ffe8cc; /* Orange-Hintergrund */
-            color: #8c5a00; /* Dunklerer Text für Kontrast */
+            background: #ffe8cc; 
+            color: #8c5a00; 
             position: sticky;
             top: 0;
             z-index: 100;
@@ -573,7 +542,7 @@
         .grid-user-uebertrag {
             font-weight: 500;
             text-align: center;
-            background: #fff3e6; /* Helleres Orange */
+            background: #fff3e6; 
             color: #333;
             box-shadow: inset 0px 1px 3px rgba(0, 0, 0, 0.1);
             border-right: 1px solid #ffcc99;
@@ -652,13 +621,11 @@
             box-shadow: inset 0 0 0 1px rgba(0,0,0,0.2) !important;
         }
 
-        /* --- NEU: Bulk Selection Styles --- */
         .grid-cell.selected {
              box-shadow: inset 0 0 0 4px #3498db !important;
              background-color: rgba(52, 152, 219, 0.2) !important;
              z-index: 15;
         }
-        /* Indikator für "klickbar" im Bulk Mode */
         body.bulk-mode-active .shift-request-cell {
              cursor: pointer !important;
              animation: pulse-border 2s infinite;
@@ -687,15 +654,11 @@
             font-weight: 600;
             font-size: 15px;
         }
-        /* --- ENDE NEU --- */
 
-        /* --- NEU: Style für einzeln gesperrte Schichten --- */
         .grid-cell.locked-shift {
-            /* Unterscheidung zur globalen Sperre: Dunklerer/anderer Rand */
             box-shadow: inset 0 0 0 2px rgba(100, 100, 100, 0.4) !important;
         }
 
-        /* Schloss-Icon unten rechts */
         .grid-cell.locked-shift::after {
             content: "🔒";
             position: absolute;
@@ -705,7 +668,7 @@
             line-height: 1;
             color: #333;
             opacity: 0.8;
-            pointer-events: none; /* Klicks gehen durch */
+            pointer-events: none; 
         }
 
         .plan-legende {
@@ -1168,11 +1131,11 @@
         /* --- STYLES FÜR GENERATOR MODAL & LOG --- */
         /* HUD Design für den Generator */
         .hud-modal-content {
-            background-color: #0d1117; /* Sehr dunkles Blau/Schwarz */
+            background-color: #0d1117; 
             border: 1px solid #3498db;
             box-shadow: 0 0 20px rgba(52, 152, 219, 0.4), inset 0 0 50px rgba(52, 152, 219, 0.1);
             color: #e6edf3;
-            font-family: 'Courier New', Courier, monospace; /* Terminal Font */
+            font-family: 'Courier New', Courier, monospace; 
             max-width: 800px !important;
             position: relative;
             overflow: hidden;
@@ -1209,13 +1172,12 @@
         .hud-body {
             padding: 20px;
             display: grid;
-            grid-template-columns: 1fr 1fr; /* Split Layout */
+            grid-template-columns: 1fr 1fr; 
             gap: 20px;
             position: relative;
             z-index: 3;
         }
 
-        /* Linke Seite: Visualisierung */
         .hud-visualizer {
             display: flex;
             flex-direction: column;
@@ -1241,7 +1203,6 @@
             transition: all 0.3s ease;
         }
 
-        /* Animationen für die Tages-Boxen */
         .hud-day-box.processing {
             border-color: #f1c40f;
             background: rgba(241, 196, 15, 0.2);
@@ -1255,7 +1216,6 @@
             box-shadow: 0 0 5px #2ecc71;
         }
 
-        /* Rechte Seite: Terminal Log */
         .hud-terminal {
             background: #000;
             border: 1px solid #333;
@@ -1274,9 +1234,8 @@
         .hud-log-line.success { color: #2ecc71; text-shadow: 0 0 2px #2ecc71; }
         .hud-log-line.highlight { color: #f1c40f; }
 
-        /* Status Balken */
         .hud-progress-container {
-            grid-column: 1 / -1; /* Volle Breite */
+            grid-column: 1 / -1; 
             margin-top: 10px;
         }
         .hud-progress-bar {
@@ -1293,7 +1252,6 @@
             transition: width 0.2s linear;
         }
 
-        /* Buttons */
         .hud-btn {
             background: rgba(52, 152, 219, 0.1);
             border: 1px solid #3498db;
@@ -1351,7 +1309,6 @@
             margin-bottom: 10px;
         }
 
-        /* --- NEU: Container für Schichtauswahl --- */
         #gen-shifts-container {
             display: flex;
             flex-wrap: wrap;
@@ -1379,7 +1336,6 @@
             margin: 0;
         }
 
-        /* --- NEU: Varianten Modal --- */
         #variant-modal .modal-content {
             max-width: 400px;
         }
@@ -1390,23 +1346,18 @@
             border-radius: 5px;
             font-size: 14px;
         }
-        /* --- ENDE NEU --- */
 
-        /* NEUER STYLE: Lottie Container Style (MIT USER-WERTEN) */
         #active-pet-container {
-            width: 160px; /* Vom User gefunden */
-            height: 160px; /* Vom User gefunden */
+            width: 160px; 
+            height: 160px; 
             cursor: pointer;
             margin-right: -5px;
-            /* Vertikale Ausrichtung optimieren (Hack des Users) */
             margin-bottom: -80px;
-            /* Sicherstellen, dass es standardmäßig ausgeblendet ist, bis JS es aktiviert */
             display: none;
         }
 
         /* --- GHOST / MARKET ANIMATIONS --- */
 
-        /* 1. Eingehend (Empfänger) - GRÜN */
         .grid-cell.pending-incoming {
             border: 2px dashed #2ecc71 !important;
             background-color: rgba(46, 204, 113, 0.05);
@@ -1414,7 +1365,6 @@
             animation: pulse-border-green 2s infinite;
         }
 
-        /* 2. Ausgehend (Sender) - ORANGE */
         .grid-cell.pending-outgoing {
             border: 2px dashed #f39c12 !important;
             background-color: rgba(243, 156, 18, 0.05);
@@ -1423,7 +1373,6 @@
             animation: pulse-border-orange 2s infinite;
         }
 
-        /* 3. Der "Geister-Text" */
         .ghost-text {
             opacity: 0.5;
             font-style: italic;
@@ -1432,7 +1381,6 @@
             font-weight: bold;
         }
 
-        /* 4. Icons */
         .icon-incoming {
             position: absolute;
             top: 2px; right: 2px;
@@ -1451,7 +1399,6 @@
             opacity: 0.8;
         }
 
-        /* Animationen */
         @keyframes pulse-border-green {
             0% { border-color: rgba(46, 204, 113, 0.4); }
             50% { border-color: rgba(46, 204, 113, 1.0); }
@@ -1462,6 +1409,44 @@
             0% { border-color: rgba(243, 156, 18, 0.4); }
             50% { border-color: rgba(243, 156, 18, 1.0); }
             100% { border-color: rgba(243, 156, 18, 0.4); }
+        }
+
+        /* --- NEU: Diensthund Warn-Banner --- */
+        #dog-alerts-container {
+            margin: 10px 0;
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        .dog-alert-banner {
+            background: linear-gradient(135deg, #f39c12, #e67e22);
+            color: white;
+            padding: 12px 20px;
+            border-radius: 8px;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            font-weight: 500;
+            box-shadow: 0 4px 15px rgba(243, 156, 18, 0.3);
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        .dog-alert-banner:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(243, 156, 18, 0.5);
+        }
+        .dog-alert-banner i {
+            font-size: 20px;
+            margin-right: 15px;
+        }
+        .dog-alert-banner .alert-content {
+            flex-grow: 1;
+        }
+        .dog-alert-banner .alert-action {
+            font-weight: 600;
+            background: rgba(0,0,0,0.2);
+            padding: 6px 12px;
+            border-radius: 5px;
         }
 
     </style>
@@ -1484,7 +1469,9 @@
             </a>
             <a href="statistik.html" id="nav-statistik" style="display: none;">Statistik</a>
 
-            <a href="schichtplan.html" class="active" id="nav-shiftplan">Schichtplan</a> </nav>
+            <a href="schichtplan.html" class="active" id="nav-shiftplan">Schichtplan</a> 
+            <a href="dogs.html" id="nav-dogs" style="display: none;"><i class="fas fa-paw" style="margin-right: 5px;"></i> Diensthunde</a>
+        </nav>
         <div id="user-info">
             <div id="active-pet-container"></div>
             <span id="welcome-user"></span>
@@ -1492,6 +1479,17 @@
             <button id="logout-btn">Abmelden</button>
         </div>
     </header>
+
+    <script>
+        // Schnelle UI-Freischaltung für den Diensthunde-Button
+        try {
+            const localUser = JSON.parse(localStorage.getItem('dhf_user'));
+            if (localUser && localUser.role && (localUser.role.name === 'admin' || localUser.role.name === 'Hundeführer')) {
+                const dogBtn = document.getElementById('nav-dogs');
+                if (dogBtn) dogBtn.style.display = 'inline-flex';
+            }
+        } catch(e) {}
+    </script>
 
     <div class="sub-nav">
         <div class="dropdown" id="plan-dropdown">
@@ -1572,6 +1570,9 @@
                     <button class="btn-secondary" id="bulk-cancel-btn">Abbrechen</button>
                 </div>
             </div>
+
+            <div id="dog-alerts-container"></div>
+
             <div id="unified-grid-wrapper">
 
                 <div id="schichtplan-grid-container">
