@@ -1,6 +1,7 @@
 # dhf_app/routes_dogs.py
 
 import os
+import re
 from flask import Blueprint, request, jsonify, current_app, send_from_directory
 from werkzeug.utils import secure_filename
 from .models_dogs import Dog, DogEvent
@@ -8,7 +9,7 @@ from .models import User
 from .extensions import db
 from flask_login import login_required, current_user
 from .utils import admin_required
-from datetime import datetime
+from datetime import datetime, timedelta
 
 dogs_bp = Blueprint('dogs', __name__, url_prefix='/api/dogs')
 
@@ -227,3 +228,59 @@ def delete_event(event_id):
     except Exception as e:
         db.session.rollback()
         return jsonify({"message": str(e)}), 500
+
+
+# --- ERINNERUNGS-BANNER ENDPUNKT (SMART UPDATE) ---
+@dogs_bp.route('/upcoming_dues', methods=['GET'])
+@login_required
+def get_upcoming_dues():
+    """
+    Liefert alle Diensthunde-Termine, die in den nächsten 21 Tagen fällig sind oder überfällig sind.
+    Löscht Duplikate heraus, wenn bereits eine neue Impfung des gleichen Typs eingetragen wurde!
+    """
+    try:
+        today = datetime.utcnow().date()
+        target_date = today + timedelta(days=21)
+        
+        dogs = Dog.query.filter_by(is_active=True).all()
+        alerts = []
+        
+        for dog in dogs:
+            # Hole alle Events dieses Hundes mit einem Fälligkeitsdatum, sortiert nach dem Ausführungsdatum (NEUSTE zuerst!)
+            events = DogEvent.query.filter_by(dog_id=dog.id).filter(DogEvent.due_date.isnot(None)).order_by(DogEvent.event_date.desc()).all()
+            
+            seen_keys = set()
+            
+            for event in events:
+                raw_notes = event.notes or ""
+                # Entferne die "(Erfasst von: ...)" Signatur, damit der Schlüsselvergleich sauber klappt
+                clean_notes = re.sub(r'\s*\(Erfasst von:.*?\)', '', raw_notes)
+                
+                # Wir nehmen den ersten Teil der Notiz (z.B. "Präparat: Tollwut" oder "Bravecto")
+                base_note = clean_notes.split(' | ')[0]
+                
+                # Bilde einen eindeutigen Schlüssel (z.B. "Impfung_Präparat: Tollwut (3 Jahre)")
+                key = f"{event.event_type}_{base_note}"
+                
+                # Wenn wir diesen Typ/Präparat bei DIESEM Hund schon gesehen haben, 
+                # dann war das vorherige Event jünger -> das aktuelle Event ist veraltet/erledigt!
+                if key in seen_keys:
+                    continue 
+                
+                seen_keys.add(key)
+                
+                # Ist DIESES neuste Event in den nächsten 21 Tagen fällig oder überfällig?
+                if event.due_date <= target_date:
+                    days_left = (event.due_date - today).days
+                    alerts.append({
+                        "dog_id": dog.id,
+                        "dog_name": dog.name,
+                        "event_type": event.event_type,
+                        "due_date": event.due_date.isoformat(),
+                        "days_left": days_left,
+                        "details": base_note # "Präparat: Tollwut" zur schönen Anzeige im Banner
+                    })
+                    
+        return jsonify(alerts), 200
+    except Exception as e:
+        return jsonify({"message": f"Fehler bei Fristenabfrage: {str(e)}"}), 500
