@@ -1,5 +1,4 @@
 // js/utils/api.js
-import { API_URL } from './constants.js';
 import { logout } from './auth.js';
 
 /**
@@ -19,7 +18,8 @@ export async function apiFetch(endpoint, method = 'GET', body = null) {
         options.body = JSON.stringify(body);
     }
 
-    const response = await fetch(API_URL + endpoint, options);
+    // GEÄNDERT: Feste IP (API_URL) entfernt, Browser nutzt nun automatisch HTTPS
+    const response = await fetch(endpoint, options);
 
     if (response.status === 401 || response.status === 403) {
         if (response.status === 401) {

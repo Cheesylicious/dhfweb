@@ -71,6 +71,9 @@ async function initialize() {
         // Generator UI: HUD und Steuerung
         PlanGeneratorUI.init(renderGrid);
 
+        // --- NEU: Staffing Module Init (Verknüpft den Button) ---
+        StaffingModule.init();
+
         // Socket: Echtzeit-Updates
         PlanSocket.init(
             renderGrid,

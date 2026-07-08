@@ -18,7 +18,6 @@
         return;
     }
 
-    const API_URL = 'http://46.224.63.203:5000';
     let user, isAdmin = false, isScheduler = false, isHundefuehrer = false;
 
     try {
@@ -142,7 +141,8 @@
     // --- 3. API Abruf & Render ---
     async function fetchAndBuildNotifications() {
         try {
-            const response = await fetch(API_URL + '/api/queries/notifications_summary', {
+            // GEÄNDERT: Feste IP (API_URL) entfernt
+            const response = await fetch('/api/queries/notifications_summary', {
                 method: 'GET', credentials: 'include'
             });
 

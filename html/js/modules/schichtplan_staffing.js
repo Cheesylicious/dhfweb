@@ -10,6 +10,16 @@ import { COL_WIDTH_UEBERTRAG, COL_WIDTH_DAY, COL_WIDTH_TOTAL } from '../utils/co
 export const StaffingModule = {
 
     /**
+     * NEU: Initialisiert Event-Listener für das Modul.
+     */
+    init() {
+        const toggleBtn = document.getElementById('staffing-sort-toggle');
+        if (toggleBtn) {
+            toggleBtn.addEventListener('click', () => this.toggleStaffingSortMode());
+        }
+    },
+
+    /**
      * Aktualisiert die lokalen Zähler für die Besetzung (ohne Reload vom Server).
      * Wird aufgerufen, wenn eine Schicht oder Anfrage im Grid geändert wird.
      */

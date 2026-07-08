@@ -3,7 +3,7 @@
  * Steuert den "Problem melden" Button und das Modal global auf allen Seiten.
  */
 
-import { API_URL } from './js/utils/constants.js';
+// GEÄNDERT: Import von API_URL restlos entfernt
 import { apiFetch } from './js/utils/api.js';
 import { initAuthCheck } from './js/utils/auth.js';
 
