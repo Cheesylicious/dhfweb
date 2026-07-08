@@ -36,6 +36,7 @@ const saveBtn = document.getElementById('save-btn');
 
 const editUserIdField = document.getElementById('edit-user-id');
 const editUserNameDisplay = document.getElementById('edit-user-name');
+const editDiensthundField = document.getElementById('edit-diensthund'); // NEU: Feld für Diensthund
 const editLastQaField = document.getElementById('edit-last-qa');
 const editLastShootingField = document.getElementById('edit-last-shooting');
 const editIsManualField = document.getElementById('edit-is-manual');
@@ -234,7 +235,11 @@ function renderTable(data) {
 
 function openModalFunc(user) {
     editUserIdField.value = user.id;
-    editUserNameDisplay.textContent = `${user.vorname} ${user.name} (${user.diensthund || 'Kein Hund'})`;
+    // Angepasst: Der Hund wird jetzt im neuen Eingabefeld angezeigt, nicht mehr im Titel
+    editUserNameDisplay.textContent = `${user.vorname} ${user.name}`;
+
+    // NEU: Diensthund in das Input-Feld laden
+    if (editDiensthundField) editDiensthundField.value = user.diensthund || '';
 
     // Dates setzen (YYYY-MM-DD für Input type=date)
     editLastQaField.value = user.last_training_qa || '';
@@ -253,6 +258,7 @@ saveBtn.onclick = async () => {
     if (!id) return;
 
     const payload = {
+        diensthund: editDiensthundField ? editDiensthundField.value : '', // NEU: Diensthund mitsenden
         last_training_qa: editLastQaField.value || '', // Leerer String wird im Backend zu NULL
         last_training_shooting: editLastShootingField.value || '',
         is_manual_dog_handler: editIsManualField ? editIsManualField.checked : false,

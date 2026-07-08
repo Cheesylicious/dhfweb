@@ -1,287 +1,311 @@
-<!DOCTYPE html>
-<html lang="de">
+<!DOCTYPE html PUBLIC "-//W3C//DTD HTML 4.01//EN" "http://www.w3.org/TR/html4/strict.dtd">
+<html>
 <head>
-    <meta charset="UTF-8">
-    <title>Hundeführer - DHF-Planer</title>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <style>
-        /* Import einer modernen Schriftart */
-        @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&display=swap');
-
-        body {
-            font-family: 'Poppins', sans-serif;
-            margin: 0;
-            background: #1a1a1a;
-            color: #ffffff;
-            overflow-x: hidden;
-        }
-
-        #particle-canvas {
-            position: fixed;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            z-index: -1;
-        }
-
-        /* Header */
-        header {
-            background: rgba(255, 255, 255, 0.05);
-            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-            backdrop-filter: blur(10px);
-            -webkit-backdrop-filter: blur(10px);
-            padding: 15px 30px;
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-
-        header h1 { margin: 0; color: #ffffff; font-size: 24px; }
-
-        header nav { display: flex; gap: 20px; align-items: center; }
-
-        header nav a {
-            text-decoration: none;
-            color: #bdc3c7;
-            font-weight: 500;
-            font-size: 16px;
-            padding: 10px;
-            border-radius: 5px;
-            transition: background-color 0.3s, color 0.3s;
-            display: inline-flex;
-            align-items: center;
-        }
-
-        header nav a.active, header nav a:hover {
-            background-color: rgba(255, 255, 255, 0.1);
-            color: #ffffff;
-        }
-
-        #user-info { display: flex; align-items: center; gap: 15px; color: #bdc3c7; }
-
-        #logout-btn {
-            background: #e74c3c; color: white; padding: 10px 15px; border: none;
-            border-radius: 5px; cursor: pointer; font-size: 15px; transition: background 0.3s;
-        }
-        #logout-btn:hover { background: #c0392b; }
-
-        .report-btn {
-            background: #3498db; color: white; padding: 10px 15px; border: none;
-            border-radius: 5px; cursor: pointer; font-size: 15px; margin-right: 15px;
-        }
-        .report-btn:hover { background: #2980b9; }
-
-        .nav-badge {
-            background: #e74c3c; color: white; font-size: 10px; font-weight: 600;
-            padding: 2px 5px; border-radius: 5px; margin-left: 8px; display: none;
-        }
-
-        /* Sub-Nav */
-        .sub-nav {
-            background: rgba(255, 255, 255, 0.05);
-            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-            backdrop-filter: blur(10px);
-            -webkit-backdrop-filter: blur(10px);
-            padding: 0 30px;
-            margin-bottom: 30px;
-            margin-top: -1px;
-            display: flex;
-            align-items: center;
-        }
-
-        .sub-nav a {
-            display: inline-block; padding: 15px 20px; text-decoration: none;
-            color: #bdc3c7; font-weight: 500; border-bottom: 3px solid transparent; transition: color 0.3s;
-        }
-        .sub-nav a.active, .sub-nav a:hover { color: #ffffff; border-bottom-color: #3498db; }
-
-        main { padding: 30px; max-width: 98%; margin: auto; }
-
-        /* Card */
-        .card {
-            background: rgba(255, 255, 255, 0.05);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            backdrop-filter: blur(10px);
-            -webkit-backdrop-filter: blur(10px);
-            box-shadow: 0 4px 30px rgba(0, 0, 0, 0.2);
-            border-radius: 10px;
-            overflow: hidden;
-        }
-
-        .card-header {
-            padding: 20px 25px; border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-            display: flex; justify-content: space-between; align-items: center;
-        }
-        .card-header h2 { margin: 0; color: #ffffff; font-weight: 600; }
-
-        /* Table */
-        table { width: 100%; border-collapse: collapse; }
-        th, td { text-align: left; padding: 15px 20px; border-bottom: 1px solid rgba(255, 255, 255, 0.1); color: #bdc3c7; }
-        th { background: rgba(255, 255, 255, 0.05); color: #ffffff; font-size: 13px; text-transform: uppercase; font-weight: 600; }
-        tbody tr:nth-child(even) { background-color: rgba(255, 255, 255, 0.03); }
-        tbody tr td:first-child { color: #ffffff; font-weight: 600; }
-
-        .status-ok { color: #2ecc71; font-weight: 600; }
-        .status-warning { color: #f1c40f; font-weight: 600; }
-        .status-danger { color: #e74c3c; font-weight: 600; }
-
-        .btn-edit { background: #3498db; color: white; padding: 8px 12px; border: none; border-radius: 5px; cursor: pointer; }
-        .btn-edit:hover { opacity: 0.8; }
-
-        /* Modal */
-        .modal {
-            display: none; position: fixed; z-index: 100; left: 0; top: 0;
-            width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.75);
-        }
-        .modal-content {
-            background: #1e1e1e; border: 1px solid rgba(255, 255, 255, 0.1); margin: 5% auto;
-            padding: 0; width: 90%; max-width: 500px; border-radius: 12px;
-            box-shadow: 0 10px 40px rgba(0,0,0,0.5); color: #ffffff; display: flex; flex-direction: column;
-        }
-        .modal-header {
-            display: flex; justify-content: space-between; align-items: center;
-            padding: 20px 30px; border-bottom: 1px solid rgba(255, 255, 255, 0.1); background: rgba(255,255,255,0.03);
-        }
-        .close { color: #bdc3c7; font-size: 28px; font-weight: bold; cursor: pointer; }
-        .close:hover { color: #ffffff; }
-
-        .modal-body { padding: 30px; }
-
-        .form-group { margin-bottom: 20px; }
-        .form-group label { display: block; margin-bottom: 8px; font-weight: 500; color: #bdc3c7; font-size: 13px; }
-        .form-group input {
-            width: 100%; padding: 12px; box-sizing: border-box; background: rgba(0, 0, 0, 0.3);
-            border: 1px solid #444; border-radius: 6px; color: #ffffff; font-family: 'Poppins', sans-serif;
-        }
-        .form-group input:focus { border-color: #3498db; outline: none; }
-
-        .modal-footer {
-            padding: 20px 30px; background: rgba(0, 0, 0, 0.2); border-top: 1px solid rgba(255, 255, 255, 0.1);
-            text-align: right; border-radius: 0 0 12px 12px;
-        }
-        .btn-primary { background: #007bff; color: white; padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer; }
-        .btn-primary:hover { opacity: 0.8; }
-
-        .restricted-view {
-             max-width: 600px; margin: 50px auto; padding: 30px; text-align: center;
-             background: rgba(255, 255, 255, 0.05); border-radius: 10px; border: 1px solid rgba(255, 255, 255, 0.1);
-        }
-        .restricted-view h2 { color: #e74c3c; }
-
-        /* Filter Controls */
-        .controls { display: flex; align-items: center; gap: 15px; }
-        #search-input {
-            padding: 8px 12px; border-radius: 5px; border: 1px solid #444; background: rgba(0,0,0,0.3); color: white;
-        }
-    </style>
+  <meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+  <meta http-equiv="Content-Style-Type" content="text/css">
+  <title></title>
+  <meta name="Generator" content="Cocoa HTML Writer">
+  <meta name="CocoaVersion" content="2685.6">
+  <style type="text/css">
+    body {background-color: #141414}
+    p.p1 {margin: 0.0px 0.0px 0.0px 0.0px; font: 12.0px 'Helvetica Neue'; color: #ffffff; -webkit-text-stroke: #ffffff}
+    p.p2 {margin: 0.0px 0.0px 0.0px 0.0px; font: 12.0px 'Helvetica Neue'; color: #ffffff; -webkit-text-stroke: #ffffff; min-height: 15.0px}
+    span.s1 {font-kerning: none}
+    span.s2 {font: 12.0px '.Apple Color Emoji UI'; font-kerning: none}
+  </style>
 </head>
 <body>
-
-    <canvas id="particle-canvas"></canvas>
-
-    <header>
-        <h1>DHF-Planer</h1>
-        <nav id="main-nav">
-            <a href="dashboard.html" id="nav-dashboard">Dashboard</a>
-            <a href="users.html" class="active" id="nav-users">Benutzerverwaltung</a>
-            <a href="emails.html" id="nav-emails" style="display: none;">E-Mails</a>
-            <a href="logs.html" id="nav-logs" style="display: none;">Logs</a>
-            <a href="feedback.html" id="nav-feedback" style="display: none;">
-                Meldungen <span id="feedback-badge" class="nav-badge">0</span>
-            </a>
-            <a href="statistik.html" id="nav-statistik" style="display: none;">Statistik</a>
-            <a href="schichtplan.html" id="nav-shiftplan">Schichtplan</a>
-        </nav>
-        <div id="user-info">
-            <span id="welcome-user"></span>
-            <button class="report-btn" id="global-report-btn">🐞 Problem melden</button>
-            <button id="logout-btn">Abmelden</button>
-        </div>
-    </header>
-
-    <div class="sub-nav" id="sub-nav-roles-container">
-        <a href="users.html">Benutzer</a>
-        <a href="dog_handlers.html" class="active">Hundeführer</a>
-        <a href="roles.html">Rollen</a>
-    </div>
-
-    <main>
-        <div id="content-wrapper">
-            <div class="card">
-                <div class="card-header">
-                    <h2>Hundeführer Ausbildung & Schießen</h2>
-                    <div class="controls">
-                        <label style="display:flex; align-items:center; margin-right: 15px; font-size: 13px; color: #bdc3c7;">
-                            <input type="checkbox" id="show-hidden-filter" style="width:auto; margin-right: 5px;"> Ausgeblendete anzeigen
-                        </label>
-                        <input type="text" id="search-input" placeholder="Suchen...">
-                    </div>
-                </div>
-                <div style="overflow-x: auto;">
-                    <table>
-                        <thead>
-                            <tr>
-                                <th>Name</th>
-                                <th>Diensthund</th>
-                                <th>Letzte Quartalsausbildung</th>
-                                <th>Nächste Fälligkeit (QA)</th>
-                                <th>Letztes Schießen</th>
-                                <th>Nächste Fälligkeit (Schießen)</th>
-                                <th>Aktionen</th>
-                            </tr>
-                        </thead>
-                        <tbody id="dog-handlers-table-body">
-                            </tbody>
-                    </table>
-                </div>
-            </div>
-        </div>
-    </main>
-
-    <div id="edit-modal" class="modal">
-        <div class="modal-content">
-            <div class="modal-header">
-                <h2 id="modal-title">Termine bearbeiten</h2>
-                <span class="close" id="close-modal">&times;</span>
-            </div>
-            <div class="modal-body">
-                <input type="hidden" id="edit-user-id">
-                <h3 id="edit-user-name" style="margin-top:0; color:#3498db;"></h3>
-
-                <div class="form-group">
-                    <label for="edit-last-qa">Letzte Quartalsausbildung (Datum):</label>
-                    <input type="date" id="edit-last-qa">
-                </div>
-
-                <div class="form-group">
-                    <label for="edit-last-shooting">Letztes Schießen (Datum):</label>
-                    <input type="date" id="edit-last-shooting">
-                </div>
-
-                <div class="form-group" style="margin-top: 20px; border-top: 1px dashed #444; padding-top: 10px;">
-                    <label style="display:flex; align-items:center;">
-                        <input type="checkbox" id="edit-is-manual" style="width:auto; margin-right:10px;">
-                        Manuell in dieser Liste anzeigen
-                    </label>
-                    <small style="color:#777;">(Unabhängig von der Rolle 'Hundeführer')</small>
-
-                    <label style="display:flex; align-items:center; margin-top: 10px;">
-                        <input type="checkbox" id="edit-is-hidden" style="width:auto; margin-right:10px;">
-                        <span style="color: #e74c3c;">Aus dieser Liste ausblenden</span>
-                    </label>
-                    <small style="color:#777;">(Gilt auch für Rolle 'Hundeführer')</small>
-                </div>
-            </div>
-            <div class="modal-footer">
-                <div id="modal-status" style="float:left; color: #e74c3c; line-height: 36px;"></div>
-                <button class="btn-primary" id="save-btn">Speichern</button>
-            </div>
-        </div>
-    </div>
-
-    <script type="module" src="shared_feedback.js" defer></script>
-    <script type="module" src="shared_notifications.js" defer></script>
-    <script type="module" src="js/pages/dog_handlers.js" defer></script>
+<p class="p1"><span class="s1">&lt;!DOCTYPE html&gt;</span></p>
+<p class="p1"><span class="s1">&lt;html lang="de"&gt;</span></p>
+<p class="p1"><span class="s1">&lt;head&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">    </span>&lt;meta charset="UTF-8"&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">    </span>&lt;title&gt;Hundeführer - DHF-Planer&lt;/title&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">    </span>&lt;meta name="viewport" content="width=device-width, initial-scale=1.0"&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">    </span>&lt;style&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>/* Import einer modernen Schriftart */</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>@import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;600&amp;display=swap');</span></p>
+<p class="p2"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>body {</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>font-family: 'Poppins', sans-serif;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>margin: 0;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>background: #1a1a1a;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>color: #ffffff;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>overflow-x: hidden;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>}</span></p>
+<p class="p2"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>#particle-canvas {</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>position: fixed;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>top: 0;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>left: 0;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>width: 100%;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>height: 100%;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>z-index: -1;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>}</span></p>
+<p class="p2"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>/* Header */</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>header {</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>background: rgba(255, 255, 255, 0.05);</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>border-bottom: 1px solid rgba(255, 255, 255, 0.1);</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>backdrop-filter: blur(10px);</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>-webkit-backdrop-filter: blur(10px);</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>padding: 15px 30px;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>display: flex;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>justify-content: space-between;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>align-items: center;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>}</span></p>
+<p class="p2"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>header h1 { margin: 0; color: #ffffff; font-size: 24px; }</span></p>
+<p class="p2"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>header nav { display: flex; gap: 20px; align-items: center; }</span></p>
+<p class="p2"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>header nav a {</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>text-decoration: none;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>color: #bdc3c7;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>font-weight: 500;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>font-size: 16px;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>padding: 10px;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>border-radius: 5px;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>transition: background-color 0.3s, color 0.3s;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>display: inline-flex;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>align-items: center;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>}</span></p>
+<p class="p2"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>header nav a.active, header nav a:hover {</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>background-color: rgba(255, 255, 255, 0.1);</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>color: #ffffff;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>}</span></p>
+<p class="p2"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>#user-info { display: flex; align-items: center; gap: 15px; color: #bdc3c7; }</span></p>
+<p class="p2"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>#logout-btn {</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>background: #e74c3c; color: white; padding: 10px 15px; border: none;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>border-radius: 5px; cursor: pointer; font-size: 15px; transition: background 0.3s;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>}</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>#logout-btn:hover { background: #c0392b; }</span></p>
+<p class="p2"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>.report-btn {</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>background: #3498db; color: white; padding: 10px 15px; border: none;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>border-radius: 5px; cursor: pointer; font-size: 15px; margin-right: 15px;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>}</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>.report-btn:hover { background: #2980b9; }</span></p>
+<p class="p2"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>.nav-badge {</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>background: #e74c3c; color: white; font-size: 10px; font-weight: 600;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>padding: 2px 5px; border-radius: 5px; margin-left: 8px; display: none;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>}</span></p>
+<p class="p2"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>/* Sub-Nav */</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>.sub-nav {</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>background: rgba(255, 255, 255, 0.05);</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>border-bottom: 1px solid rgba(255, 255, 255, 0.1);</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>backdrop-filter: blur(10px);</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>-webkit-backdrop-filter: blur(10px);</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>padding: 0 30px;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>margin-bottom: 30px;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>margin-top: -1px;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>display: flex;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>align-items: center;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>}</span></p>
+<p class="p2"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>.sub-nav a {</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>display: inline-block; padding: 15px 20px; text-decoration: none;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>color: #bdc3c7; font-weight: 500; border-bottom: 3px solid transparent; transition: color 0.3s;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>}</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>.sub-nav a.active, .sub-nav a:hover { color: #ffffff; border-bottom-color: #3498db; }</span></p>
+<p class="p2"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>main { padding: 30px; max-width: 98%; margin: auto; }</span></p>
+<p class="p2"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>/* Card */</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>.card {</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>background: rgba(255, 255, 255, 0.05);</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>border: 1px solid rgba(255, 255, 255, 0.1);</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>backdrop-filter: blur(10px);</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>-webkit-backdrop-filter: blur(10px);</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>box-shadow: 0 4px 30px rgba(0, 0, 0, 0.2);</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>border-radius: 10px;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>overflow: hidden;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>}</span></p>
+<p class="p2"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>.card-header {</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>padding: 20px 25px; border-bottom: 1px solid rgba(255, 255, 255, 0.1);</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>display: flex; justify-content: space-between; align-items: center;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>}</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>.card-header h2 { margin: 0; color: #ffffff; font-weight: 600; }</span></p>
+<p class="p2"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>/* Table */</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>table { width: 100%; border-collapse: collapse; }</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>th, td { text-align: left; padding: 15px 20px; border-bottom: 1px solid rgba(255, 255, 255, 0.1); color: #bdc3c7; }</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>th { background: rgba(255, 255, 255, 0.05); color: #ffffff; font-size: 13px; text-transform: uppercase; font-weight: 600; }</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>tbody tr:nth-child(even) { background-color: rgba(255, 255, 255, 0.03); }</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>tbody tr td:first-child { color: #ffffff; font-weight: 600; }</span></p>
+<p class="p2"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>.status-ok { color: #2ecc71; font-weight: 600; }</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>.status-warning { color: #f1c40f; font-weight: 600; }</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>.status-danger { color: #e74c3c; font-weight: 600; }</span></p>
+<p class="p2"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>.btn-edit { background: #3498db; color: white; padding: 8px 12px; border: none; border-radius: 5px; cursor: pointer; }</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>.btn-edit:hover { opacity: 0.8; }</span></p>
+<p class="p2"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>/* Modal */</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>.modal {</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>display: none; position: fixed; z-index: 100; left: 0; top: 0;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>width: 100%; height: 100%; overflow: auto; background-color: rgba(0,0,0,0.75);</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>}</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>.modal-content {</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>background: #1e1e1e; border: 1px solid rgba(255, 255, 255, 0.1); margin: 5% auto;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>padding: 0; width: 90%; max-width: 500px; border-radius: 12px;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>box-shadow: 0 10px 40px rgba(0,0,0,0.5); color: #ffffff; display: flex; flex-direction: column;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>}</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>.modal-header {</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>display: flex; justify-content: space-between; align-items: center;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>padding: 20px 30px; border-bottom: 1px solid rgba(255, 255, 255, 0.1); background: rgba(255,255,255,0.03);</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>}</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>.close { color: #bdc3c7; font-size: 28px; font-weight: bold; cursor: pointer; }</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>.close:hover { color: #ffffff; }</span></p>
+<p class="p2"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>.modal-body { padding: 30px; }</span></p>
+<p class="p2"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>.form-group { margin-bottom: 20px; }</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>.form-group label { display: block; margin-bottom: 8px; font-weight: 500; color: #bdc3c7; font-size: 13px; }</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>.form-group input {</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>width: 100%; padding: 12px; box-sizing: border-box; background: rgba(0, 0, 0, 0.3);</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>border: 1px solid #444; border-radius: 6px; color: #ffffff; font-family: 'Poppins', sans-serif;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>}</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>.form-group input:focus { border-color: #3498db; outline: none; }</span></p>
+<p class="p2"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>.modal-footer {</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>padding: 20px 30px; background: rgba(0, 0, 0, 0.2); border-top: 1px solid rgba(255, 255, 255, 0.1);</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>text-align: right; border-radius: 0 0 12px 12px;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>}</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>.btn-primary { background: #007bff; color: white; padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer; }</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>.btn-primary:hover { opacity: 0.8; }</span></p>
+<p class="p2"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>.restricted-view {</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">             </span>max-width: 600px; margin: 50px auto; padding: 30px; text-align: center;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">             </span>background: rgba(255, 255, 255, 0.05); border-radius: 10px; border: 1px solid rgba(255, 255, 255, 0.1);</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>}</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>.restricted-view h2 { color: #e74c3c; }</span></p>
+<p class="p2"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>/* Filter Controls */</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>.controls { display: flex; align-items: center; gap: 15px; }</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>#search-input {</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>padding: 8px 12px; border-radius: 5px; border: 1px solid #444; background: rgba(0,0,0,0.3); color: white;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>}</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">    </span>&lt;/style&gt;</span></p>
+<p class="p1"><span class="s1">&lt;/head&gt;</span></p>
+<p class="p1"><span class="s1">&lt;body&gt;</span></p>
+<p class="p2"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">    </span>&lt;canvas id="particle-canvas"&gt;&lt;/canvas&gt;</span></p>
+<p class="p2"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">    </span>&lt;header&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>&lt;h1&gt;DHF-Planer&lt;/h1&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>&lt;nav id="main-nav"&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>&lt;a href="dashboard.html" id="nav-dashboard"&gt;Dashboard&lt;/a&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>&lt;a href="users.html" class="active" id="nav-users"&gt;Benutzerverwaltung&lt;/a&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>&lt;a href="emails.html" id="nav-emails" style="display: none;"&gt;E-Mails&lt;/a&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>&lt;a href="logs.html" id="nav-logs" style="display: none;"&gt;Logs&lt;/a&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>&lt;a href="feedback.html" id="nav-feedback" style="display: none;"&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                </span>Meldungen &lt;span id="feedback-badge" class="nav-badge"&gt;0&lt;/span&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>&lt;/a&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>&lt;a href="statistik.html" id="nav-statistik" style="display: none;"&gt;Statistik&lt;/a&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>&lt;a href="schichtplan.html" id="nav-shiftplan"&gt;Schichtplan&lt;/a&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>&lt;/nav&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>&lt;div id="user-info"&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>&lt;span id="welcome-user"&gt;&lt;/span&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>&lt;button class="report-btn" id="global-report-btn"&gt;</span><span class="s2">🐞</span><span class="s1"> Problem melden&lt;/button&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>&lt;button id="logout-btn"&gt;Abmelden&lt;/button&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>&lt;/div&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">    </span>&lt;/header&gt;</span></p>
+<p class="p2"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">    </span>&lt;div class="sub-nav" id="sub-nav-roles-container"&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>&lt;a href="users.html"&gt;Benutzer&lt;/a&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>&lt;a href="dog_handlers.html" class="active"&gt;Hundeführer&lt;/a&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>&lt;a href="roles.html"&gt;Rollen&lt;/a&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">    </span>&lt;/div&gt;</span></p>
+<p class="p2"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">    </span>&lt;main&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>&lt;div id="content-wrapper"&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>&lt;div class="card"&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                </span>&lt;div class="card-header"&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                    </span>&lt;h2&gt;Hundeführer Ausbildung &amp; Schießen&lt;/h2&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                    </span>&lt;div class="controls"&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                        </span>&lt;label style="display:flex; align-items:center; margin-right: 15px; font-size: 13px; color: #bdc3c7;"&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                            </span>&lt;input type="checkbox" id="show-hidden-filter" style="width:auto; margin-right: 5px;"&gt; Ausgeblendete anzeigen</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                        </span>&lt;/label&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                        </span>&lt;input type="text" id="search-input" placeholder="Suchen..."&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                    </span>&lt;/div&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                </span>&lt;/div&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                </span>&lt;div style="overflow-x: auto;"&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                    </span>&lt;table&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                        </span>&lt;thead&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                            </span>&lt;tr&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                                </span>&lt;th&gt;Name&lt;/th&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                                </span>&lt;th&gt;Diensthund&lt;/th&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                                </span>&lt;th&gt;Letzte Quartalsausbildung&lt;/th&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                                </span>&lt;th&gt;Nächste Fälligkeit (QA)&lt;/th&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                                </span>&lt;th&gt;Letztes Schießen&lt;/th&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                                </span>&lt;th&gt;Nächste Fälligkeit (Schießen)&lt;/th&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                                </span>&lt;th&gt;Aktionen&lt;/th&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                            </span>&lt;/tr&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                        </span>&lt;/thead&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                        </span>&lt;tbody id="dog-handlers-table-body"&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                            </span>&lt;/tbody&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                    </span>&lt;/table&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                </span>&lt;/div&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>&lt;/div&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>&lt;/div&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">    </span>&lt;/main&gt;</span></p>
+<p class="p2"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">    </span>&lt;div id="edit-modal" class="modal"&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>&lt;div class="modal-content"&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>&lt;div class="modal-header"&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                </span>&lt;h2 id="modal-title"&gt;Termine bearbeiten&lt;/h2&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                </span>&lt;span class="close" id="close-modal"&gt;&amp;times;&lt;/span&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>&lt;/div&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>&lt;div class="modal-body"&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                </span>&lt;input type="hidden" id="edit-user-id"&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                </span>&lt;h3 id="edit-user-name" style="margin-top:0; color:#3498db;"&gt;&lt;/h3&gt;</span></p>
+<p class="p2"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                </span>&lt;div class="form-group"&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                    </span>&lt;label for="edit-diensthund"&gt;Name des Diensthundes:&lt;/label&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                    </span>&lt;input type="text" id="edit-diensthund" placeholder="Name des Hundes"&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                </span>&lt;/div&gt;</span></p>
+<p class="p2"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                </span>&lt;div class="form-group"&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                    </span>&lt;label for="edit-last-qa"&gt;Letzte Quartalsausbildung (Datum):&lt;/label&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                    </span>&lt;input type="date" id="edit-last-qa"&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                </span>&lt;/div&gt;</span></p>
+<p class="p2"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                </span>&lt;div class="form-group"&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                    </span>&lt;label for="edit-last-shooting"&gt;Letztes Schießen (Datum):&lt;/label&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                    </span>&lt;input type="date" id="edit-last-shooting"&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                </span>&lt;/div&gt;</span></p>
+<p class="p2"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                </span>&lt;div class="form-group" style="margin-top: 20px; border-top: 1px dashed #444; padding-top: 10px;"&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                    </span>&lt;label style="display:flex; align-items:center;"&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                        </span>&lt;input type="checkbox" id="edit-is-manual" style="width:auto; margin-right:10px;"&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                        </span>Manuell in dieser Liste anzeigen</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                    </span>&lt;/label&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                    </span>&lt;small style="color:#777;"&gt;(Unabhängig von der Rolle 'Hundeführer')&lt;/small&gt;</span></p>
+<p class="p2"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                    </span>&lt;label style="display:flex; align-items:center; margin-top: 10px;"&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                        </span>&lt;input type="checkbox" id="edit-is-hidden" style="width:auto; margin-right:10px;"&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                        </span>&lt;span style="color: #e74c3c;"&gt;Aus dieser Liste ausblenden&lt;/span&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                    </span>&lt;/label&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                    </span>&lt;small style="color:#777;"&gt;(Gilt auch für Rolle 'Hundeführer')&lt;/small&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                </span>&lt;/div&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>&lt;/div&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>&lt;div class="modal-footer"&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                </span>&lt;div id="modal-status" style="float:left; color: #e74c3c; line-height: 36px;"&gt;&lt;/div&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">                </span>&lt;button class="btn-primary" id="save-btn"&gt;Speichern&lt;/button&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">            </span>&lt;/div&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">        </span>&lt;/div&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">    </span>&lt;/div&gt;</span></p>
+<p class="p2"><span class="s1"></span><br></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">    </span>&lt;script type="module" src="shared_feedback.js" defer&gt;&lt;/script&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">    </span>&lt;script type="module" src="shared_notifications.js" defer&gt;&lt;/script&gt;</span></p>
+<p class="p1"><span class="s1"><span class="Apple-converted-space">    </span>&lt;script type="module" src="js/pages/dog_handlers.js" defer&gt;&lt;/script&gt;</span></p>
+<p class="p1"><span class="s1">&lt;/body&gt;</span></p>
+<p class="p1"><span class="s1">&lt;/html&gt;</span></p>
 </body>
 </html>
