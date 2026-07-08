@@ -63,6 +63,11 @@ const modal = document.getElementById('dog-modal');
 const ownerSelect = document.getElementById('dog-owner');
 const ownerSelect2 = document.getElementById('dog-owner-2');
 
+// NEUE Felder
+const entryDateInput = document.getElementById('dog-entry-date');
+const exitDateInput = document.getElementById('dog-exit-date');
+const isArchivedCheck = document.getElementById('dog-is-archived');
+
 // Akte Felder
 const eventType = document.getElementById('event-type');
 const eventDate = document.getElementById('event-date');
@@ -80,7 +85,6 @@ const vacType = document.getElementById('vaccine-type');
 let allOwners = [];
 let allDogs = [];   
 
-// Globale Variablen für die Historien-Filterung
 let currentDogEvents = [];
 let currentEventFilter = 'Alle';
 
@@ -94,13 +98,12 @@ document.querySelectorAll('.tab-btn').forEach(btn => {
     });
 });
 
-// --- FILTER LOGIK ---
 document.querySelectorAll('.event-filter-btn').forEach(btn => {
     btn.addEventListener('click', (e) => {
         document.querySelectorAll('.event-filter-btn').forEach(b => b.classList.remove('active'));
         e.target.classList.add('active');
         currentEventFilter = e.target.dataset.filter;
-        renderEventsTable(); // Tabelle dynamisch neu zeichnen
+        renderEventsTable(); 
     });
 });
 
@@ -116,7 +119,6 @@ async function loadData() {
         renderDogsTable();
         populateDpoHandlers(); 
 
-        // Auto-Open Logik (Wenn man vom Schichtplan Banner kommt)
         const urlParams = new URLSearchParams(window.location.search);
         const openDogId = urlParams.get('open_dog');
         const targetTab = urlParams.get('tab');
@@ -124,15 +126,14 @@ async function loadData() {
         if (openDogId) {
             const targetDog = allDogs.find(d => d.id == openDogId);
             if (targetDog) {
-                editDog(targetDog); // Öffnet das Hauptfenster
+                editDog(targetDog); 
                 if (targetTab === 'akte') {
                     setTimeout(() => {
                         const akteBtn = document.querySelector('[data-tab="tab-akte"]');
-                        if (akteBtn) akteBtn.click(); // Springt rüber zum Reiter
+                        if (akteBtn) akteBtn.click(); 
                     }, 50);
                 }
             }
-            // URL bereinigen, damit man bei einem Reload der Seite nicht wieder im Modal landet
             window.history.replaceState({}, document.title, window.location.pathname);
         }
 
@@ -143,22 +144,35 @@ async function loadData() {
 
 function renderDogsTable() {
     tbody.innerHTML = '';
-    const displayDogs = allDogs;
     
-    if (displayDogs.length === 0) {
+    if (allDogs.length === 0) {
         tbody.innerHTML = '<tr><td colspan="5" style="text-align:center; color:#aaa;">Noch keine Diensthunde angelegt.</td></tr>';
         return;
     }
 
-    displayDogs.forEach(d => {
+    // Sortieren: Aktive Hunde nach oben, archivierte nach unten
+    const sortedDogs = [...allDogs].sort((a, b) => {
+        if (a.is_active === b.is_active) {
+            return a.name.localeCompare(b.name);
+        }
+        return a.is_active ? -1 : 1;
+    });
+
+    sortedDogs.forEach(d => {
         const dogJsonString = JSON.stringify(d).replace(/'/g, "\\'");
+        
+        const isArchived = d.is_active === false;
+        const rowClass = isArchived ? 'archived-row' : '';
+        const nameDisplay = isArchived ? `${d.name} <span style="color:#e74c3c; font-size: 11px;">(Archiviert)</span>` : d.name;
+
         const photoHtml = d.photo_filename 
             ? `<img src="/api/dogs/photo/${d.photo_filename}" class="dog-avatar" onclick='editDog(${dogJsonString})' title="Akte öffnen">` 
             : `<div class="dog-avatar" style="display:inline-block; background:#555; text-align:center; line-height:36px;" onclick='editDog(${dogJsonString})' title="Akte öffnen"><i class="fas fa-dog"></i></div>`;
             
         const tr = document.createElement('tr');
+        tr.className = rowClass;
         tr.innerHTML = `
-            <td>${photoHtml} <strong>${d.name}</strong> <br><small style="color:#aaa;">${d.age_years !== null ? d.age_years + ' Jahre' : ''}</small></td>
+            <td>${photoHtml} <strong>${nameDisplay}</strong> <br><small style="color:#aaa;">${d.age_years !== null ? d.age_years + ' Jahre' : ''}</small></td>
             <td>${d.breed || '-'}</td>
             <td>${d.chip_number || '-'}</td>
             <td>${d.owner_name}</td>
@@ -219,15 +233,13 @@ function populateDpoHandlers() {
 }
 
 function resetEventForm() {
-    // Aktuelles Datum in lokaler Zeitzone ermitteln
+    // Aktuelles Datum in lokaler Zeitzone ermitteln & setzen
     const today = new Date();
     const yyyy = today.getFullYear();
     const mm = String(today.getMonth() + 1).padStart(2, '0');
     const dd = String(today.getDate()).padStart(2, '0');
     
-    // Setze heutiges Datum als Standard, aber lasse es bearbeitbar
     eventDate.value = `${yyyy}-${mm}-${dd}`;
-    
     dueDate.value = '';
     eventType.value = 'Sonstiges';
     dpoResult.value = '';
@@ -307,7 +319,6 @@ window.editDog = (d) => {
         });
     }
 
-    // Filter UI zurücksetzen
     currentEventFilter = 'Alle';
     document.querySelectorAll('.event-filter-btn').forEach(b => {
         b.classList.toggle('active', b.dataset.filter === 'Alle');
@@ -321,6 +332,11 @@ window.editDog = (d) => {
     document.getElementById('dog-size').value = d.size_cm || '';
     document.getElementById('dog-chip').value = d.chip_number || '';
     document.getElementById('dog-birth').value = d.birthdate || '';
+    
+    // NEUE Felder befüllen
+    entryDateInput.value = d.entry_date || '';
+    exitDateInput.value = d.exit_date || '';
+    isArchivedCheck.checked = (d.is_active === false);
     
     ownerSelect.value = d.owner_id || '';
     ownerSelect2.value = d.owner_id_2 || '';
@@ -356,6 +372,11 @@ document.getElementById('add-dog-btn').onclick = () => {
     document.getElementById('dog-chip').value = '';
     document.getElementById('dog-birth').value = '';
     
+    // NEUE Felder zurücksetzen
+    entryDateInput.value = '';
+    exitDateInput.value = '';
+    isArchivedCheck.checked = false;
+    
     ownerSelect.value = '';
     ownerSelect2.value = '';
     populateOwnerDropdowns(null);
@@ -375,6 +396,9 @@ document.getElementById('save-dog-btn').onclick = async () => {
         size_cm: document.getElementById('dog-size').value,
         chip_number: document.getElementById('dog-chip').value,
         birthdate: document.getElementById('dog-birth').value,
+        entry_date: entryDateInput.value || null,
+        exit_date: exitDateInput.value || null,
+        is_active: !isArchivedCheck.checked, // WICHTIG: True wenn NICHT angehakt
         owner_id: ownerSelect.value,
         owner_id_2: ownerSelect2.value
     };
@@ -499,20 +523,18 @@ function renderEventsTable() {
     const today = new Date();
     today.setHours(0,0,0,0);
 
-    // --- NEU: Veraltete (überschriebene) Einträge markieren ---
     const seenKeys = new Set();
     currentDogEvents.forEach(e => {
-        // Schlüssel bilden (z.B. "Impfung_Präparat: Tollwut (1 Jahr)")
         const rawNotes = e.notes || "";
         const cleanNotes = rawNotes.replace(/\s*\(Erfasst von:.*?\)/, '').trim();
         const baseNote = cleanNotes.split(' | ')[0].trim();
         const key = `${e.event_type}_${baseNote}`;
         
         if (!seenKeys.has(key)) {
-            e.is_active_due = true; // Der neuste Eintrag dieses Typs
+            e.is_active_due = true; 
             seenKeys.add(key);
         } else {
-            e.is_active_due = false; // Veraltet (gibt schon einen neueren Eintrag)
+            e.is_active_due = false; 
         }
     });
 
@@ -529,10 +551,8 @@ function renderEventsTable() {
             const dueStr = e.due_date.split('-').reverse().join('.');
             
             if (!e.is_active_due) {
-                // Wenn die Impfung bereits aufgefrischt wurde: Rot entfernen und durchstreichen!
                 dueHtml = `<span style="color:#aaa; text-decoration: line-through;">${dueStr}</span><br><small style="color:#aaa;">(Erneuert)</small>`;
             } else {
-                // Aktives Fälligkeitsdatum
                 if (diffDays < 0) {
                     dueHtml = `<span style="color:#e74c3c; font-weight:bold;">${dueStr}<br><small>Seit ${Math.abs(diffDays)} Tagen überfällig!</small></span>`;
                 } else if (diffDays === 0) {
