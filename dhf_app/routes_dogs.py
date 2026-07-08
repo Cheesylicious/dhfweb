@@ -72,6 +72,8 @@ def create_dog():
             coat_color=none_if_empty(data.get('coat_color')),
             chip_number=none_if_empty(data.get('chip_number')),
             birthdate=parse_date(data.get('birthdate')),
+            entry_date=parse_date(data.get('entry_date')), # NEU
+            exit_date=parse_date(data.get('exit_date')),   # NEU
             last_vaccination=parse_date(data.get('last_vaccination')),
             next_vaccination=parse_date(data.get('next_vaccination')),
             training_focus=none_if_empty(data.get('training_focus')),
@@ -107,6 +109,8 @@ def update_dog(dog_id):
         if 'coat_color' in data: dog.coat_color = none_if_empty(data['coat_color'])
         if 'chip_number' in data: dog.chip_number = none_if_empty(data['chip_number'])
         if 'birthdate' in data: dog.birthdate = parse_date(data['birthdate'])
+        if 'entry_date' in data: dog.entry_date = parse_date(data['entry_date']) # NEU
+        if 'exit_date' in data: dog.exit_date = parse_date(data['exit_date'])    # NEU
         if 'last_vaccination' in data: dog.last_vaccination = parse_date(data['last_vaccination'])
         if 'next_vaccination' in data: dog.next_vaccination = parse_date(data['next_vaccination'])
         if 'training_focus' in data: dog.training_focus = none_if_empty(data['training_focus'])

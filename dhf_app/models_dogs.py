@@ -19,6 +19,10 @@ class Dog(db.Model):
     chip_number = db.Column(db.String(100), unique=True, nullable=True)
     birthdate = db.Column(db.Date, nullable=True)
     
+    # --- NEU: Zugang und Abgang ---
+    entry_date = db.Column(db.Date, nullable=True)
+    exit_date = db.Column(db.Date, nullable=True)
+    
     # --- Foto ---
     photo_filename = db.Column(db.String(255), nullable=True)
     
@@ -67,6 +71,8 @@ class Dog(db.Model):
             "coat_color": self.coat_color,
             "chip_number": self.chip_number,
             "birthdate": self.safe_date_iso(self.birthdate),
+            "entry_date": self.safe_date_iso(self.entry_date),   # <--- NEU
+            "exit_date": self.safe_date_iso(self.exit_date),     # <--- NEU
             "age_years": age_years,
             "photo_filename": self.photo_filename,
             "last_vaccination": self.safe_date_iso(self.last_vaccination),
@@ -101,7 +107,7 @@ class DogEvent(db.Model):
             "dog_id": self.dog_id,
             "event_type": self.event_type,
             "event_date": self.event_date.isoformat() if self.event_date else None,
-            "due_date": self.due_date.isoformat() if self.due_date else None, # <--- NEU ---
+            "due_date": self.due_date.isoformat() if self.due_date else None, 
             "notes": self.notes,
             "created_at": self.created_at.isoformat()
         }
