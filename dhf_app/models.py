@@ -1,3 +1,5 @@
+# dhf_app/models.py
+
 from .extensions import db
 from flask_login import UserMixin
 from datetime import datetime
@@ -187,6 +189,10 @@ class PlanVariant(db.Model):
     month = db.Column(db.Integer, nullable=False)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
+    # --- Checkbox-Werte für Besetzungstabelle pro Variante ---
+    show_12er = db.Column(db.Boolean, nullable=False, default=True)
+    show_24er = db.Column(db.Boolean, nullable=False, default=True)
+
     # Sicherstellen, dass Name pro Monat eindeutig ist (z.B. nur eine 'Variante A' im Jan 2025)
     __table_args__ = (db.UniqueConstraint('name', 'year', 'month', name='_variant_month_uc'),)
 
@@ -196,7 +202,9 @@ class PlanVariant(db.Model):
             "name": self.name,
             "year": self.year,
             "month": self.month,
-            "created_at": self.created_at.isoformat()
+            "created_at": self.created_at.isoformat(),
+            "show_12er": self.show_12er,
+            "show_24er": self.show_24er
         }
 
 
@@ -219,7 +227,7 @@ class Shift(db.Model):
     variant_id = db.Column(db.Integer, db.ForeignKey('plan_variant.id'), nullable=True)
     variant = db.relationship('PlanVariant', backref=db.backref('shifts', cascade="all, delete-orphan"))
 
-    # --- NEU: Historisierung des Diensthundes ---
+    # --- Historisierung des Diensthundes ---
     dog_id = db.Column(db.Integer, db.ForeignKey('dog.id'), nullable=True)
     # WICHTIG: String 'Dog' verhindert Zirkel-Import
     dog = db.relationship('Dog', foreign_keys=[dog_id], lazy=True)
@@ -364,6 +372,13 @@ class ShiftPlanStatus(db.Model):
     month = db.Column(db.Integer, nullable=False, index=True)
     status = db.Column(db.String(50), nullable=False, default='In Bearbeitung')
     is_locked = db.Column(db.Boolean, nullable=False, default=False)
+    
+    # --- Checkbox-Werte für Besetzungstabelle (Hauptplan) ---
+    show_12er = db.Column(db.Boolean, nullable=False, default=True)
+    show_24er = db.Column(db.Boolean, nullable=False, default=True)
+
+    # --- NEU: Individueller Name für den Hauptplan ---
+    plan_name = db.Column(db.String(50), nullable=True, default='Hauptplan')
 
     __table_args__ = (db.UniqueConstraint('year', 'month', name='_year_month_uc'),)
 
@@ -373,7 +388,10 @@ class ShiftPlanStatus(db.Model):
             "year": self.year,
             "month": self.month,
             "status": self.status,
-            "is_locked": self.is_locked
+            "is_locked": self.is_locked,
+            "show_12er": self.show_12er,
+            "show_24er": self.show_24er,
+            "plan_name": self.plan_name or "Hauptplan"
         }
 
 

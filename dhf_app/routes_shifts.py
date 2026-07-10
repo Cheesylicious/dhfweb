@@ -1,7 +1,7 @@
 # dhf_app/routes_shifts.py
 
 from flask import Blueprint, request, jsonify, current_app
-from .models import Shift, ShiftType, User, ShiftPlanStatus, UpdateLog, ShiftQuery, SpecialDate, Role
+from .models import Shift, ShiftType, User, ShiftPlanStatus, UpdateLog, ShiftQuery, SpecialDate, Role, PlanVariant
 from .extensions import db, socketio
 from .utils import admin_required
 from .models_audit import log_audit
@@ -26,7 +26,7 @@ def _log_update_event(area, description):
     db.session.add(new_log)
 
 
-# --- NEU: Verbesserte Hilfsfunktionen für Fälligkeiten ---
+# --- Verbesserte Hilfsfunktionen für Fälligkeiten ---
 
 def get_quarter_dates(year, month):
     """
@@ -171,8 +171,6 @@ def calculate_training_warnings(users, shifts_current_month, year, month):
 
     return warnings
 
-
-# --- ENDE NEU ---
 
 
 def _calculate_user_total_hours(user_id, year, month, shift_types_map=None, variant_id=None):
@@ -332,9 +330,8 @@ def get_shifts():
     except (TypeError, ValueError):
         return jsonify({"message": "Ungültige Parameter"}), 400
 
-    if variant_id is not None:
-        if not current_user.role or current_user.role.name != 'admin':
-            return jsonify({"message": "Keine Berechtigung für Variantenansicht"}), 403
+    # ACHTUNG: Der Türsteher-Block wurde hier WIRKLICH gelöscht!
+    # Keine Admin-Überprüfung mehr bei "if variant_id is not None:"
 
     current_month_start_date = date(year, month, 1)
     days_in_month = calendar.monthrange(year, month)[1]
@@ -372,7 +369,7 @@ def get_shifts():
 
     users_data = [u.to_dict() for u in users]
 
-    # --- NEU: Berechnung des verbleibenden Urlaubs (Jahres-Sicht) ---
+    # --- Berechnung des verbleibenden Urlaubs (Jahres-Sicht) ---
     eu_type = ShiftType.query.filter_by(abbreviation='EU').first()
     vacation_usage = {}
 
@@ -419,16 +416,31 @@ def get_shifts():
 
     staffing_actual = _calculate_actual_staffing(shifts_data, queries_data, shifttypes_data, year, month)
 
-    status_obj = ShiftPlanStatus.query.filter_by(year=year, month=month).first()
-    plan_status_data = status_obj.to_dict() if status_obj else {"id": None, "year": year, "month": month,
-                                                                "status": "In Bearbeitung", "is_locked": False}
+    # --- PLAN STATUS & FILTER EINSTELLUNGEN ---
+    plan_status_data = {
+        "id": None, "year": year, "month": month,
+        "status": "In Bearbeitung", "is_locked": False,
+        "show_12er": True, "show_24er": True,
+        "plan_name": "Hauptplan"
+    }
 
-    # --- NEU: Trainings-Warnungen berechnen ---
+    if variant_id is None:
+        status_obj = ShiftPlanStatus.query.filter_by(year=year, month=month).first()
+        if status_obj:
+            plan_status_data = status_obj.to_dict()
+    else:
+        var_obj = db.session.get(PlanVariant, variant_id)
+        if var_obj:
+            plan_status_data["show_12er"] = var_obj.show_12er
+            plan_status_data["show_24er"] = var_obj.show_24er
+            plan_status_data["status"] = f"Variante: {var_obj.name}"
+            plan_status_data["plan_name"] = var_obj.name
+    # ------------------------------------------
+
     training_warnings = []
     # Nur für Admins berechnen
     if current_user.role and current_user.role.name == 'admin':
         training_warnings = calculate_training_warnings(users, shifts_current_month, year, month)
-    # ------------------------------------------
 
     return jsonify({
         "shifts": shifts_data,
@@ -443,7 +455,6 @@ def get_shifts():
     }), 200
 
 
-# ... (Rest der Datei bleibt unverändert) ...
 def _parse_date_from_payload(data):
     date_str = data.get('date')
     if date_str:
@@ -675,7 +686,7 @@ def save_shift():
         response_data['new_total_hours'] = _calculate_user_total_hours(user_id, shift_date.year, shift_date.month,
                                                                       variant_id=variant_id)
 
-        # --- NEU: Urlaub ---
+        # --- Urlaub ---
         eu_type = ShiftType.query.filter_by(abbreviation='EU').first()
         if eu_type and variant_id is None:
             used_count = db.session.query(func.count(Shift.id)).filter(
