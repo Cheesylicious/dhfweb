@@ -40,10 +40,14 @@ try {
 
 // --- GLOBALE ELEMENTE ---
 const modal = document.getElementById('user-modal');
-const closeModalBtn = document.querySelector('.close');
+const closeModalBtn = document.getElementById('close-user-modal');
 const userTableBody = document.getElementById('user-table-body');
 const saveUserBtn = document.getElementById('save-user-btn');
 const addUserBtn = document.getElementById('add-user-btn');
+
+// --- WIEDERHERGESTELLTE ELEMENTE ---
+const modalTitle = document.getElementById('modal-title');
+const modalStatus = document.getElementById('modal-status');
 
 // Formular-Felder
 const userIdField = document.getElementById('user-id');
@@ -52,21 +56,21 @@ const nameField = document.getElementById('user-name');
 const emailField = document.getElementById('user-email');
 const passwortField = document.getElementById('user-passwort');
 const roleField = document.getElementById('user-role');
-const userTelefonField = document.getElementById('user-telefon');
-const userEintrittsdatumField = document.getElementById('user-eintrittsdatum');
-const userAktivAbField = document.getElementById('user-aktiv-ab');
-const userInaktivAbField = document.getElementById('user-inaktiv-ab');
-const userUrlaubGesamtField = document.getElementById('user-urlaub-gesamt');
-const userUrlaubRestField = document.getElementById('user-urlaub-rest');
+const telefonField = document.getElementById('user-telefon');
+const geburtstagField = document.getElementById('user-geburtstag');
+const eintrittsdatumField = document.getElementById('user-eintrittsdatum');
+const aktivAbField = document.getElementById('user-aktiv-ab');
+const inaktivAbField = document.getElementById('user-inaktiv-ab');
+const urlaubGesamtField = document.getElementById('user-urlaub-gesamt');
+const urlaubRestField = document.getElementById('user-urlaub-rest');
 const userDiensthundField = document.getElementById('user-diensthund'); 
-const userTutorialField = document.getElementById('user-tutorial');
-const userCanSeeStatsField = document.getElementById('user-can-see-stats');
+const tutorialField = document.getElementById('user-tutorial');
+const canSeeStatsField = document.getElementById('user-can-see-stats');
 const passGeaendertField = document.getElementById('user-pass-geaendert');
 const zuletztOnlineField = document.getElementById('user-zuletzt-online');
 const forcePwResetBtn = document.getElementById('force-pw-reset-btn');
 const isManualDogHandlerField = document.getElementById('user-is-manual-dog-handler');
 const limitsWrapper = document.getElementById('limits-wrapper');
-const modalStatus = document.getElementById('modal-status');
 
 // Spalten-Konfiguration
 const columnModal = document.getElementById('column-modal');

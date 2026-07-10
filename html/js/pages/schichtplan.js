@@ -23,6 +23,95 @@ import { PlanGeneratorUI } from '../modules/schichtplan_generator_ui.js';
 import { PlanSocket } from '../modules/schichtplan_socket.js';
 import { initImpersonation } from '../modules/admin_impersonation.js';
 
+
+// --- NEU: Filter-Logik für die Besetzungstabelle (Serverseitig gespeichert) ---
+
+async function saveFilterState() {
+    const filter24er = document.getElementById('filter-24er');
+    const filter12er = document.getElementById('filter-12er');
+    
+    // Nur Admins dürfen den Server-Status der Filter überschreiben!
+    if (!filter24er || !filter12er || !PlanState.isAdmin) return;
+    
+    const show24 = filter24er.checked;
+    const show12 = filter12er.checked;
+
+    // Lokalen Zustand sofort updaten, damit es keine Verzögerungen gibt
+    if (PlanState.currentPlanStatus) {
+        PlanState.currentPlanStatus.show_24er = show24;
+        PlanState.currentPlanStatus.show_12er = show12;
+    }
+
+    // Die Änderung im Hintergrund an unseren neuen API-Endpunkt senden
+    try {
+        await apiFetch('/api/variants/filters', 'PUT', {
+            year: PlanState.currentYear,
+            month: PlanState.currentMonth,
+            variant_id: PlanState.currentVariantId,
+            show_12er: show12,
+            show_24er: show24
+        });
+    } catch (error) {
+        console.error("Fehler beim Speichern der Filter auf dem Server:", error);
+    }
+}
+
+function loadFilterState() {
+    const filter24er = document.getElementById('filter-24er');
+    const filter12er = document.getElementById('filter-12er');
+    if (!filter24er || !filter12er) return;
+
+    // Werte kommen jetzt direkt vom Backend (ShiftPlanStatus oder PlanVariant)
+    if (PlanState.currentPlanStatus) {
+        // Falls der Server aus irgendeinem Grund nichts liefert, nimm True als Standard
+        filter24er.checked = PlanState.currentPlanStatus.show_24er !== false;
+        filter12er.checked = PlanState.currentPlanStatus.show_12er !== false;
+    } else {
+        filter24er.checked = true;
+        filter12er.checked = true;
+    }
+}
+
+function applyStaffingFilters() {
+    const filter24er = document.getElementById('filter-24er');
+    const filter12er = document.getElementById('filter-12er');
+
+    if (!filter24er || !filter12er) return;
+
+    const show24 = filter24er.checked;
+    const show12 = filter12er.checked;
+
+    const staffingRows = document.querySelectorAll('#staffing-grid .staffing-row');
+    
+    staffingRows.forEach(row => {
+        const labelEl = row.querySelector('.staffing-label');
+        if (labelEl) {
+            const text = labelEl.textContent.trim().toLowerCase();
+            
+            if (text.includes('gesamt') || text === '') {
+                row.style.display = '';
+                return;
+            }
+            
+            const is24er = text.includes('24');
+            const is12er = !is24er; 
+            
+            if (is24er) {
+                row.style.display = show24 ? '' : 'none';
+            } else if (is12er) {
+                row.style.display = show12 ? '' : 'none';
+            }
+        }
+    });
+}
+
+function handleFilterChange() {
+    applyStaffingFilters(); // UI sofort umbauen, damit es flüssig wirkt
+    saveFilterState();      // Daten asynchron an den Server senden
+}
+// --------------------------------------------------------------------------------
+
+
 // --- 1. HAUPTFUNKTIONEN (Startup) ---
 
 async function initialize() {
@@ -71,7 +160,7 @@ async function initialize() {
         // Generator UI: HUD und Steuerung
         PlanGeneratorUI.init(renderGrid);
 
-        // --- NEU: Staffing Module Init (Verknüpft den Button) ---
+        // Staffing Module Init (Verknüpft den Button)
         StaffingModule.init();
 
         // Socket: Echtzeit-Updates
@@ -79,6 +168,27 @@ async function initialize() {
             renderGrid,
             PlanUIHelper.updatePlanStatusUI.bind(PlanUIHelper)
         );
+
+        // --- NEU: Admin-Prüfung für Filter-Container ---
+        const filterContainer = document.getElementById('shift-filter-container');
+        if (filterContainer) {
+            if (!PlanState.isAdmin) {
+                // Verstecke die Checkboxen für alle Nicht-Admins
+                filterContainer.style.display = 'none';
+                
+                // Zwingendes Ausblenden via CSS Injection als Failsafe
+                const style = document.createElement('style');
+                style.innerHTML = '#shift-filter-container { display: none !important; }';
+                document.head.appendChild(style);
+            } else {
+                filterContainer.style.display = 'flex';
+            }
+        }
+
+        const filter24er = document.getElementById('filter-24er');
+        const filter12er = document.getElementById('filter-12er');
+        if(filter24er) filter24er.addEventListener('change', handleFilterChange);
+        if(filter12er) filter12er.addEventListener('change', handleFilterChange);
 
 
         // --- 4. DATEN LADEN ---
@@ -238,8 +348,14 @@ async function renderGrid(isSilent = false) {
         PlanState.currentStaffingActual = shiftPayload.staffing_actual || {};
         PlanState.currentPlanStatus = shiftPayload.plan_status || {
             year: PlanState.currentYear, month: PlanState.currentMonth,
-            status: "In Bearbeitung", is_locked: false
+            status: "In Bearbeitung", is_locked: false, plan_name: "Hauptplan"
         };
+
+        // --- NEU: Hauptplan-Namen cachen ---
+        if (PlanState.currentVariantId === null) {
+            PlanState.mainPlanName = PlanState.currentPlanStatus.plan_name || "Hauptplan";
+        }
+        // -----------------------------------
 
         // Trainings-Warnungen
         PlanState.trainingWarnings = shiftPayload.training_warnings || [];
@@ -256,6 +372,9 @@ async function renderGrid(isSilent = false) {
 
         // 1. Status Bar aktualisieren
         PlanUIHelper.updatePlanStatusUI(PlanState.currentPlanStatus);
+
+        // 1.5 Tabs neu zeichnen (wegen eventuell neu geladener Namen)
+        PlanNavigation.renderVariantTabs();
 
         // 2. Grid DOM bauen
         PlanRenderer.buildGridDOM({
@@ -276,6 +395,10 @@ async function renderGrid(isSilent = false) {
 
         // 3. Staffing Table aufbauen
         StaffingModule.buildStaffingTable();
+        
+        // --- Den Filter aus dem Cache (passend zur Variante) laden und anwenden ---
+        loadFilterState();
+        applyStaffingFilters();
 
         // 4. Highlight
         if(PlanState.pendingHighlight) {
@@ -298,7 +421,7 @@ async function renderGrid(isSilent = false) {
              badge.style.display = count > 0 ? 'inline-block' : 'none';
         }
 
-        // 7. NEU: Diensthund-Warnungen (Fälligkeiten) rendern
+        // 7. Diensthund-Warnungen (Fälligkeiten) rendern
         renderDogAlerts(dogDuesResult);
 
     } catch (error) {
@@ -310,12 +433,12 @@ async function renderGrid(isSilent = false) {
     }
 }
 
-// --- NEU: DIENSTHUND WARNUNGEN RENDERN ---
+// --- DIENSTHUND WARNUNGEN RENDERN ---
 function renderDogAlerts(alerts) {
     const container = document.getElementById('dog-alerts-container');
     if (!container) return;
     
-    container.innerHTML = ''; // Vorherige löschen
+    container.innerHTML = ''; 
     
     if (!alerts || alerts.length === 0) return;
 
@@ -327,20 +450,19 @@ function renderDogAlerts(alerts) {
         const isToday = alert.days_left === 0;
 
         let statusText = `Fällig in ${alert.days_left} Tagen`;
-        let bgColor = 'linear-gradient(135deg, #f39c12, #e67e22)'; // Orange (Warnung)
+        let bgColor = 'linear-gradient(135deg, #f39c12, #e67e22)'; // Orange
         let icon = 'fa-exclamation-triangle';
 
         if (isOverdue) {
             statusText = `Seit ${Math.abs(alert.days_left)} Tagen überfällig!`;
-            bgColor = 'linear-gradient(135deg, #e74c3c, #c0392b)'; // Rot (Gefahr)
+            bgColor = 'linear-gradient(135deg, #e74c3c, #c0392b)'; // Rot
             icon = 'fa-skull-crossbones';
         } else if (isToday) {
             statusText = `Heute fällig!`;
-            bgColor = 'linear-gradient(135deg, #e74c3c, #c0392b)'; // Rot (Gefahr)
+            bgColor = 'linear-gradient(135deg, #e74c3c, #c0392b)'; // Rot
             icon = 'fa-exclamation-circle';
         }
 
-        // Mache den Titel im Banner etwas spezifischer, falls Details existieren
         let typeDisplay = alert.event_type;
         if (alert.details && alert.details.trim() !== '') {
             let cleanDetail = alert.details.replace('Präparat: ', '').replace('Grund: ', '').trim();
@@ -362,7 +484,6 @@ function renderDogAlerts(alerts) {
             <div class="alert-action">Akte öffnen &raquo;</div>
         `;
         
-        // Klick leitet mit Parametern weiter, damit sich direkt die Akte öffnet!
         banner.onclick = () => {
             window.location.href = `dogs.html?open_dog=${alert.dog_id}&tab=akte`;
         };

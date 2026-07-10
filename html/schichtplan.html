@@ -21,12 +21,11 @@
         body {
             font-family: 'Poppins', sans-serif;
             margin: 0;
-            background: #1a1a1a; /* DUNKLER HINTERGRUND (BLEIBT) */
+            background: #1a1a1a; 
             color: #ffffff;
             overflow-x: hidden;
         }
 
-        /* Das Canvas-Element für die Animation (BLEIBT) */
         #particle-canvas {
             position: fixed;
             top: 0;
@@ -36,7 +35,6 @@
             z-index: -1;
         }
 
-        /* Header (Glas-Effekt) (BLEIBT) */
         header {
             background: rgba(255, 255, 255, 0.05);
             border-bottom: 1px solid rgba(255, 255, 255, 0.1);
@@ -65,7 +63,6 @@
         }
         #logout-btn:hover { background: #c0392b; }
 
-        /* Feedback Button */
         .report-btn {
             background: #3498db;
             color: white;
@@ -92,7 +89,6 @@
             display: none;
         }
 
-        /* Main (Volle Breite) (BLEIBT) */
         main {
             padding: 30px;
             max-width: 100%;
@@ -101,7 +97,6 @@
             z-index: 1;
         }
 
-        /* Card (ZURÜCK ZU WEISS) */
         .card {
             background: #fff;
             color: #333;
@@ -110,7 +105,6 @@
             overflow: hidden;
         }
 
-        /* Sub-Nav (Glas-Effekt) */
         .sub-nav {
             background: rgba(255, 255, 255, 0.05);
             border-bottom: 1px solid rgba(255, 255, 255, 0.1);
@@ -134,7 +128,6 @@
             border-bottom-color: #3498db;
         }
 
-        /* Dropdown-Menü */
         .dropdown {
             position: relative;
             display: inline-block;
@@ -181,11 +174,9 @@
             color: #3498db;
         }
 
-        /* --- Grid Styles --- */
-
         .plan-nav {
             display: flex;
-            justify-content: space-between;
+            justify-content: space-between; 
             align-items: center;
             padding: 20px;
             background-color: #fcfcfc;
@@ -223,7 +214,6 @@
         .variant-tabs {
             display: flex;
             gap: 5px;
-            margin-top: 5px;
             padding: 3px;
             background: #f0f0f0;
             border-radius: 5px;
@@ -1551,9 +1541,19 @@
                         <button id="plan-bulk-mode-btn" class="btn-admin-action" title="Massen-Bearbeitung von Wünschen">✅ Anfragen verwalten</button>
                     </div>
 
-                    <div id="variant-tabs-container" class="variant-tabs" style="display: none;">
+                    <div style="display: flex; align-items: center; gap: 15px; margin-top: 5px;">
+                        <div id="shift-filter-container" style="display: none; gap: 10px; background: #f0f0f0; padding: 4px 10px; border-radius: 5px; border: 1px solid #ddd;">
+                            <label style="cursor:pointer; display:flex; align-items:center; gap:5px; font-size:13px; color:#333; font-weight:600; margin:0;">
+                                <input type="checkbox" id="filter-24er" checked style="margin:0; cursor:pointer;"> 24er
+                            </label>
+                            <label style="cursor:pointer; display:flex; align-items:center; gap:5px; font-size:13px; color:#333; font-weight:600; margin:0;">
+                                <input type="checkbox" id="filter-12er" checked style="margin:0; cursor:pointer;"> 12er
+                            </label>
                         </div>
+                        
+                        <div id="variant-tabs-container" class="variant-tabs" style="display: none;"></div>
                     </div>
+                </div>
 
                 <div class="plan-nav-right">
                     <button id="next-month-btn">Nächster &raquo;</button>
@@ -1866,18 +1866,28 @@
     </script>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/lottie-web/5.12.2/lottie.min.js"></script>
-    <script type="module" src="js/pages/schichtplan.js" defer></script>
+    <script type="module" src="js/pages/schichtplan.js?v=2" defer></script>
     <script type="module" src="shared_feedback.js" defer></script>
     <script type="module" src="shared_notifications.js" defer></script>
 
     <script>
+        // --- CACHE-KILLER ---
+        // Leert den alten App-Cache sofort, wenn die Seite geladen wird
+        if ('caches' in window) {
+            caches.keys().then(names => {
+                for (let name of names) {
+                    caches.delete(name);
+                }
+            });
+        }
+
         if ('serviceWorker' in navigator) {
             window.addEventListener('load', () => {
-                navigator.serviceWorker.register('./sw.js')
+                // Das '?v=' zwingt den Browser immer, nach neuen Updates zu suchen
+                navigator.serviceWorker.register('./sw.js?v=' + new Date().getTime())
                     .then(registration => {
-                        console.log('ServiceWorker registration successful with scope: ', registration.scope);
-                    }, err => {
-                        console.log('ServiceWorker registration failed: ', err);
+                        registration.update(); // Zwingt den Service Worker zum Refresh
+                        console.log('ServiceWorker aktiv und aktualisiert.');
                     });
             });
         }

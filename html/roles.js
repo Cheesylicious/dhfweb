@@ -1,7 +1,9 @@
-// --- Globales Setup (unverändert) ---
-const API_URL = 'http://46.224.63.203:5000'; // Ersetzen Sie dies ggf. durch Ihre Domain
+// html/js/pages/roles.js
+
+// --- Globales Setup ---
+const API_URL = ''; // <-- GEÄNDERT: Leer lassen, damit relative Pfade über HTTPS genutzt werden!
 let user;
-let isAdmin = false; // <<< NEU
+let isAdmin = false;
 
 async function logout() {
     try { await apiFetch('/api/logout', 'POST'); }
@@ -17,20 +19,15 @@ try {
     if (!user || !user.vorname || !user.role) { throw new Error("Kein User oder fehlende Rolle"); }
     document.getElementById('welcome-user').textContent = `Willkommen, ${user.vorname}!`;
 
-    // --- NEUE LOGIK: Rollenprüfung (WICHTIG) ---
+    // Rollenprüfung
     isAdmin = user.role.name === 'admin';
     const isVisitor = user.role.name === 'Besucher';
-    // --- START: NEU ---
     const isPlanschreiber = user.role.name === 'Planschreiber';
     const isHundefuehrer = user.role.name === 'Hundeführer';
-    // --- ENDE: NEU ---
-
 
     // 1. Haupt-Navigationsanpassung
     const navDashboard = document.getElementById('nav-dashboard');
     const navUsers = document.getElementById('nav-users');
-
-    // --- NEU: Feedback-Link ---
     const navFeedback = document.getElementById('nav-feedback');
 
     if (isVisitor) {
@@ -42,24 +39,16 @@ try {
     if (isAdmin) {
         navUsers.style.display = 'block';
         navFeedback.style.display = 'inline-flex';
-    // --- START: NEU (Angepasst für Planschreiber) ---
     } else if (isPlanschreiber) {
          navUsers.style.display = 'none';
          navFeedback.style.display = 'inline-flex';
     } else {
          navUsers.style.display = 'none';
-         navFeedback.style.display = 'none'; // Hundeführer/User sehen dies nicht
+         navFeedback.style.display = 'none';
     }
-    // --- ENDE: NEU ---
-    // --- ENDE NEU ---
 
-
-    // --- START: ANPASSUNG (Blockiert alle außer Admin) ---
+    // Blockiert alle außer Admin
     if (isVisitor || !isAdmin) {
-    // --- ENDE: ANPASSUNG ---
-        // Nur Admins dürfen auf die Rollenverwaltung zugreifen
-
-        // Blockiere den Zugriff auf die gesamte Seite, wenn nicht Admin
         document.getElementById('content-wrapper').innerHTML = `
             <div class="restricted-view">
                 <h2 style="color: #e74c3c;">Zugriff verweigert</h2>
@@ -68,11 +57,8 @@ try {
             </div>
         `;
          document.getElementById('sub-nav-roles-container').style.display = 'none';
-
-        // Wirf Fehler, um das Laden der Daten zu verhindern
         throw new Error("Keine Admin-Rechte für Rollenverwaltung.");
     }
-    // --- ENDE NEUE LOGIK ---
 
 } catch (e) {
     if (!e.message.includes("Admin-Rechte")) {
@@ -82,7 +68,7 @@ try {
 
 document.getElementById('logout-btn').onclick = logout;
 
-// --- Globale API-Funktion (unverändert) ---
+// --- Globale API-Funktion ---
 async function apiFetch(endpoint, method = 'GET', body = null) {
     const options = {
         method,
@@ -134,8 +120,7 @@ async function loadRoles() {
         roles.forEach(role => {
             const row = document.createElement('tr');
 
-            // Hinzugefügt: Rolle 'Besucher' ist jetzt eine geschützte Basis-Rolle.
-            const isProtected = (role.name === 'admin' || role.name === 'Besucher'); // <<< ANGEPASST
+            const isProtected = (role.name === 'admin' || role.name === 'Besucher'); 
             const buttons = isProtected ?
                 `<span style="color: #777;">Basis-Rolle (${role.name})</span>` :
                 `<button class="btn-edit" onclick="openEditModal(${role.id}, '${role.name}', '${role.description || ''}')">Bearbeiten</button>
@@ -163,14 +148,14 @@ addRoleBtn.onclick = () => {
     openModal();
 };
 
-// Modal für "Bearbeiten"
-function openEditModal(id, name, description) {
+// Modal für "Bearbeiten" (global verfügbar machen für das onclick-Attribut)
+window.openEditModal = function(id, name, description) {
     modalTitle.textContent = 'Rolle bearbeiten';
     roleIdField.value = id;
     roleNameField.value = name;
     roleDescField.value = description || '';
     openModal();
-}
+};
 
 // Speichern (Neue Rolle oder Update)
 saveRoleBtn.onclick = async () => {
@@ -198,8 +183,8 @@ saveRoleBtn.onclick = async () => {
     }
 };
 
-// Löschen
-async function deleteRole(id) {
+// Löschen (global verfügbar machen für das onclick-Attribut)
+window.deleteRole = async function(id) {
     if (confirm('Sind Sie sicher, dass Sie diese Rolle löschen möchten?\n\n(Dies ist nur möglich, wenn kein Benutzer diese Rolle mehr verwendet.)')) {
         try {
             await apiFetch(`/api/roles/${id}`, 'DELETE');
@@ -208,10 +193,9 @@ async function deleteRole(id) {
             alert('Löschen fehlgeschlagen: ' + error.message);
         }
     }
-}
+};
 
 // --- Initialisierung ---
-// (Führe loadRoles nur aus, wenn der Admin-Check oben erfolgreich war)
 if (isAdmin) {
     loadRoles();
 }
