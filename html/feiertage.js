@@ -363,8 +363,14 @@ if (saveEventBtn) {
             return;
         }
 
+        // Standardnamen festlegen, falls das Feld (z.B. bei DPO) versteckt ist
+        let defaultName = '';
+        if (type === 'dpo') defaultName = 'DPO - Prüfung';
+        else if (type === 'training') defaultName = 'Ausbildung';
+        else if (type === 'shooting') defaultName = 'Schießen';
+
         const payload = {
-            name: eventNameField ? eventNameField.value : '',
+            name: eventNameField && eventNameField.value.trim() ? eventNameField.value.trim() : defaultName,
             type: type,
             date: finalIsoDate
         };

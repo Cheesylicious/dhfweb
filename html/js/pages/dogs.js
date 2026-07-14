@@ -527,7 +527,13 @@ function renderEventsTable() {
     currentDogEvents.forEach(e => {
         const rawNotes = e.notes || "";
         const cleanNotes = rawNotes.replace(/\s*\(Erfasst von:.*?\)/, '').trim();
-        const baseNote = cleanNotes.split(' | ')[0].trim();
+        let baseNote = cleanNotes.split(' | ')[0].trim();
+        
+        // NEU: Bei Impfungen den Text in Klammern ignorieren, um sie korrekt zu gruppieren
+        if (e.event_type === 'Impfung') {
+            baseNote = baseNote.replace(/\s*\([^)]*\)/g, '').trim();
+        }
+
         const key = `${e.event_type}_${baseNote}`;
         
         if (!seenKeys.has(key)) {
