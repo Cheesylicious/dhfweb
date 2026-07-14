@@ -72,8 +72,8 @@ def create_dog():
             coat_color=none_if_empty(data.get('coat_color')),
             chip_number=none_if_empty(data.get('chip_number')),
             birthdate=parse_date(data.get('birthdate')),
-            entry_date=parse_date(data.get('entry_date')), # NEU
-            exit_date=parse_date(data.get('exit_date')),   # NEU
+            entry_date=parse_date(data.get('entry_date')),
+            exit_date=parse_date(data.get('exit_date')),
             last_vaccination=parse_date(data.get('last_vaccination')),
             next_vaccination=parse_date(data.get('next_vaccination')),
             training_focus=none_if_empty(data.get('training_focus')),
@@ -109,8 +109,8 @@ def update_dog(dog_id):
         if 'coat_color' in data: dog.coat_color = none_if_empty(data['coat_color'])
         if 'chip_number' in data: dog.chip_number = none_if_empty(data['chip_number'])
         if 'birthdate' in data: dog.birthdate = parse_date(data['birthdate'])
-        if 'entry_date' in data: dog.entry_date = parse_date(data['entry_date']) # NEU
-        if 'exit_date' in data: dog.exit_date = parse_date(data['exit_date'])    # NEU
+        if 'entry_date' in data: dog.entry_date = parse_date(data['entry_date'])
+        if 'exit_date' in data: dog.exit_date = parse_date(data['exit_date'])
         if 'last_vaccination' in data: dog.last_vaccination = parse_date(data['last_vaccination'])
         if 'next_vaccination' in data: dog.next_vaccination = parse_date(data['next_vaccination'])
         if 'training_focus' in data: dog.training_focus = none_if_empty(data['training_focus'])
@@ -257,14 +257,20 @@ def get_upcoming_dues():
             
             for event in events:
                 raw_notes = event.notes or ""
-                # Entferne die "(Erfasst von: ...)" Signatur, damit der Schlüsselvergleich sauber klappt
+                # Entferne die "(Erfasst von: ...)" Signatur
                 clean_notes = re.sub(r'\s*\(Erfasst von:.*?\)', '', raw_notes)
                 
-                # Wir nehmen den ersten Teil der Notiz (z.B. "Präparat: Tollwut" oder "Bravecto")
-                base_note = clean_notes.split(' | ')[0]
+                # Wir nehmen den ersten Teil der Notiz (z.B. "Präparat: Tollwut (3 Jahre)")
+                base_note_display = clean_notes.split(' | ')[0]
+                base_note_key = base_note_display
                 
-                # Bilde einen eindeutigen Schlüssel (z.B. "Impfung_Präparat: Tollwut (3 Jahre)")
-                key = f"{event.event_type}_{base_note}"
+                # NEU: Bei Impfungen den Text in Klammern (z.B. " (3 Jahre)") für den Schluessel abschneiden, 
+                # damit Tollwut (1 Jahr) und Tollwut (3 Jahre) als das GLEICHE Präparat erkannt werden!
+                if event.event_type == 'Impfung':
+                    base_note_key = re.sub(r'\s*\([^)]*\)', '', base_note_display).strip()
+                
+                # Bilde einen eindeutigen Schlüssel (z.B. "Impfung_Präparat: Tollwut")
+                key = f"{event.event_type}_{base_note_key}"
                 
                 # Wenn wir diesen Typ/Präparat bei DIESEM Hund schon gesehen haben, 
                 # dann war das vorherige Event jünger -> das aktuelle Event ist veraltet/erledigt!
@@ -282,7 +288,7 @@ def get_upcoming_dues():
                         "event_type": event.event_type,
                         "due_date": event.due_date.isoformat(),
                         "days_left": days_left,
-                        "details": base_note # "Präparat: Tollwut" zur schönen Anzeige im Banner
+                        "details": base_note_display # Den originallen Text inkl. "3 Jahre" zur schönen Anzeige beibehalten
                     })
                     
         return jsonify(alerts), 200
