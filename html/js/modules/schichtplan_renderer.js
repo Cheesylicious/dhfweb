@@ -382,10 +382,10 @@ export const PlanRenderer = {
             nameCell.textContent = `${user.vorname} ${user.name}`;
             grid.appendChild(nameCell);
 
-            // Hund
+            // Hund (NEU: Liest active_dog_name aus, anstatt dem alten diensthund Feld)
             const dogCell = document.createElement('div');
             dogCell.className = 'grid-user-dog' + currentUserClass;
-            dogCell.textContent = user.diensthund || '---';
+            dogCell.textContent = user.active_dog_name || '---';
             grid.appendChild(dogCell);
 
             // Übertrag

@@ -426,6 +426,9 @@
         }
         #content-wrapper.restricted-view h2 { color: #e74c3c; }
         /* --- ENDE NEU --- */
+        
+        .event-table th { font-size: 11px; padding: 10px; }
+        .event-table td { font-size: 13px; padding: 10px; }
     </style>
 </head>
 <body>
@@ -551,19 +554,39 @@
                             <div class="form-group"><label for="user-urlaub-gesamt">Urlaub Gesamt:</label><input type="number" id="user-urlaub-gesamt"></div>
                             <div class="form-group"><label for="user-urlaub-rest">Urlaub Rest:</label><input type="number" id="user-urlaub-rest"></div>
                         </div>
-                        
-                        <div class="form-group">
-                            <label for="user-diensthund">Diensthund (Name):</label>
-                            <select id="user-diensthund">
-                                <option value="">-- Kein Diensthund --</option>
-                            </select>
-                        </div>
 
                         <div class="form-group" style="display:flex; align-items:center; margin-top: 10px;">
                             <input type="checkbox" id="user-is-manual-dog-handler">
                             <label for="user-is-manual-dog-handler" style="margin:0; cursor:pointer;">Manuell als Hundeführer listen</label>
                         </div>
                     </div>
+                </div>
+                
+                <!-- NEU: Hunde-Historie -->
+                <div id="dog-assignments-wrapper" class="full-width-section" style="display: none;">
+                    <h3>Diensthund Zuweisungen (Historie)</h3>
+                    <div style="background: rgba(255,255,255,0.05); padding: 15px; border-radius: 5px; margin-bottom: 20px;">
+                        <div style="display: flex; gap: 10px; align-items: flex-end;">
+                            <div style="flex: 2;">
+                                <label style="font-size: 13px; color: #bdc3c7; margin-bottom: 5px; display: block;">Hund *</label>
+                                <select id="assignment-dog" style="width: 100%; padding: 10px; background: rgba(0, 0, 0, 0.3); border: 1px solid #444; border-radius: 6px; color: #ffffff;">
+                                    <option value="">-- Bitte wählen --</option>
+                                </select>
+                            </div>
+                            <div style="flex: 1;">
+                                <label style="font-size: 13px; color: #bdc3c7; margin-bottom: 5px; display: block;">Ab Datum *</label>
+                                <input type="date" id="assignment-start-date" style="width: 100%; padding: 10px; background: rgba(0, 0, 0, 0.3); border: 1px solid #444; border-radius: 6px; color: #ffffff;">
+                            </div>
+                            <div style="flex: 1;">
+                                <button class="btn-primary" id="add-assignment-btn" style="width: 100%; padding: 11px;">Zuweisen</button>
+                            </div>
+                        </div>
+                        <small style="color: #aaa; display: block; margin-top: 10px;">Hinweis: Eine neue Zuweisung beendet automatisch die vorherige aktive Zuweisung dieses Mitarbeiters.</small>
+                    </div>
+                    <table class="event-table" style="width: 100%;">
+                        <thead><tr><th>Hund</th><th>Von</th><th>Bis</th><th>Aktion</th></tr></thead>
+                        <tbody id="user-assignments-table-body"></tbody>
+                    </table>
                 </div>
 
                 <div class="full-width-section">
@@ -639,6 +662,7 @@
         } catch(e){}
     </script>
 
+    <script src="js/sw_register.js" defer></script>
     <script type="module" src="shared_feedback.js" defer></script>
     <script type="module" src="shared_notifications.js" defer></script>
     <script type="module" src="js/pages/users.js" defer></script>

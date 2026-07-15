@@ -60,13 +60,17 @@ try {
 // --- GLOBALE VARIABLEN & DYNAMISCHE FELDER ---
 const tbody = document.getElementById('dogs-table-body');
 const modal = document.getElementById('dog-modal');
-const ownerSelect = document.getElementById('dog-owner');
-const ownerSelect2 = document.getElementById('dog-owner-2');
 
-// NEUE Felder
+// NEUE Felder (Stammdaten)
 const entryDateInput = document.getElementById('dog-entry-date');
 const exitDateInput = document.getElementById('dog-exit-date');
 const isArchivedCheck = document.getElementById('dog-is-archived');
+
+// Zuweisungen (Historie)
+const assignmentUserSelect = document.getElementById('assignment-user');
+const assignmentStartDate = document.getElementById('assignment-start-date');
+const addAssignmentBtn = document.getElementById('add-assignment-btn');
+const assignmentsTableBody = document.getElementById('assignments-table-body');
 
 // Akte Felder
 const eventType = document.getElementById('event-type');
@@ -84,6 +88,7 @@ const vacType = document.getElementById('vaccine-type');
 
 let allOwners = [];
 let allDogs = [];   
+let allAssignments = []; // NEU: Alle Zuweisungen laden
 
 let currentDogEvents = [];
 let currentEventFilter = 'Alle';
@@ -110,14 +115,18 @@ document.querySelectorAll('.event-filter-btn').forEach(btn => {
 // --- DATEN LADEN ---
 async function loadData() {
     try {
-        const [ownersRes, dogsRes] = await Promise.all([
+        const [ownersRes, dogsRes, assignmentsRes] = await Promise.all([
             apiFetch('/api/dogs/owners'),
-            apiFetch('/api/dogs/')
+            apiFetch('/api/dogs/'),
+            apiFetch('/api/dog_assignments/') // NEU
         ]);
         allOwners = ownersRes;
         allDogs = dogsRes;
+        allAssignments = assignmentsRes;
+        
         renderDogsTable();
         populateDpoHandlers(); 
+        populateAssignmentUserDropdown(); // Füllt das neue Select-Feld
 
         const urlParams = new URLSearchParams(window.location.search);
         const openDogId = urlParams.get('open_dog');
@@ -158,12 +167,19 @@ function renderDogsTable() {
         return a.is_active ? -1 : 1;
     });
 
+    const today = new Date().toISOString().split('T')[0];
+
     sortedDogs.forEach(d => {
         const dogJsonString = JSON.stringify(d).replace(/'/g, "\\'");
         
         const isArchived = d.is_active === false;
         const rowClass = isArchived ? 'archived-row' : '';
         const nameDisplay = isArchived ? `${d.name} <span style="color:#e74c3c; font-size: 11px;">(Archiviert)</span>` : d.name;
+
+        // NEU: Den AKTUELLEN Besitzer aus der Historie berechnen
+        const currentAssignments = allAssignments.filter(a => a.dog_id === d.id && a.start_date <= today && (!a.end_date || a.end_date >= today));
+        const activeOwnerNames = currentAssignments.map(a => a.user_name).join(' & ');
+        const displayOwner = activeOwnerNames || '<span style="color:#aaa;">Kein Hundeführer zugewiesen</span>';
 
         const photoHtml = d.photo_filename 
             ? `<img src="/api/dogs/photo/${d.photo_filename}" class="dog-avatar" onclick='editDog(${dogJsonString})' title="Akte öffnen">` 
@@ -175,55 +191,20 @@ function renderDogsTable() {
             <td>${photoHtml} <strong>${nameDisplay}</strong> <br><small style="color:#aaa;">${d.age_years !== null ? d.age_years + ' Jahre' : ''}</small></td>
             <td>${d.breed || '-'}</td>
             <td>${d.chip_number || '-'}</td>
-            <td>${d.owner_name}</td>
+            <td>${displayOwner}</td>
             <td><button class="btn-primary" onclick='editDog(${dogJsonString})'>Akte öffnen</button></td>
         `;
         tbody.appendChild(tr);
     });
 }
 
-function populateOwnerDropdowns(currentDogId) {
-    const assignedToOtherDogs = new Set();
-    allDogs.forEach(dog => {
-        if (dog.id !== currentDogId) {
-            if (dog.owner_id) assignedToOtherDogs.add(dog.owner_id);
-            if (dog.owner_id_2) assignedToOtherDogs.add(dog.owner_id_2);
-        }
+function populateAssignmentUserDropdown() {
+    let html = '<option value="">-- Bitte wählen --</option>';
+    allOwners.forEach(o => {
+        html += `<option value="${o.id}">${o.name}</option>`;
     });
-
-    const availableForThisDog = allOwners.filter(o => !assignedToOtherDogs.has(o.id));
-    const val1 = ownerSelect.value;
-    const val2 = ownerSelect2.value;
-
-    let html1 = '<option value="">-- Kein Hundeführer --</option>';
-    let html2 = '<option value="">-- Kein 2. Hundeführer --</option>';
-
-    availableForThisDog.forEach(o => {
-        html1 += `<option value="${o.id}">${o.name}</option>`;
-        html2 += `<option value="${o.id}">${o.name}</option>`;
-    });
-
-    ownerSelect.innerHTML = html1;
-    ownerSelect2.innerHTML = html2;
-    ownerSelect.value = val1;
-    ownerSelect2.value = val2;
-
-    crossDisableDropdowns();
+    assignmentUserSelect.innerHTML = html;
 }
-
-function crossDisableDropdowns() {
-    const val1 = ownerSelect.value;
-    const val2 = ownerSelect2.value;
-
-    Array.from(ownerSelect.options).forEach(opt => { opt.disabled = (opt.value !== "" && opt.value === val2); });
-    Array.from(ownerSelect2.options).forEach(opt => { opt.disabled = (opt.value !== "" && opt.value === val1); });
-}
-
-ownerSelect.addEventListener('change', crossDisableDropdowns);
-ownerSelect2.addEventListener('change', crossDisableDropdowns);
-
-
-// --- DYNAMISCHE LOGIK FÜR AKTE / TERMINE ---
 
 function populateDpoHandlers() {
     dpoHandler.innerHTML = '<option value="">-- Bitte wählen --</option>';
@@ -232,8 +213,78 @@ function populateDpoHandlers() {
     });
 }
 
+
+// --- ZUWEISUNGEN (HISTORIE) LOGIK ---
+function renderAssignmentsTable(dogId) {
+    assignmentsTableBody.innerHTML = '';
+    const dogAssignments = allAssignments.filter(a => a.dog_id === dogId);
+    
+    if (dogAssignments.length === 0) {
+        assignmentsTableBody.innerHTML = '<tr><td colspan="4" style="text-align:center; color:#aaa;">Noch keine Zuweisungen vorhanden.</td></tr>';
+        return;
+    }
+
+    dogAssignments.forEach(a => {
+        const startStr = a.start_date ? a.start_date.split('-').reverse().join('.') : '-';
+        const endStr = a.end_date ? a.end_date.split('-').reverse().join('.') : '<span style="color:#2ecc71; font-weight:bold;">Aktuell</span>';
+        
+        assignmentsTableBody.innerHTML += `
+            <tr>
+                <td><strong>${a.user_name}</strong></td>
+                <td>${startStr}</td>
+                <td>${endStr}</td>
+                <td>
+                    <button class="btn-danger" onclick="deleteAssignment(${a.id}, ${dogId})" title="Eintrag löschen"><i class="fas fa-trash"></i></button>
+                </td>
+            </tr>
+        `;
+    });
+}
+
+if (addAssignmentBtn) {
+    addAssignmentBtn.onclick = async () => {
+        const dogId = document.getElementById('dog-id').value;
+        const userId = assignmentUserSelect.value;
+        const startDate = assignmentStartDate.value;
+
+        if (!dogId) return alert("Bitte speichere den Hund zuerst unter Stammdaten ab.");
+        if (!userId || !startDate) return alert("Bitte Mitarbeiter und Startdatum auswählen.");
+
+        try {
+            await apiFetch('/api/dog_assignments/', 'POST', {
+                user_id: userId,
+                dog_id: dogId,
+                start_date: startDate
+            });
+            
+            // Felder zurücksetzen
+            assignmentUserSelect.value = '';
+            assignmentStartDate.value = '';
+            
+            // Komplettes Data-Reload (damit auch das Badge in der Haupttabelle stimmt)
+            await loadData();
+            renderAssignmentsTable(parseInt(dogId));
+            
+        } catch (e) {
+            alert(e.message);
+        }
+    };
+}
+
+window.deleteAssignment = async (assignmentId, dogId) => {
+    if (!confirm("Diesen Zuweisungs-Eintrag wirklich löschen?")) return;
+    try {
+        await apiFetch(`/api/dog_assignments/${assignmentId}`, 'DELETE');
+        await loadData();
+        renderAssignmentsTable(dogId);
+    } catch(e) {
+        alert(e.message);
+    }
+};
+
+
+// --- DYNAMISCHE LOGIK FÜR AKTE / TERMINE ---
 function resetEventForm() {
-    // Aktuelles Datum in lokaler Zeitzone ermitteln & setzen
     const today = new Date();
     const yyyy = today.getFullYear();
     const mm = String(today.getMonth() + 1).padStart(2, '0');
@@ -302,6 +353,7 @@ vacType.addEventListener('change', calculateDueDate);
 window.editDog = (d) => {
     document.getElementById('btn-tab-akte').style.display = 'block';
     document.getElementById('btn-tab-foto').style.display = 'block';
+    document.getElementById('btn-tab-zuweisungen').style.display = 'block'; // NEU
 
     if (!isAdmin) {
         document.getElementById('btn-tab-akte').click();
@@ -333,14 +385,12 @@ window.editDog = (d) => {
     document.getElementById('dog-chip').value = d.chip_number || '';
     document.getElementById('dog-birth').value = d.birthdate || '';
     
-    // NEUE Felder befüllen
     entryDateInput.value = d.entry_date || '';
     exitDateInput.value = d.exit_date || '';
     isArchivedCheck.checked = (d.is_active === false);
     
-    ownerSelect.value = d.owner_id || '';
-    ownerSelect2.value = d.owner_id_2 || '';
-    populateOwnerDropdowns(d.id);
+    // Zuweisungen in der Tabelle rendern
+    renderAssignmentsTable(d.id);
     
     const preview = document.getElementById('dog-photo-preview');
     const noPhoto = document.getElementById('no-photo-text');
@@ -355,6 +405,10 @@ window.editDog = (d) => {
 
     resetEventForm();
     loadEvents(d.id);
+    
+    // Aktuelles Datum im Zuweisungs-Feld vorbelegen
+    assignmentStartDate.value = new Date().toISOString().split('T')[0];
+    
     modal.style.display = 'block';
 };
 
@@ -362,6 +416,7 @@ document.getElementById('add-dog-btn').onclick = () => {
     document.querySelector('[data-tab="tab-stammdaten"]').click();
     document.getElementById('btn-tab-akte').style.display = 'none';
     document.getElementById('btn-tab-foto').style.display = 'none';
+    document.getElementById('btn-tab-zuweisungen').style.display = 'none'; // Verstecken bis gespeichert
 
     document.getElementById('dog-id').value = '';
     document.getElementById('dog-name').value = '';
@@ -372,22 +427,19 @@ document.getElementById('add-dog-btn').onclick = () => {
     document.getElementById('dog-chip').value = '';
     document.getElementById('dog-birth').value = '';
     
-    // NEUE Felder zurücksetzen
     entryDateInput.value = '';
     exitDateInput.value = '';
     isArchivedCheck.checked = false;
     
-    ownerSelect.value = '';
-    ownerSelect2.value = '';
-    populateOwnerDropdowns(null);
     resetEventForm();
-    
     modal.style.display = 'block';
 };
 
 // --- SPEICHERN STAMMDATEN ---
 document.getElementById('save-dog-btn').onclick = async () => {
     const id = document.getElementById('dog-id').value;
+    
+    // Owner-IDs wurden entfernt, da dies nun über die Zuweisungs-Tabelle gelöst wird!
     const payload = {
         name: document.getElementById('dog-name').value,
         breed: document.getElementById('dog-breed').value,
@@ -398,9 +450,7 @@ document.getElementById('save-dog-btn').onclick = async () => {
         birthdate: document.getElementById('dog-birth').value,
         entry_date: entryDateInput.value || null,
         exit_date: exitDateInput.value || null,
-        is_active: !isArchivedCheck.checked, // WICHTIG: True wenn NICHT angehakt
-        owner_id: ownerSelect.value,
-        owner_id_2: ownerSelect2.value
+        is_active: !isArchivedCheck.checked
     };
     
     try {
@@ -409,7 +459,7 @@ document.getElementById('save-dog-btn').onclick = async () => {
             alert("Stammdaten aktualisiert.");
         } else {
             const newDog = await apiFetch('/api/dogs/', 'POST', payload);
-            alert("Hund angelegt! Sie können nun Fotos und Termine hinzufügen.");
+            alert("Hund angelegt! Sie können nun im Reiter 'Zuweisungen' einen Hundeführer festlegen.");
             editDog(newDog);
         }
         await loadData(); 
@@ -529,7 +579,6 @@ function renderEventsTable() {
         const cleanNotes = rawNotes.replace(/\s*\(Erfasst von:.*?\)/, '').trim();
         let baseNote = cleanNotes.split(' | ')[0].trim();
         
-        // NEU: Bei Impfungen den Text in Klammern ignorieren, um sie korrekt zu gruppieren
         if (e.event_type === 'Impfung') {
             baseNote = baseNote.replace(/\s*\([^)]*\)/g, '').trim();
         }

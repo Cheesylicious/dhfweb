@@ -7,6 +7,8 @@ import { initAuthCheck } from '../utils/auth.js';
 // --- Globales Setup ---
 let user;
 let allRoles = [];
+let allDogs = [];
+let allAssignments = [];
 let isAdmin = false;
 
 // --- 1. Authentifizierung & Zugriffsschutz ---
@@ -63,7 +65,6 @@ const aktivAbField = document.getElementById('user-aktiv-ab');
 const inaktivAbField = document.getElementById('user-inaktiv-ab');
 const urlaubGesamtField = document.getElementById('user-urlaub-gesamt');
 const urlaubRestField = document.getElementById('user-urlaub-rest');
-const userDiensthundField = document.getElementById('user-diensthund'); 
 const tutorialField = document.getElementById('user-tutorial');
 const canSeeStatsField = document.getElementById('user-can-see-stats');
 const passGeaendertField = document.getElementById('user-pass-geaendert');
@@ -71,6 +72,13 @@ const zuletztOnlineField = document.getElementById('user-zuletzt-online');
 const forcePwResetBtn = document.getElementById('force-pw-reset-btn');
 const isManualDogHandlerField = document.getElementById('user-is-manual-dog-handler');
 const limitsWrapper = document.getElementById('limits-wrapper');
+
+// Historie Elemente
+const dogAssignmentsWrapper = document.getElementById('dog-assignments-wrapper');
+const assignmentDogSelect = document.getElementById('assignment-dog');
+const assignmentStartDate = document.getElementById('assignment-start-date');
+const addAssignmentBtn = document.getElementById('add-assignment-btn');
+const userAssignmentsTableBody = document.getElementById('user-assignments-table-body');
 
 // Spalten-Konfiguration
 const columnModal = document.getElementById('column-modal');
@@ -161,33 +169,14 @@ async function loadRolesIntoDropdown(selectedRoleId = null) {
     }
 }
 
-// Hunde ins Dropdown laden
-async function loadDogsIntoDropdown(selectedDogName = '') {
-    try {
-        const allDogs = await apiFetch('/api/dogs');
-        userDiensthundField.innerHTML = '<option value="">-- Kein Diensthund --</option>';
-        
-        allDogs.forEach(dog => {
-            const option = document.createElement('option');
-            option.value = dog.name; 
-            option.textContent = dog.name;
-            if (dog.name === selectedDogName) {
-                option.selected = true;
-            }
-            userDiensthundField.appendChild(option);
-        });
-        
-        // Falls der Nutzer einen Hund eingetragen hat, der gelöscht wurde
-        if (selectedDogName && !allDogs.find(d => d.name === selectedDogName)) {
-            const option = document.createElement('option');
-            option.value = selectedDogName;
-            option.textContent = selectedDogName + " (Archiviert/Gelöscht)";
-            option.selected = true;
-            userDiensthundField.appendChild(option);
-        }
-    } catch(e) {
-        console.error("Fehler beim Laden der Hunde:", e);
-    }
+function loadDogsIntoDropdown() {
+    assignmentDogSelect.innerHTML = '<option value="">-- Bitte wählen --</option>';
+    allDogs.forEach(dog => {
+        const option = document.createElement('option');
+        option.value = dog.id;
+        option.textContent = dog.name;
+        assignmentDogSelect.appendChild(option);
+    });
 }
 
 async function loadUserLimits(userId) {
@@ -250,8 +239,19 @@ async function loadUsers() {
     if (!userTableBody) return;
 
     try {
-        const users = await apiFetch('/api/users');
+        // Zuweisungen und Hunde direkt mitladen für das dynamische Table-Feld
+        const [users, dogsRes, assignmentsRes] = await Promise.all([
+            apiFetch('/api/users'),
+            apiFetch('/api/dogs'),
+            apiFetch('/api/dog_assignments/')
+        ]);
+        
+        allDogs = dogsRes;
+        allAssignments = assignmentsRes;
+        
         userTableBody.innerHTML = '';
+        const today = new Date().toISOString().split('T')[0];
+        
         users.forEach(u => {
             const row = document.createElement('tr');
             const roleName = u.role ? u.role.name : 'Keine Rolle';
@@ -264,7 +264,11 @@ async function loadUsers() {
             const restAnzeige = (u.vacation_remaining !== undefined) ? u.vacation_remaining : '?';
             const urlaub = restAnzeige + ' / ' + u.urlaub_gesamt;
 
-            const hund = u.diensthund || '---';
+            // NEU: Aktiven Hund für die Tabelle live berechnen
+            const userAssignments = allAssignments.filter(a => a.user_id === u.id && a.start_date <= today && (!a.end_date || a.end_date >= today));
+            const activeDogNames = userAssignments.map(a => a.dog_name).join(' & ');
+            const hund = activeDogNames || '---';
+            
             const online = formatDateTime(u.zuletzt_online, 'datetime') || 'Nie';
 
             row.innerHTML = `
@@ -292,6 +296,34 @@ async function loadUsers() {
              userTableBody.innerHTML = `<tr><td colspan="10" style="text-align:center; color: #e74c3c;">Fehler beim Laden: ${error.message}</td></tr>`;
         }
     }
+}
+
+function renderUserAssignments(userId) {
+    if (!userAssignmentsTableBody) return;
+    userAssignmentsTableBody.innerHTML = '';
+    
+    const userHistory = allAssignments.filter(a => a.user_id === userId);
+    
+    if (userHistory.length === 0) {
+        userAssignmentsTableBody.innerHTML = '<tr><td colspan="4" style="text-align:center; color:#aaa;">Keine Historie vorhanden.</td></tr>';
+        return;
+    }
+
+    userHistory.forEach(a => {
+        const startStr = a.start_date ? a.start_date.split('-').reverse().join('.') : '-';
+        const endStr = a.end_date ? a.end_date.split('-').reverse().join('.') : '<span style="color:#2ecc71; font-weight:bold;">Aktuell</span>';
+        
+        userAssignmentsTableBody.innerHTML += `
+            <tr>
+                <td><strong>${a.dog_name}</strong></td>
+                <td>${startStr}</td>
+                <td>${endStr}</td>
+                <td>
+                    <button class="btn-danger" onclick="deleteUserAssignment(${a.id}, ${userId})" title="Eintrag löschen"><i class="fas fa-trash"></i></button>
+                </td>
+            </tr>
+        `;
+    });
 }
 
 if (userTableBody) {
@@ -338,9 +370,9 @@ if (addUserBtn) {
 
         if(limitsWrapper) limitsWrapper.style.display = 'none'; 
         if(forcePwResetBtn) forcePwResetBtn.style.display = 'none'; 
+        if(dogAssignmentsWrapper) dogAssignmentsWrapper.style.display = 'none'; // Bei neuen Usern erst nach dem Speichern
 
         await loadRolesIntoDropdown();
-        await loadDogsIntoDropdown(''); 
         openModal(modal);
     };
 }
@@ -381,11 +413,57 @@ async function openEditModal(user) {
         setTimeout(() => loadUserLimits(user.id), 50);
     }
     if(forcePwResetBtn) forcePwResetBtn.style.display = 'inline-block';
+    
+    if(dogAssignmentsWrapper) {
+        dogAssignmentsWrapper.style.display = 'block';
+        loadDogsIntoDropdown();
+        renderUserAssignments(user.id);
+        assignmentStartDate.value = new Date().toISOString().split('T')[0];
+    }
 
     await loadRolesIntoDropdown(user.role_id);
-    await loadDogsIntoDropdown(user.diensthund || ''); 
     openModal(modal);
 }
+
+// Zuweisungs-Button
+if (addAssignmentBtn) {
+    addAssignmentBtn.onclick = async (e) => {
+        e.preventDefault();
+        const userId = userIdField.value;
+        const dogId = assignmentDogSelect.value;
+        const startDate = assignmentStartDate.value;
+
+        if (!userId) return;
+        if (!dogId || !startDate) return alert("Bitte wähle einen Hund und ein Startdatum aus.");
+
+        try {
+            await apiFetch('/api/dog_assignments/', 'POST', {
+                user_id: userId,
+                dog_id: dogId,
+                start_date: startDate
+            });
+            
+            assignmentDogSelect.value = '';
+            await loadUsers(); // Lädt Zuweisungen & berechnet das Table-Badge neu
+            renderUserAssignments(parseInt(userId));
+            
+        } catch(err) {
+            alert(err.message);
+        }
+    };
+}
+
+// Löschen einer Zuweisung
+window.deleteUserAssignment = async (assignmentId, userId) => {
+    if (!confirm("Diesen Zuweisungs-Eintrag wirklich löschen?")) return;
+    try {
+        await apiFetch(`/api/dog_assignments/${assignmentId}`, 'DELETE');
+        await loadUsers();
+        renderUserAssignments(userId);
+    } catch(e) {
+        alert(e.message);
+    }
+};
 
 if (saveUserBtn) {
     saveUserBtn.onclick = async () => {
@@ -402,7 +480,6 @@ if (saveUserBtn) {
             aktiv_ab_datum: aktivAbField.value || null,
             inaktiv_ab_datum: inaktivAbField.value || null,
             urlaub_gesamt: parseInt(urlaubGesamtField.value) || 0,
-            diensthund: userDiensthundField.value || null, 
             tutorial_gesehen: tutorialField.checked,
             can_see_statistics: canSeeStatsField.checked,
             is_manual_dog_handler: isManualDogHandlerField ? isManualDogHandlerField.checked : false
