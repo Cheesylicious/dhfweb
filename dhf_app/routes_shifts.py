@@ -2,6 +2,7 @@
 
 from flask import Blueprint, request, jsonify, current_app
 from .models import Shift, ShiftType, User, ShiftPlanStatus, UpdateLog, ShiftQuery, SpecialDate, Role, PlanVariant
+from .models_dogs import DogAssignment # NEU: Für die Historien-Abfrage
 from .extensions import db, socketio
 from .utils import admin_required
 from .models_audit import log_audit
@@ -330,9 +331,6 @@ def get_shifts():
     except (TypeError, ValueError):
         return jsonify({"message": "Ungültige Parameter"}), 400
 
-    # ACHTUNG: Der Türsteher-Block wurde hier WIRKLICH gelöscht!
-    # Keine Admin-Überprüfung mehr bei "if variant_id is not None:"
-
     current_month_start_date = date(year, month, 1)
     days_in_month = calendar.monthrange(year, month)[1]
     current_month_end_date = date(year, month, days_in_month)
@@ -368,6 +366,30 @@ def get_shifts():
     shifts_last_month_data = [s.to_dict() for s in shifts_prev_month]
 
     users_data = [u.to_dict() for u in users]
+
+    # --- NEU: HUNDE-HISTORIE FÜR SCHICHTPLAN ---
+    # Wir laden alle Zuweisungen, die in oder vor diesem Monat aktiv waren
+    assignments = DogAssignment.query.options(joinedload(DogAssignment.dog)).filter(
+        DogAssignment.start_date <= current_month_end_date,
+        or_(DogAssignment.end_date == None, DogAssignment.end_date >= current_month_start_date)
+    ).all()
+    
+    # Mappe die aktive Hund-Zuweisung für jeden User für diesen Monat
+    user_dog_map = {}
+    for a in assignments:
+        # Falls es mehrere gibt (was eigentlich nicht sein sollte), nimm den mit dem neusten start_date
+        if a.user_id not in user_dog_map or a.start_date > user_dog_map[a.user_id].start_date:
+            user_dog_map[a.user_id] = a
+            
+    # Hänge den berechneten Hundenamen an die users_data an
+    for u_dict in users_data:
+        assignment = user_dog_map.get(u_dict['id'])
+        if assignment and assignment.dog:
+            u_dict['active_dog_name'] = assignment.dog.name
+        else:
+            u_dict['active_dog_name'] = None
+    # ---------------------------------------------
+
 
     # --- Berechnung des verbleibenden Urlaubs (Jahres-Sicht) ---
     eu_type = ShiftType.query.filter_by(abbreviation='EU').first()
@@ -637,15 +659,9 @@ def save_shift():
                 db.session.delete(existing_shift)
             else:
                 existing_shift.shifttype_id = shifttype_id
-                # Snapshot Update
-                user = db.session.get(User, user_id)
-                existing_shift.dog_id = user.active_dog_id if user else None
                 db.session.add(existing_shift)
         elif not is_free:
             new_shift = Shift(user_id=user_id, shifttype_id=shifttype_id, date=shift_date, variant_id=variant_id)
-            # Snapshot Creation
-            user = db.session.get(User, user_id)
-            new_shift.dog_id = user.active_dog_id if user else None
             db.session.add(new_shift)
             db.session.flush()
             saved_shift_id = new_shift.id
@@ -925,12 +941,30 @@ def send_completion_notification():
                 user_hours_map[s.user_id] += st_spill.get(s.shifttype_id, 0.0)
 
         matrix_rows = []
+        # NEU: Wir laden kurz die Historie für die Rundmail, damit auch im Bild der richtige Hund steht!
+        assignments = DogAssignment.query.options(joinedload(DogAssignment.dog)).filter(
+            DogAssignment.start_date <= current_month_end_date,
+            or_(DogAssignment.end_date == None, DogAssignment.end_date >= date(year, month, 1))
+        ).all()
+        
+        user_dog_map = {}
+        for a in assignments:
+            if a.user_id not in user_dog_map or a.start_date > user_dog_map[a.user_id].start_date:
+                user_dog_map[a.user_id] = a
+
         for u in all_visible_users:
             total_val = round(user_hours_map[u.id], 2)
             if total_val.is_integer(): total_val = int(total_val)
+            
+            # Hole den korrekten Hund aus der Map
+            active_dog = ""
+            assignment = user_dog_map.get(u.id)
+            if assignment and assignment.dog:
+                active_dog = assignment.dog.name
+                
             row_data = {
                 'name': f"{u.vorname} {u.name}",
-                'dog': u.diensthund or '',
+                'dog': active_dog,
                 'total_hours': total_val,
                 'cells': []
             }

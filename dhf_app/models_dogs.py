@@ -111,3 +111,33 @@ class DogEvent(db.Model):
             "notes": self.notes,
             "created_at": self.created_at.isoformat()
         }
+
+class DogAssignment(db.Model):
+    """
+    Historientabelle: Welcher Hund war/ist welchem Mitarbeiter in welchem Zeitraum zugewiesen?
+    Erlaubt es dem Schichtplan, auch in der Vergangenheit den korrekten Hund anzuzeigen.
+    """
+    __tablename__ = 'dog_assignment'
+    
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id', ondelete='CASCADE'), nullable=False)
+    dog_id = db.Column(db.Integer, db.ForeignKey('dog.id', ondelete='CASCADE'), nullable=False)
+    
+    start_date = db.Column(db.Date, nullable=False)
+    # NULL bedeutet: aktuell noch zugewiesen
+    end_date = db.Column(db.Date, nullable=True)  
+    
+    # Beziehungen für effiziente Abfragen
+    user = db.relationship('User', backref=db.backref('dog_assignments', lazy='dynamic', cascade="all, delete-orphan"))
+    dog = db.relationship('Dog', backref=db.backref('user_assignments', lazy='dynamic', cascade="all, delete-orphan"))
+    
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "user_id": self.user_id,
+            "user_name": f"{self.user.vorname} {self.user.name}" if self.user else "Unbekannt",
+            "dog_id": self.dog_id,
+            "dog_name": self.dog.name if self.dog else "Unbekannt",
+            "start_date": self.start_date.isoformat() if self.start_date else None,
+            "end_date": self.end_date.isoformat() if self.end_date else None
+        }

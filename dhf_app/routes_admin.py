@@ -246,7 +246,7 @@ def create_user():
             aktiv_ab_datum=none_if_empty(data.get('aktiv_ab_datum')),
             inaktiv_ab_datum=none_if_empty(data.get('inaktiv_ab_datum')),
             urlaub_gesamt=data.get('urlaub_gesamt', 0), urlaub_rest=data.get('urlaub_rest', 0),
-            diensthund=data.get('diensthund'), tutorial_gesehen=data.get('tutorial_gesehen', False),
+            tutorial_gesehen=data.get('tutorial_gesehen', False),
             shift_plan_visible=data.get('shift_plan_visible', False),
             shift_plan_sort_order=data.get('shift_plan_sort_order', 999),
             force_password_change=True,
@@ -296,7 +296,6 @@ def update_user(user_id):
 
         user.urlaub_gesamt = data.get('urlaub_gesamt', user.urlaub_gesamt)
         # user.urlaub_rest = data.get('urlaub_rest', user.urlaub_rest) # Read-Only im Frontend (berechnet), daher nicht überschreiben
-        user.diensthund = data.get('diensthund', user.diensthund)
         user.tutorial_gesehen = data.get('tutorial_gesehen', user.tutorial_gesehen)
         user.shift_plan_visible = data.get('shift_plan_visible', user.shift_plan_visible)
         user.shift_plan_sort_order = data.get('shift_plan_sort_order', user.shift_plan_sort_order)
@@ -542,10 +541,6 @@ def update_dog_handler_data(user_id):
     data = request.get_json()
 
     try:
-        # --- NEU: Diensthund aktualisieren ---
-        if 'diensthund' in data:
-            user.diensthund = none_if_empty(data['diensthund'])
-
         # 1. Manuelle Zuweisung (Optional)
         if 'is_manual_dog_handler' in data:
             user.is_manual_dog_handler = data['is_manual_dog_handler']

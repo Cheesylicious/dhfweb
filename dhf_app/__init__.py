@@ -111,6 +111,10 @@ def create_app(config_name='default'):
     from .routes_dogs import dogs_bp
     app.register_blueprint(dogs_bp)
 
+    # --- NEU: Hunde-Historie Blueprint ---
+    from .routes_dog_assignments import dog_assignments_bp
+    app.register_blueprint(dog_assignments_bp)
+
     # 6. Startup-Logik
     with app.app_context():
         db.create_all()
