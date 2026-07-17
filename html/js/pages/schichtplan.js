@@ -11,7 +11,7 @@ import { PlanApi } from '../modules/schichtplan_api.js';
 import { PlanRenderer } from '../modules/schichtplan_renderer.js';
 import { StaffingModule } from '../modules/schichtplan_staffing.js';
 import { PlanHandlers } from '../modules/schichtplan_handlers.js';
-import { PredictionUI } from '../modules/prediction_ui.js';
+import { PredictionUI } from '../modules/prediction_ui.js'; 
 import { MarketModule } from '../modules/schichtplan_market.js';
 
 // Feature Modules
@@ -367,6 +367,8 @@ async function renderGrid(isSilent = false) {
         // Queries
         PlanState.currentShiftQueries = queriesResult;
 
+        // Approved Wishes
+        PlanState.currentApprovedWishes = shiftPayload.approved_wishes || {};
 
         // --- UI UPDATES ---
 

@@ -186,7 +186,43 @@ export const PlanInteraction = {
                 if(sections.adminWunsch) {
                     sections.adminWunsch.style.display = 'grid';
                     const approveBtn = document.getElementById('cam-btn-approve');
-                    if(approveBtn) approveBtn.textContent = `Genehmigen (${wunsch.message.replace('Anfrage für:', '').trim()})`;
+                    const rejectBtn = document.getElementById('cam-btn-reject');
+                    
+                    const requestedAbbr = wunsch.message.replace('Anfrage für:', '').trim().replace('?', '');
+
+                    if(approveBtn) {
+                        approveBtn.textContent = `Genehmigen (${requestedAbbr})`;
+                        approveBtn.onclick = async () => {
+                            document.getElementById('click-action-modal').style.display = 'none';
+                            
+                            // --- NEU: Lokaler State Update für W-Icon ---
+                            const shiftKey = `${user.id}-${dateStr}`;
+                            if (PlanState.currentShifts[shiftKey]) {
+                                PlanState.currentShifts[shiftKey].is_approved_wunsch = true;
+                            }
+                            
+                            const st = PlanState.allShiftTypesList.find(s => s.abbreviation === requestedAbbr);
+                            if (st) {
+                                // 1. Schicht eintragen
+                                await PlanHandlers.saveShift(st.id, user.id, dateStr);
+                            }
+                            
+                            // Nach saveShift nochmal setzen ( falls reloaded)
+                            if (PlanState.currentShifts[shiftKey]) {
+                                PlanState.currentShifts[shiftKey].is_approved_wunsch = true;
+                            }
+
+                            // 2. Anfrage als erledigt markieren
+                            await PlanHandlers.resolveShiftQuery(wunsch.id);
+                        };
+                    }
+
+                    if(rejectBtn) {
+                        rejectBtn.onclick = () => {
+                            document.getElementById('click-action-modal').style.display = 'none';
+                            PlanHandlers.deleteShiftQuery(wunsch.id);
+                        };
+                    }
                 }
                 hasContent = true;
             }
@@ -547,7 +583,44 @@ export const PlanInteraction = {
             }
 
             btn.onclick = () => {
-                if (isDisabled) return; // Sicherheitshalber
+                if (isDisabled) return;
+
+                const shiftKey = `${PlanState.clickModalContext.userId}-${PlanState.clickModalContext.dateStr}`;
+                const currentShift = PlanState.currentShifts[shiftKey];
+
+                // --- NEU: Konflikt-Prüfung bei bereits genehmigtem Wunsch ---
+                if (currentShift && currentShift.is_approved_wunsch && currentShift.shift_type) {
+                    const requestedAbbr = currentShift.shift_type.abbreviation;
+                    const selectedAbbr = def.abbrev;
+
+                    if (!def.isAll && selectedAbbr !== requestedAbbr) {
+                        document.getElementById('click-action-modal').style.display = 'none';
+                        window.dhfConfirm(
+                            "Wunsch überschreiben",
+                            `Ein Benutzer hatte hier den Wunsch "${requestedAbbr}". Trotzdem die Schicht "${selectedAbbr}" eintragen?`,
+                            () => {
+                                const st = PlanState.allShiftTypesList.find(s => s.abbreviation === def.abbrev);
+                                if (st) {
+                                    PlanHandlers.saveShift(st.id, PlanState.clickModalContext.userId, PlanState.clickModalContext.dateStr);
+                                }
+                            }
+                        );
+                        return;
+                    } else if (def.isAll) {
+                        document.getElementById('click-action-modal').style.display = 'none';
+                        window.dhfConfirm(
+                            "Wunsch überschreiben",
+                            `Ein Benutzer hatte hier den Wunsch "${requestedAbbr}". Wirklich ändern?`,
+                            () => {
+                                PlanState.modalContext = { userId: PlanState.clickModalContext.userId, dateStr: PlanState.clickModalContext.dateStr };
+                                document.getElementById('shift-modal').style.display = 'block';
+                            }
+                        );
+                        return;
+                    }
+                }
+                // --- ENDE NEU ---
+
                 document.getElementById('click-action-modal').style.display = 'none';
                 if (def.isAll) {
                     PlanState.modalContext = { userId: PlanState.clickModalContext.userId, dateStr: PlanState.clickModalContext.dateStr };

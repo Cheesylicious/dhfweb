@@ -252,7 +252,16 @@ export const PlanRenderer = {
             tradeIcon.title = 'Diese Schicht wurde getauscht';
             cell.appendChild(tradeIcon);
         }
-        // ---------------------------------------
+        
+        // --- 6. ERLEDIGTE WUNSCHANFRAGE (W) ICON ---
+        if (shift && shift.is_approved_wunsch && (PlanState.isAdmin || PlanState.loggedInUser.id === userId)) {
+            const wIcon = document.createElement('div');
+            wIcon.className = 'icon-approved-wunsch';
+            wIcon.textContent = 'W';
+            wIcon.title = 'Erfüllte Wunschanfrage';
+            cell.appendChild(wIcon);
+        }
+        // -------------------------------------------
 
         // Bulk Selection wiederherstellen
         if (PlanState.isBulkMode && wunschQuery && PlanState.selectedQueryIds.has(wunschQuery.id)) {

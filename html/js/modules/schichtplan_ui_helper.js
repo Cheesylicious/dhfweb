@@ -411,6 +411,24 @@ export const PlanUIHelper = {
             @keyframes popIn { from { transform: scale(0); opacity: 0; } to { transform: scale(1); opacity: 1; } }
             /* --- ENDE NEU --- */
 
+            /* --- NEU: Approved Wunsch Icon --- */
+            .icon-approved-wunsch {
+                position: absolute;
+                top: 2px;
+                left: 2px;
+                font-size: 10px;
+                font-weight: 700;
+                color: #fff;
+                background: rgba(41, 128, 185, 0.9);
+                padding: 1px 4px;
+                border-radius: 3px;
+                line-height: 1;
+                cursor: help;
+                z-index: 22;
+                filter: drop-shadow(0 0 2px rgba(0,0,0,0.5));
+            }
+            /* ---------------------------------- */
+
             /* --- UNIFIED BANNER STYLES --- */
             #dhf-unified-grid { display: flex; flex-direction: row; width: 100%; gap: 1px; margin-bottom: 5px; position: sticky; top: 0; z-index: 9999; flex-wrap: wrap; box-shadow: 0 3px 6px rgba(0,0,0,0.15); }
             .unified-banner-item { flex: 1 1 0; min-width: 150px; padding: 10px 15px; text-align: center; font-weight: 700; color: white !important; cursor: pointer; display: flex; align-items: center; justify-content: center; gap: 10px; transition: all 0.2s ease; font-size: 14px; border-radius: 0; margin: 0; border: none; white-space: nowrap; }
@@ -593,4 +611,3 @@ export const PlanUIHelper = {
         });
     }
 };
-

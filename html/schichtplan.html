@@ -1,6 +1,26 @@
 <!DOCTYPE html>
 <html lang="de">
 <head>
+    <script>
+  // Automatischer Cache-Buster: Zwingt alle Handys & PCs zum sofortigen Update!
+  const APP_VERSION = "1.0"; // Erhöhe diese Zahl bei künftigen Updates (z.B. "1.1")
+  
+  if (localStorage.getItem("dhf_app_version") !== APP_VERSION) {
+      localStorage.setItem("dhf_app_version", APP_VERSION);
+      
+      // Service Worker rigoros abmelden
+      if ('serviceWorker' in navigator) {
+          navigator.serviceWorker.getRegistrations().then(function(registrations) {
+              for(let registration of registrations) {
+                  registration.unregister();
+              }
+          });
+      }
+      
+      // Einen harten Reload erzwingen, um die neuen Dateien vom Server zu ziehen
+      window.location.reload(true);
+  }
+</script>
     <meta charset="UTF-8">
     <title>Schichtplan - DHF-Planer</title>
     <meta name="viewport" content="width=1200">
