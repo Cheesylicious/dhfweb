@@ -365,23 +365,48 @@ def get_shifts():
     shifts_data = [s.to_dict() for s in shifts_current_month]
     shifts_last_month_data = [s.to_dict() for s in shifts_prev_month]
 
+    # --- NEU: ERLEDIGTE WUNSCHANFRAGEN EXPORTIEREN ---
+    approved_wishes_dict = {}
+    try:
+        approved_queries = ShiftQuery.query.filter(
+            extract('year', ShiftQuery.shift_date) == year,
+            extract('month', ShiftQuery.shift_date) == month,
+            ShiftQuery.status == 'erledigt',
+            ShiftQuery.message.like('Anfrage für:%')
+        ).all()
+        
+        for q in approved_queries:
+            if q.target_user_id and q.shift_date:
+                d_str = q.shift_date.isoformat() if hasattr(q.shift_date, 'isoformat') else str(q.shift_date)
+                try:
+                    abbr = q.message.split(":")[1].strip().replace('?', '')
+                except:
+                    abbr = ""
+                key = f"{q.target_user_id}-{d_str}"
+                approved_wishes_dict[key] = abbr
+                
+        # Für Fallback, binden wir es auch an die Shifts
+        for s_dict in shifts_data:
+            s_key = f"{s_dict['user_id']}-{s_dict['date']}"
+            if s_key in approved_wishes_dict:
+                s_dict['is_approved_wunsch'] = True
+    except Exception as e:
+        current_app.logger.error(f"Fehler bei Wunschanfragen-Prüfung: {e}")
+    # -----------------------------------------------
+
     users_data = [u.to_dict() for u in users]
 
-    # --- NEU: HUNDE-HISTORIE FÜR SCHICHTPLAN ---
-    # Wir laden alle Zuweisungen, die in oder vor diesem Monat aktiv waren
+    # --- HUNDE-HISTORIE FÜR SCHICHTPLAN ---
     assignments = DogAssignment.query.options(joinedload(DogAssignment.dog)).filter(
         DogAssignment.start_date <= current_month_end_date,
         or_(DogAssignment.end_date == None, DogAssignment.end_date >= current_month_start_date)
     ).all()
     
-    # Mappe die aktive Hund-Zuweisung für jeden User für diesen Monat
     user_dog_map = {}
     for a in assignments:
-        # Falls es mehrere gibt (was eigentlich nicht sein sollte), nimm den mit dem neusten start_date
         if a.user_id not in user_dog_map or a.start_date > user_dog_map[a.user_id].start_date:
             user_dog_map[a.user_id] = a
             
-    # Hänge den berechneten Hundenamen an die users_data an
     for u_dict in users_data:
         assignment = user_dog_map.get(u_dict['id'])
         if assignment and assignment.dog:
@@ -396,7 +421,6 @@ def get_shifts():
     vacation_usage = {}
 
     if eu_type:
-        # Optimierte Abfrage: Zählt EU-Schichten für das ganze Jahr pro User
         usage_query = db.session.query(Shift.user_id, func.count(Shift.id)) \
             .filter(
             Shift.shifttype_id == eu_type.id,
@@ -460,7 +484,6 @@ def get_shifts():
     # ------------------------------------------
 
     training_warnings = []
-    # Nur für Admins berechnen
     if current_user.role and current_user.role.name == 'admin':
         training_warnings = calculate_training_warnings(users, shifts_current_month, year, month)
 
@@ -473,6 +496,7 @@ def get_shifts():
         "shifts_last_month": shifts_last_month_data,
         "plan_status": plan_status_data,
         "current_variant_id": variant_id,
+        "approved_wishes": approved_wishes_dict,
         "training_warnings": training_warnings
     }), 200
 
@@ -541,7 +565,6 @@ def toggle_shift_lock():
         )
         # -----------------
 
-        # --- SOCKET EMIT START ---
         result_data = {
             "deleted": was_deleted,
             "user_id": user_id,
@@ -552,7 +575,6 @@ def toggle_shift_lock():
             result_data.update(shift.to_dict())
 
         socketio.emit('shift_lock_update', result_data)
-        # --- SOCKET EMIT END ---
 
         if was_deleted:
             return jsonify({"deleted": True, "user_id": user_id, "date": shift_date.isoformat()}), 200
@@ -591,22 +613,18 @@ def clear_shift_plan():
         if num_deleted > 0:
             db.session.commit()
 
-            # --- AUDIT LOG ---
             log_audit(
                 action="PLAN_CLEAR",
                 details={"year": year, "month": month, "deleted_count": num_deleted},
                 user=current_user
             )
-            # -----------------
 
-            # --- SOCKET EMIT START ---
             socketio.emit('plan_cleared', {
                 'year': year,
                 'month': month,
                 'variant_id': variant_id,
                 'num_deleted': num_deleted
             })
-            # --- SOCKET EMIT END ---
 
             return jsonify({"message": f"Plan geleert. {num_deleted} Schichten gelöscht."}), 200
         else:
@@ -645,12 +663,10 @@ def save_shift():
         if existing_shift and existing_shift.is_locked:
             return jsonify({"message": "Schicht gesperrt."}), 403
 
-        # --- AUDIT PREPARE ---
         old_val = "FREI"
         if existing_shift and existing_shift.shifttype_id:
             st = ShiftType.query.get(existing_shift.shifttype_id)
             if st: old_val = st.abbreviation
-        # ---------------------
 
         saved_shift_id = None
         if existing_shift:
@@ -668,11 +684,35 @@ def save_shift():
 
         db.session.commit()
 
-        # --- AUDIT LOGGING ---
         new_val = "FREI"
         if shifttype_id:
             st_new = ShiftType.query.get(shifttype_id)
             if st_new: new_val = st_new.abbreviation
+
+        # --- NEU: WUNSCH-KONFLIKT PRÜFUNG & CLEANUP ---
+        w_query = ShiftQuery.query.filter(
+            ShiftQuery.target_user_id == user_id,
+            ShiftQuery.shift_date == shift_date,
+            ShiftQuery.status == 'erledigt',
+            ShiftQuery.message.like('Anfrage für:%')
+        ).first()
+        
+        response_data = {}
+        if w_query:
+            try:
+                requested_abbr = w_query.message.split(":")[1].strip().replace('?', '')
+            except IndexError:
+                requested_abbr = ""
+                
+            if new_val != requested_abbr:
+                w_query.status = 'ignoriert'
+                db.session.commit()
+                response_data['is_approved_wunsch'] = False
+                response_data['approved_wunsch_abbr'] = None
+            else:
+                response_data['is_approved_wunsch'] = True
+                response_data['approved_wunsch_abbr'] = requested_abbr
+        # ----------------------------------------------------------------------------
 
         if old_val != new_val:
             action = "SHIFT_UPDATE"
@@ -690,19 +730,17 @@ def save_shift():
                 target_date=shift_date,
                 user=current_user
             )
-        # ---------------------
 
-        response_data = {}
         if saved_shift_id:
             reloaded = Shift.query.options(joinedload(Shift.shift_type)).get(saved_shift_id)
-            response_data = reloaded.to_dict() if reloaded else {}
+            data_dict = reloaded.to_dict() if reloaded else {}
+            response_data.update(data_dict)
         else:
-            response_data = {"message": "Gelöscht"}
+            response_data.update({"message": "Gelöscht"})
 
         response_data['new_total_hours'] = _calculate_user_total_hours(user_id, shift_date.year, shift_date.month,
                                                                       variant_id=variant_id)
 
-        # --- Urlaub ---
         eu_type = ShiftType.query.filter_by(abbreviation='EU').first()
         if eu_type and variant_id is None:
             used_count = db.session.query(func.count(Shift.id)).filter(
@@ -715,9 +753,7 @@ def save_shift():
             target_user = User.query.get(user_id)
             total_budget = (target_user.urlaub_gesamt or 0) + (target_user.urlaub_rest or 0)
             response_data['new_vacation_remaining'] = total_budget - used_count
-        # --------------------------------------------------------
 
-        # --- VIOLATIONS ---
         year = shift_date.year
         month = shift_date.month
         current_month_start = date(year, month, 1)
@@ -941,7 +977,6 @@ def send_completion_notification():
                 user_hours_map[s.user_id] += st_spill.get(s.shifttype_id, 0.0)
 
         matrix_rows = []
-        # NEU: Wir laden kurz die Historie für die Rundmail, damit auch im Bild der richtige Hund steht!
         assignments = DogAssignment.query.options(joinedload(DogAssignment.dog)).filter(
             DogAssignment.start_date <= current_month_end_date,
             or_(DogAssignment.end_date == None, DogAssignment.end_date >= date(year, month, 1))
@@ -956,7 +991,6 @@ def send_completion_notification():
             total_val = round(user_hours_map[u.id], 2)
             if total_val.is_integer(): total_val = int(total_val)
             
-            # Hole den korrekten Hund aus der Map
             active_dog = ""
             assignment = user_dog_map.get(u.id)
             if assignment and assignment.dog:
