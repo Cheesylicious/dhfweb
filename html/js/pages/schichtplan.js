@@ -367,9 +367,6 @@ async function renderGrid(isSilent = false) {
         // Queries
         PlanState.currentShiftQueries = queriesResult;
 
-        // Approved Wishes
-        PlanState.currentApprovedWishes = shiftPayload.approved_wishes || {};
-
         // --- UI UPDATES ---
 
         // 1. Status Bar aktualisieren
