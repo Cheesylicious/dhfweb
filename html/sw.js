@@ -1,6 +1,5 @@
 // sw.js
-// WICHTIG: Wenn du in Zukunft Updates machst, ändere einfach diese Version.
-const CACHE_NAME = 'dhf-planer-v4'; // <- Auf v4 erhöht, um das Update jetzt für alle zu erzwingen!
+const CACHE_NAME = 'dhf-planer-v5'; // Wieder erhöht, damit das Logout-Update sofort greift!
 
 const ASSETS_TO_CACHE = [
     './',
@@ -25,20 +24,17 @@ const ASSETS_TO_CACHE = [
     'https://cdnjs.cloudflare.com/ajax/libs/lottie-web/5.12.2/lottie.min.js'
 ];
 
-// Install: Cache öffnen und Dateien speichern (und sofort aktiv werden)
+// Install: Cache öffnen und Dateien speichern
 self.addEventListener('install', (event) => {
     self.skipWaiting(); 
     event.waitUntil(
         caches.open(CACHE_NAME).then((cache) => {
-            console.log('[Service Worker] Caching App Shell (Bypass Browser Cache)');
-            // Trick 1: Bei der Installation zwingen wir den Browser, die echten Dateien vom Server zu holen!
+            console.log('[Service Worker] Caching App Shell');
             return Promise.all(
                 ASSETS_TO_CACHE.map(url => {
                     return fetch(new Request(url, { cache: 'reload' }))
                         .then(response => {
-                            if (response.ok) {
-                                return cache.put(url, response);
-                            }
+                            if (response.ok) return cache.put(url, response);
                         })
                         .catch(err => console.error('Cache Fehler für:', url, err));
                 })
@@ -54,36 +50,40 @@ self.addEventListener('activate', (event) => {
             return Promise.all(
                 cacheNames.map((key) => {
                     if (key !== CACHE_NAME) {
-                        console.log('[Service Worker] Lösche alten Cache:', key);
                         return caches.delete(key);
                     }
                 })
             );
-        }).then(() => self.clients.claim()) // Übernimmt sofort die Kontrolle
+        }).then(() => self.clients.claim())
     );
 });
 
-// Fetch: NETWORK FIRST Strategie mit Cache-Busting
+// Fetch: NETWORK FIRST Strategie
 self.addEventListener('fetch', (event) => {
-    const url = new URL(event.request.url);
-
-    // API-Anfragen und Bilder NICHT cachen
-    if (url.pathname.startsWith('/api/') || url.pathname.includes('/photo/')) {
+    
+    // --- LÖSUNG FÜR DIE LOGOUTS ---
+    // POST-Anfragen (Login, Socket.io Echtzeit-Updates) NIEMALS cachen!
+    if (event.request.method !== 'GET') {
         event.respondWith(fetch(event.request));
         return;
     }
 
-    // Trick 2: Im normalen Betrieb umgehen wir bei JS und HTML den unsichtbaren Browser-Cache
+    const url = new URL(event.request.url);
+
+    // API-Anfragen und Sockets NICHT cachen
+    if (url.pathname.startsWith('/api/') || url.pathname.includes('/photo/') || url.pathname.includes('socket.io')) {
+        event.respondWith(fetch(event.request));
+        return;
+    }
+
     let fetchReq = event.request;
     if (url.origin === location.origin && (url.pathname.endsWith('.js') || url.pathname.endsWith('.html'))) {
         fetchReq = new Request(event.request.url, { cache: 'no-cache' });
     }
 
-    // Für alles andere: Erst Netzwerk, dann Cache (Network First)
     event.respondWith(
         fetch(fetchReq)
             .then((response) => {
-                // Wenn das Netzwerk erfolgreich antwortet, packen wir die frische Datei in den Cache
                 if (response && response.status === 200 && response.type === 'basic') {
                     const responseToCache = response.clone();
                     caches.open(CACHE_NAME).then((cache) => {
@@ -93,8 +93,6 @@ self.addEventListener('fetch', (event) => {
                 return response; 
             })
             .catch(() => {
-                // Offline-Modus
-                console.log('[Service Worker] Offline-Modus greift für:', event.request.url);
                 return caches.match(event.request);
             })
     );
