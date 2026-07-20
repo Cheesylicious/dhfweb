@@ -1,6 +1,9 @@
 // html/js/modules/schichtplan_state.js
 
-import { COL_WIDTH_NAME, COL_WIDTH_DETAILS } from '../utils/constants.js';
+import {
+    COL_WIDTH_NAME, COL_WIDTH_DETAILS, COL_WIDTH_UEBERTRAG,
+    COL_WIDTH_DAY, COL_WIDTH_TOTAL
+} from '../utils/constants.js';
 
 export const PlanState = {
     // Auth & User
@@ -33,6 +36,7 @@ export const PlanState = {
     // Anfragen & Anträge
     currentShiftQueries: [], // Array of query objects (Text-Notizen)
     currentChangeRequests: [], // Array of change requests (Krank/Tausch)
+    approvedWishes: {}, // Key: "userId-dateStr" -> genehmigte Wunsch-Abkürzung
 
     // Marktplatz Angebote Cache
     currentMarketOffers: {},
@@ -50,6 +54,10 @@ export const PlanState = {
     // UI Layout & Interaktion
     computedColWidthName: COL_WIDTH_NAME,
     computedColWidthDetails: COL_WIDTH_DETAILS,
+    computedColWidthUebertrag: COL_WIDTH_UEBERTRAG,
+    computedColWidthDay: COL_WIDTH_DAY,
+    computedColWidthTotal: COL_WIDTH_TOTAL,
+    isCompactLandscapePlan: false,
     hoveredCellContext: null, // {userId, dateStr, cellElement}
 
     // Modal Kontexte

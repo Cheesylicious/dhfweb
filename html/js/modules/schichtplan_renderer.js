@@ -11,6 +11,56 @@ import { isColorDark, isWunschAnfrage } from '../utils/helpers.js';
 export const PlanRenderer = {
 
     /**
+     * Verteilt im Smartphone-Querformat alle Monatsspalten exakt auf die
+     * verfügbare Breite. Auf größeren Ansichten bleiben die bisherigen
+     * Mindestbreiten unverändert.
+     */
+    configureResponsiveColumns(daysInMonth) {
+        const isCompactLandscape = window.matchMedia(
+            '(orientation: landscape) and (max-height: 650px) and (pointer: coarse) and (hover: none)'
+        ).matches;
+
+        PlanState.isCompactLandscapePlan = isCompactLandscape;
+        document.body.classList.toggle('compact-landscape-plan', isCompactLandscape);
+
+        if (!isCompactLandscape) {
+            PlanState.computedColWidthName = COL_WIDTH_NAME;
+            PlanState.computedColWidthDetails = COL_WIDTH_DETAILS;
+            PlanState.computedColWidthUebertrag = COL_WIDTH_UEBERTRAG;
+            PlanState.computedColWidthDay = COL_WIDTH_DAY;
+            PlanState.computedColWidthTotal = COL_WIDTH_TOTAL;
+            return;
+        }
+
+        const wrapper = document.getElementById('unified-grid-wrapper');
+        const availableWidth = Math.max(
+            520,
+            Math.floor(wrapper?.clientWidth || document.documentElement.clientWidth || window.innerWidth)
+        );
+
+        const clamp = (min, preferred, max) => Math.max(min, Math.min(max, preferred));
+        const nameWidth = clamp(95, availableWidth * 0.115, 135);
+        const detailsWidth = clamp(55, availableWidth * 0.075, 90);
+        const transferWidth = clamp(22, availableWidth * 0.025, 30);
+        const totalWidth = clamp(34, availableWidth * 0.038, 46);
+        const fixedWidth = nameWidth + detailsWidth + transferWidth + totalWidth;
+        const dayWidth = Math.max(10, (availableWidth - fixedWidth) / daysInMonth);
+
+        PlanState.computedColWidthName = `${nameWidth.toFixed(2)}px`;
+        PlanState.computedColWidthDetails = `${detailsWidth.toFixed(2)}px`;
+        PlanState.computedColWidthUebertrag = `${transferWidth.toFixed(2)}px`;
+        PlanState.computedColWidthDay = `${dayWidth.toFixed(2)}px`;
+        PlanState.computedColWidthTotal = `${totalWidth.toFixed(2)}px`;
+    },
+
+    getGridTemplateColumns(daysInMonth) {
+        return `${PlanState.computedColWidthName} ${PlanState.computedColWidthDetails} `
+            + `${PlanState.computedColWidthUebertrag} `
+            + `repeat(${daysInMonth}, ${PlanState.computedColWidthDay}) `
+            + `${PlanState.computedColWidthTotal}`;
+    },
+
+    /**
      * Sucht eine Zelle im Grid anhand des Keys.
      * @param {string} key - Format "userId-dateStr"
      */
@@ -103,6 +153,39 @@ export const PlanRenderer = {
 
         // --- DPO Rahmen ---
         if (eventType === 'dpo') cellClasses += ' day-border-dpo';
+
+        // Kennzeichnungen für den reinen Darstellungsfilter „X ausblenden“.
+        // Die Basisklassen merken sich den Hintergrund, der ohne X an diesem
+        // Tag sichtbar wäre.
+        if (shiftType && shiftType.abbreviation === 'X') {
+            cellClasses += ' shift-x';
+
+            // Ausnahme für den Ausdruck: Folgt auf einen EU-Samstag ein als X
+            // geplanter Sonntag, muss dieses X sichtbar bleiben. Für den
+            // Sonntag wird kein zweiter EU-Tag gebucht, der freie Folgetag soll
+            // im Plan aber weiterhin eindeutig erkennbar sein.
+            if (d.getDay() === 0) {
+                const previousDate = new Date(d.getFullYear(), d.getMonth(), d.getDate() - 1);
+                const previousDateStr = [
+                    previousDate.getFullYear(),
+                    String(previousDate.getMonth() + 1).padStart(2, '0'),
+                    String(previousDate.getDate()).padStart(2, '0')
+                ].join('-');
+                const previousKey = `${userId}-${previousDateStr}`;
+                const previousShift = PlanState.currentShifts[previousKey]
+                    || (previousDate.getMonth() !== d.getMonth()
+                        ? PlanState.currentShiftsLastMonth[userId]
+                        : null);
+
+                if (previousShift?.shift_type?.abbreviation === 'EU') {
+                    cellClasses += ' keep-x-after-eu';
+                }
+            }
+
+            if (isToday) cellClasses += ' base-day-current';
+            if (eventType === 'holiday') cellClasses += ' base-day-holiday';
+            else if (isWeekend) cellClasses += ' base-day-weekend';
+        }
 
         // Reset Cell Content - WICHTIG: Erst alles leeren
         cell.textContent = '';
@@ -281,10 +364,12 @@ export const PlanRenderer = {
         const monthName = new Date(PlanState.currentYear, PlanState.currentMonth - 1, 1).toLocaleString('de-DE', { month: 'long', year: 'numeric' });
         monthLabel.textContent = monthName;
 
+        this.configureResponsiveColumns(daysInMonth);
+
         const today = new Date();
 
         // Grid Spalten Definition
-        grid.style.gridTemplateColumns = `${PlanState.computedColWidthName} ${PlanState.computedColWidthDetails} ${COL_WIDTH_UEBERTRAG} repeat(${daysInMonth}, ${COL_WIDTH_DAY}) ${COL_WIDTH_TOTAL}`;
+        grid.style.gridTemplateColumns = this.getGridTemplateColumns(daysInMonth);
 
         grid.innerHTML = '';
         const weekdays = ['So', 'Mo', 'Di', 'Mi', 'Do', 'Fr', 'Sa'];
@@ -404,6 +489,9 @@ export const PlanRenderer = {
             if (lastMonthShift && lastMonthShift.shift_type) {
                 uebertragCell.textContent = lastMonthShift.shift_type.abbreviation;
                 uebertragCell.title = `Schicht am Vormonat: ${lastMonthShift.shift_type.name}`;
+                if (lastMonthShift.shift_type.abbreviation === 'X') {
+                    uebertragCell.classList.add('shift-x');
+                }
             } else {
                 uebertragCell.textContent = '---';
             }
@@ -474,10 +562,10 @@ export const PlanRenderer = {
         });
 
         try {
-            if (nameHeader2 && dogHeader) {
+            if (nameHeader2 && dogHeader && !PlanState.isCompactLandscapePlan) {
                 PlanState.computedColWidthName = `${nameHeader2.offsetWidth}px`;
                 PlanState.computedColWidthDetails = `${dogHeader.offsetWidth}px`;
-                grid.style.gridTemplateColumns = `${PlanState.computedColWidthName} ${PlanState.computedColWidthDetails} ${COL_WIDTH_UEBERTRAG} repeat(${daysInMonth}, ${COL_WIDTH_DAY}) ${COL_WIDTH_TOTAL}`;
+                grid.style.gridTemplateColumns = this.getGridTemplateColumns(daysInMonth);
             }
         } catch (e) {
             console.error("Fehler beim Messen der Spaltenbreiten:", e);

@@ -3,7 +3,7 @@
 <head>
     <script>
   // Automatischer Cache-Buster: Zwingt alle Handys & PCs zum sofortigen Update!
-  const APP_VERSION = "1.0"; // Erhöhe diese Zahl bei künftigen Updates (z.B. "1.1")
+  const APP_VERSION = "1.5";
   
   if (localStorage.getItem("dhf_app_version") !== APP_VERSION) {
       localStorage.setItem("dhf_app_version", APP_VERSION);
@@ -240,6 +240,89 @@
             border: 1px solid #ddd;
         }
 
+        /* Kompaktes Menü für monatsbezogene Anzeige- und Druckfilter */
+        #shift-filter-container {
+            position: relative;
+            align-items: center;
+        }
+        #plan-filter-menu-button {
+            display: inline-flex;
+            align-items: center;
+            gap: 7px;
+            padding: 6px 12px;
+            font-size: 13px;
+            font-weight: 600;
+            white-space: nowrap;
+        }
+        #plan-filter-menu-button[aria-expanded="true"] {
+            background: #e2e8ef;
+            border-color: #9aa8b5;
+        }
+        .plan-filter-count {
+            display: none;
+            min-width: 20px;
+            height: 20px;
+            padding: 0 6px;
+            align-items: center;
+            justify-content: center;
+            border-radius: 999px;
+            background: #3498db;
+            color: white;
+            font-size: 11px;
+            line-height: 1;
+        }
+        .plan-filter-menu {
+            display: none;
+            position: absolute;
+            top: calc(100% + 7px);
+            left: 50%;
+            transform: translateX(-50%);
+            width: 270px;
+            padding: 10px;
+            border: 1px solid #cbd3da;
+            border-radius: 9px;
+            background: #fff;
+            color: #333;
+            box-shadow: 0 10px 28px rgba(0,0,0,0.18);
+            z-index: 10020;
+        }
+        .plan-filter-menu.open { display: block; }
+        .plan-filter-section + .plan-filter-section {
+            margin-top: 9px;
+            padding-top: 9px;
+            border-top: 1px solid #e2e6ea;
+        }
+        .plan-filter-section-title {
+            margin: 0 4px 5px;
+            color: #7b8790;
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            letter-spacing: 0.04em;
+        }
+        .plan-filter-option {
+            display: flex;
+            align-items: center;
+            gap: 9px;
+            padding: 8px 9px;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 600;
+        }
+        .plan-filter-option:hover { background: #f1f5f8; }
+        .plan-filter-option input { margin: 0; cursor: pointer; }
+        .plan-filter-note {
+            display: block;
+            margin-top: 1px;
+            color: #87939d;
+            font-size: 10px;
+            font-weight: 400;
+        }
+        @media print {
+            #shift-filter-container { display: none !important; }
+        }
+
         .variant-tab {
             padding: 5px 12px;
             font-size: 13px;
@@ -455,6 +538,78 @@
 
         #unified-grid-wrapper {
             overflow-x: auto;
+        }
+
+        /* Smartphone im Querformat: kompletter Monat ohne Seitwärtsscrollen */
+        body.compact-landscape-plan main {
+            padding-left: 6px;
+            padding-right: 6px;
+        }
+        body.compact-landscape-plan #unified-grid-wrapper {
+            overflow-x: hidden;
+            width: 100%;
+        }
+        body.compact-landscape-plan #schichtplan-grid,
+        body.compact-landscape-plan .staffing-row {
+            width: 100%;
+            max-width: 100%;
+        }
+        body.compact-landscape-plan .grid-header,
+        body.compact-landscape-plan .grid-cell,
+        body.compact-landscape-plan .grid-user-name,
+        body.compact-landscape-plan .grid-user-dog,
+        body.compact-landscape-plan .grid-user-uebertrag,
+        body.compact-landscape-plan .grid-user-total,
+        body.compact-landscape-plan .grid-header-dog,
+        body.compact-landscape-plan .grid-header-uebertrag,
+        body.compact-landscape-plan .grid-header-total,
+        body.compact-landscape-plan .staffing-header,
+        body.compact-landscape-plan .staffing-cell,
+        body.compact-landscape-plan .staffing-label,
+        body.compact-landscape-plan .staffing-total-header {
+            box-sizing: border-box;
+            min-width: 0;
+            padding: 4px 1px;
+            font-size: 9px;
+            line-height: 1.1;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+        body.compact-landscape-plan .grid-user-name,
+        body.compact-landscape-plan .staffing-label {
+            padding-left: 4px;
+            text-align: left;
+            font-size: 10px;
+        }
+        body.compact-landscape-plan .grid-user-dog {
+            padding-left: 3px;
+            text-align: left;
+        }
+        body.compact-landscape-plan .grid-cell {
+            font-size: 9px;
+        }
+        body.compact-landscape-plan .dpo-header-label {
+            margin-bottom: 0;
+            font-size: 6px;
+            letter-spacing: 0;
+        }
+        body.compact-landscape-plan .icon-approved-wunsch {
+            top: 0;
+            left: 0;
+            padding: 0 2px;
+            font-size: 6px;
+        }
+        body.compact-landscape-plan .grid-cell.locked-shift::after {
+            right: 0;
+            bottom: 0;
+            font-size: 6px;
+        }
+        body.compact-landscape-plan .market-icon-overlay,
+        body.compact-landscape-plan .icon-incoming,
+        body.compact-landscape-plan .icon-outgoing,
+        body.compact-landscape-plan .icon-trade,
+        body.compact-landscape-plan .shift-query-icon {
+            font-size: 6px !important;
         }
 
         #schichtplan-grid {
@@ -1438,7 +1593,6 @@
             justify-content: space-between;
             font-weight: 500;
             box-shadow: 0 4px 15px rgba(243, 156, 18, 0.3);
-            cursor: pointer;
             transition: transform 0.2s, box-shadow 0.2s;
         }
         .dog-alert-banner:hover {
@@ -1452,11 +1606,61 @@
         .dog-alert-banner .alert-content {
             flex-grow: 1;
         }
+        .dog-alert-banner .alert-actions {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-left: 15px;
+        }
         .dog-alert-banner .alert-action {
+            border: 0;
+            color: white;
+            font: inherit;
             font-weight: 600;
             background: rgba(0,0,0,0.2);
             padding: 6px 12px;
             border-radius: 5px;
+            cursor: pointer;
+            white-space: nowrap;
+        }
+        .dog-alert-banner .alert-action:hover {
+            background: rgba(0,0,0,0.32);
+        }
+        .dog-alert-banner .alert-action i {
+            margin-right: 5px;
+            font-size: inherit;
+        }
+        .dog-alert-banner-collapsed {
+            min-height: 0;
+            padding: 0;
+            background: transparent;
+            box-shadow: none;
+            font-size: 13px;
+            justify-content: flex-end;
+        }
+        .dog-alert-banner-collapsed:hover {
+            transform: none;
+            box-shadow: none;
+        }
+        .dog-alert-banner-collapsed .alert-actions {
+            margin-left: 0;
+        }
+        .dog-alert-banner-collapsed .alert-action {
+            color: #4f5b62;
+            background: #eef1f3;
+            border: 1px solid #cfd6db;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.08);
+        }
+        .dog-alert-banner-collapsed .alert-action:hover {
+            background: #e2e7ea;
+        }
+        @media print {
+            .dog-alert-banner-collapsed {
+                display: none !important;
+            }
+            #dog-alerts-container.all-dog-alerts-hidden {
+                display: none !important;
+            }
         }
 
     </style>
@@ -1562,13 +1766,37 @@
                     </div>
 
                     <div style="display: flex; align-items: center; gap: 15px; margin-top: 5px;">
-                        <div id="shift-filter-container" style="display: none; gap: 10px; background: #f0f0f0; padding: 4px 10px; border-radius: 5px; border: 1px solid #ddd;">
-                            <label style="cursor:pointer; display:flex; align-items:center; gap:5px; font-size:13px; color:#333; font-weight:600; margin:0;">
-                                <input type="checkbox" id="filter-24er" checked style="margin:0; cursor:pointer;"> 24er
-                            </label>
-                            <label style="cursor:pointer; display:flex; align-items:center; gap:5px; font-size:13px; color:#333; font-weight:600; margin:0;">
-                                <input type="checkbox" id="filter-12er" checked style="margin:0; cursor:pointer;"> 12er
-                            </label>
+                        <div id="shift-filter-container" style="display: none;">
+                            <button id="plan-filter-menu-button" type="button" aria-expanded="false" aria-controls="plan-filter-menu">
+                                <i class="fas fa-sliders-h"></i>
+                                <span>Anzeige &amp; Druck</span>
+                                <span id="plan-filter-active-count" class="plan-filter-count">0</span>
+                                <i class="fas fa-chevron-down" style="font-size:10px;"></i>
+                            </button>
+                            <div id="plan-filter-menu" class="plan-filter-menu" role="group" aria-label="Anzeige- und Druckoptionen">
+                                <div class="plan-filter-section">
+                                    <div class="plan-filter-section-title">Besetzungstabelle</div>
+                                    <label class="plan-filter-option">
+                                        <input type="checkbox" id="filter-24er" checked>
+                                        <span>24er anzeigen</span>
+                                    </label>
+                                    <label class="plan-filter-option">
+                                        <input type="checkbox" id="filter-12er" checked>
+                                        <span>12er anzeigen</span>
+                                    </label>
+                                </div>
+                                <div class="plan-filter-section">
+                                    <div class="plan-filter-section-title">Plan &amp; Ausdruck</div>
+                                    <label class="plan-filter-option" title="Blendet nur die kleinen W-Kennzeichnungen aus">
+                                        <input type="checkbox" id="hide-wish-markers">
+                                        <span>W ausblenden<span class="plan-filter-note">Wunschkennzeichnungen verbergen</span></span>
+                                    </label>
+                                    <label class="plan-filter-option" title="Blendet X-Schichten nur in der Darstellung aus">
+                                        <input type="checkbox" id="hide-x-shifts">
+                                        <span>X ausblenden<span class="plan-filter-note">X und Sperrkennzeichnungen verbergen</span></span>
+                                    </label>
+                                </div>
+                            </div>
                         </div>
                         
                         <div id="variant-tabs-container" class="variant-tabs" style="display: none;"></div>
@@ -1886,7 +2114,7 @@
     </script>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/lottie-web/5.12.2/lottie.min.js"></script>
-    <script type="module" src="js/pages/schichtplan.js?v=2" defer></script>
+    <script type="module" src="js/pages/schichtplan.js?v=10" defer></script>
     <script type="module" src="shared_feedback.js" defer></script>
     <script type="module" src="shared_notifications.js" defer></script>
 

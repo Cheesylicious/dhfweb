@@ -306,7 +306,62 @@
         .btn-archive { background: var(--status-archiviert); color: #333; }
         .btn-seen { background: var(--status-gesehen); color: white; }
         .btn-new { background: var(--status-neu); color: white; }
+        .btn-board { background: #8e44ad; color: white; }
+        .btn-board-link {
+            display: inline-flex; align-items: center; padding: 8px 12px;
+            border-radius: 5px; background: #27ae60; color: white;
+            text-decoration: none; font-size: 13px;
+        }
         .btn-delete { background: #555; color: white; margin-left: auto; }
+
+        .tracker-modal {
+            display: none; position: fixed; z-index: 210000; inset: 0;
+            background: rgba(0, 0, 0, 0.72); backdrop-filter: blur(6px);
+            overflow-y: auto; padding: 30px 15px; box-sizing: border-box;
+        }
+        .tracker-modal-content {
+            width: min(680px, 100%); margin: 0 auto;
+            background: linear-gradient(145deg, #20232a, #293746);
+            border: 1px solid rgba(155, 89, 182, 0.8); border-radius: 14px;
+            box-shadow: 0 0 45px rgba(142, 68, 173, 0.35); overflow: hidden;
+        }
+        .tracker-modal-header, .tracker-modal-footer {
+            padding: 18px 24px; display: flex; align-items: center;
+            justify-content: space-between; gap: 12px;
+            border-bottom: 1px solid rgba(255,255,255,0.1);
+        }
+        .tracker-modal-footer { border-bottom: 0; border-top: 1px solid rgba(255,255,255,0.1); justify-content: flex-end; }
+        .tracker-modal-header h3 { margin: 0; }
+        .tracker-modal-close { font-size: 28px; color: #bdc3c7; cursor: pointer; }
+        .tracker-modal-body { padding: 24px; }
+        .tracker-source {
+            background: rgba(0,0,0,0.22); border-left: 4px solid #3498db;
+            padding: 14px; border-radius: 6px; margin-bottom: 20px;
+            color: #d6e2ea; white-space: pre-wrap; word-break: break-word;
+        }
+        .tracker-form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+        .tracker-form-group { margin-bottom: 17px; }
+        .tracker-form-group label { display: block; margin-bottom: 7px; color: #bdc3c7; }
+        .tracker-form-group input, .tracker-form-group select, .tracker-form-group textarea {
+            width: 100%; box-sizing: border-box; padding: 11px 12px;
+            border-radius: 6px; border: 1px solid #657786;
+            color: white; background: rgba(0,0,0,0.28); font: inherit;
+        }
+        .tracker-form-group textarea { min-height: 120px; resize: vertical; }
+        .tracker-progress-line { display: flex; gap: 12px; align-items: center; }
+        .tracker-progress-line input { flex: 1; accent-color: #8e44ad; }
+        #tracker-progress-value { min-width: 48px; color: white; font-weight: 600; }
+        .tracker-btn { border: 0; border-radius: 7px; padding: 10px 17px; color: white; cursor: pointer; font-weight: 600; }
+        .tracker-btn.cancel { background: #5d6d7e; }
+        .tracker-btn.save { background: #8e44ad; }
+        .tracker-btn:disabled { opacity: 0.55; cursor: wait; }
+        #tracker-modal-error { color: #ff7675; margin-right: auto; font-size: 13px; }
+
+        @media (max-width: 720px) {
+            .tracker-form-row { grid-template-columns: 1fr; gap: 0; }
+            .item-actions { flex-wrap: wrap; }
+            .btn-delete { margin-left: 0; }
+        }
 
 
         /* (Stil für "Zugriff verweigert") */
@@ -376,6 +431,56 @@
             </div>
         </div>
     </main>
+
+    <div id="tracker-publish-modal" class="tracker-modal" aria-hidden="true">
+        <div class="tracker-modal-content" role="dialog" aria-modal="true" aria-labelledby="tracker-modal-title">
+            <div class="tracker-modal-header">
+                <h3 id="tracker-modal-title">Ins Status-Board aufnehmen</h3>
+                <span class="tracker-modal-close" id="tracker-modal-close" aria-label="Schließen">&times;</span>
+            </div>
+            <div class="tracker-modal-body">
+                <div id="tracker-source" class="tracker-source"></div>
+                <div class="tracker-form-group">
+                    <label for="tracker-title">Öffentlicher Titel</label>
+                    <input id="tracker-title" type="text" maxlength="160" placeholder="Kurzer, verständlicher Titel">
+                </div>
+                <div class="tracker-form-group">
+                    <label for="tracker-description">Ausführliche Beschreibung</label>
+                    <textarea id="tracker-description" placeholder="Was genau ist das Problem oder die geplante Verbesserung?"></textarea>
+                </div>
+                <div class="tracker-form-row">
+                    <div class="tracker-form-group">
+                        <label for="tracker-status">Bearbeitungsstatus</label>
+                        <select id="tracker-status">
+                            <option value="aufgenommen">Aufgenommen</option>
+                            <option value="geplant">Geplant</option>
+                            <option value="in_arbeit">In Bearbeitung</option>
+                            <option value="testphase">Testphase</option>
+                            <option value="erledigt">Erledigt</option>
+                            <option value="zurueckgestellt">Zurückgestellt</option>
+                            <option value="nicht_umgesetzt">Nicht umgesetzt</option>
+                        </select>
+                    </div>
+                    <div class="tracker-form-group">
+                        <label for="tracker-progress">Fortschritt</label>
+                        <div class="tracker-progress-line">
+                            <input id="tracker-progress" type="range" min="0" max="100" step="5" value="0">
+                            <span id="tracker-progress-value">0 %</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="tracker-form-group">
+                    <label for="tracker-status-note">Aktueller Stand / nächster Schritt</label>
+                    <textarea id="tracker-status-note" placeholder="Zum Beispiel: Ursache gefunden, Umsetzung ist für diese Woche geplant."></textarea>
+                </div>
+            </div>
+            <div class="tracker-modal-footer">
+                <span id="tracker-modal-error"></span>
+                <button id="tracker-modal-cancel" class="tracker-btn cancel" type="button">Abbrechen</button>
+                <button id="tracker-modal-save" class="tracker-btn save" type="button">Veröffentlichen</button>
+            </div>
+        </div>
+    </div>
 
     <script>
         // --- START: PARTIKEL-ANIMATION ---

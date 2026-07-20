@@ -89,7 +89,7 @@ export const PlanHandlers = {
 
     // --- SCHICHTEN SPEICHERN (ADMIN) ---
 
-    async saveShift(shifttypeId, userId, dateStr, closeModalsFn) {
+    async saveShift(shifttypeId, userId, dateStr, closeModalsFn, options = {}) {
         if (!PlanState.isAdmin) return;
 
         // Sperr-Prüfung: Gilt nur für Hauptplan (variantId === null)
@@ -99,12 +99,47 @@ export const PlanHandlers = {
         }
 
         const key = `${userId}-${dateStr}`;
-        const cell = PlanRenderer.findCellByKey(key);
-        if (cell) cell.textContent = '...'; // Visuelles Feedback
-
-        // --- MERKEN DES ALTEN ZUSTANDS FÜR STAFFING-UPDATE ---
         const oldShiftEntry = PlanState.currentShifts[key];
         const oldShiftAbbrev = (oldShiftEntry && oldShiftEntry.shift_type) ? oldShiftEntry.shift_type.abbreviation : null;
+        const oldValue = oldShiftAbbrev || 'FREI';
+        const selectedShiftType = PlanState.allShiftTypes[shifttypeId];
+        const selectedAbbrev = selectedShiftType ? selectedShiftType.abbreviation : 'FREI';
+        const requestedAbbr = PlanState.approvedWishes[key]
+            || (oldShiftEntry && oldShiftEntry.approved_wunsch_abbr)
+            || null;
+
+        const isWishOverride = requestedAbbr
+            && selectedAbbrev !== requestedAbbr
+            && selectedAbbrev !== oldValue;
+
+        if (isWishOverride && !options.wishOverrideConfirmed) {
+            const targetUser = PlanState.allUsers.find(user => user.id === userId);
+            const canNotify = Boolean(targetUser && targetUser.email);
+            const confirmOverride = (notifyWishChange) => this.saveShift(
+                shifttypeId,
+                userId,
+                dateStr,
+                closeModalsFn,
+                { wishOverrideConfirmed: true, notifyWishChange }
+            );
+
+            const message = `Hier war eigentlich ein Wunscheintrag mit der Schicht "${requestedAbbr}". Trotzdem mit "${selectedAbbrev}" überschreiben?`;
+
+            if (window.dhfWishOverrideConfirm) {
+                window.dhfWishOverrideConfirm(
+                    'Wunschschicht überschreiben',
+                    message,
+                    { canNotify },
+                    confirmOverride
+                );
+            } else {
+                window.dhfConfirm('Wunschschicht überschreiben', message, () => confirmOverride(false));
+            }
+            return;
+        }
+
+        const cell = PlanRenderer.findCellByKey(key);
+        if (cell) cell.textContent = '...'; // Visuelles Feedback
 
         try {
             // Payload mit variant_id
@@ -116,8 +151,16 @@ export const PlanHandlers = {
             if (PlanState.currentVariantId !== null) {
                 payload.variant_id = PlanState.currentVariantId;
             }
+            if (options.wishOverrideConfirmed) {
+                payload.confirm_wish_override = true;
+                payload.notify_wish_change = options.notifyWishChange === true;
+            }
 
             const savedData = await PlanApi.saveShift(payload);
+
+            if (savedData.approved_wunsch_abbr) {
+                PlanState.approvedWishes[key] = savedData.approved_wunsch_abbr;
+            }
 
             if (closeModalsFn) closeModalsFn();
 
@@ -191,10 +234,17 @@ export const PlanHandlers = {
             // Letzter Refresh, falls die Zelle Anfragen betrifft
             PlanRenderer.refreshSingleCell(userId, dateStr);
 
+            if (savedData.wish_notification_warning) {
+                window.dhfAlert('Hinweis zur Benachrichtigung', savedData.wish_notification_warning, 'warning');
+            }
+
+            return savedData;
+
         } catch (error) {
             // Bei Fehler Zustand zurücksetzen (visuell)
             PlanRenderer.refreshSingleCell(userId, dateStr);
             window.dhfAlert("Speicherfehler", error.message, "error");
+            return null;
         }
     },
 
@@ -366,6 +416,21 @@ export const PlanHandlers = {
 
         try {
             await PlanApi.updateQueryStatus(queryId, 'erledigt');
+
+            if (queryToResolve && isWunschAnfrage(queryToResolve) && queryToResolve.target_user_id) {
+                const requestedAbbr = queryToResolve.message
+                    .substring("Anfrage für:".length)
+                    .trim()
+                    .replace('?', '');
+                const wishKey = `${queryToResolve.target_user_id}-${queryToResolve.shift_date}`;
+                PlanState.approvedWishes[wishKey] = requestedAbbr;
+                if (PlanState.currentShifts[wishKey]) {
+                    PlanState.currentShifts[wishKey].approved_wunsch_abbr = requestedAbbr;
+                    PlanState.currentShifts[wishKey].is_approved_wunsch = (
+                        PlanState.currentShifts[wishKey].shift_type?.abbreviation === requestedAbbr
+                    );
+                }
+            }
 
             const queries = await PlanApi.fetchOpenQueries(PlanState.currentYear, PlanState.currentMonth);
             PlanState.currentShiftQueries = queries;

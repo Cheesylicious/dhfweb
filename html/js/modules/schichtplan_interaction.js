@@ -195,21 +195,11 @@ export const PlanInteraction = {
                         approveBtn.onclick = async () => {
                             document.getElementById('click-action-modal').style.display = 'none';
                             
-                            // --- NEU: Lokaler State Update für W-Icon ---
-                            const shiftKey = `${user.id}-${dateStr}`;
-                            if (PlanState.currentShifts[shiftKey]) {
-                                PlanState.currentShifts[shiftKey].is_approved_wunsch = true;
-                            }
-                            
                             const st = PlanState.allShiftTypesList.find(s => s.abbreviation === requestedAbbr);
                             if (st) {
                                 // 1. Schicht eintragen
-                                await PlanHandlers.saveShift(st.id, user.id, dateStr);
-                            }
-                            
-                            // Nach saveShift nochmal setzen ( falls reloaded)
-                            if (PlanState.currentShifts[shiftKey]) {
-                                PlanState.currentShifts[shiftKey].is_approved_wunsch = true;
+                                const savedShift = await PlanHandlers.saveShift(st.id, user.id, dateStr);
+                                if (!savedShift) return;
                             }
 
                             // 2. Anfrage als erledigt markieren
@@ -584,42 +574,6 @@ export const PlanInteraction = {
 
             btn.onclick = () => {
                 if (isDisabled) return;
-
-                const shiftKey = `${PlanState.clickModalContext.userId}-${PlanState.clickModalContext.dateStr}`;
-                const currentShift = PlanState.currentShifts[shiftKey];
-
-                // --- NEU: Konflikt-Prüfung bei bereits genehmigtem Wunsch ---
-                if (currentShift && currentShift.is_approved_wunsch && currentShift.shift_type) {
-                    const requestedAbbr = currentShift.shift_type.abbreviation;
-                    const selectedAbbr = def.abbrev;
-
-                    if (!def.isAll && selectedAbbr !== requestedAbbr) {
-                        document.getElementById('click-action-modal').style.display = 'none';
-                        window.dhfConfirm(
-                            "Wunsch überschreiben",
-                            `Ein Benutzer hatte hier den Wunsch "${requestedAbbr}". Trotzdem die Schicht "${selectedAbbr}" eintragen?`,
-                            () => {
-                                const st = PlanState.allShiftTypesList.find(s => s.abbreviation === def.abbrev);
-                                if (st) {
-                                    PlanHandlers.saveShift(st.id, PlanState.clickModalContext.userId, PlanState.clickModalContext.dateStr);
-                                }
-                            }
-                        );
-                        return;
-                    } else if (def.isAll) {
-                        document.getElementById('click-action-modal').style.display = 'none';
-                        window.dhfConfirm(
-                            "Wunsch überschreiben",
-                            `Ein Benutzer hatte hier den Wunsch "${requestedAbbr}". Wirklich ändern?`,
-                            () => {
-                                PlanState.modalContext = { userId: PlanState.clickModalContext.userId, dateStr: PlanState.clickModalContext.dateStr };
-                                document.getElementById('shift-modal').style.display = 'block';
-                            }
-                        );
-                        return;
-                    }
-                }
-                // --- ENDE NEU ---
 
                 document.getElementById('click-action-modal').style.display = 'none';
                 if (def.isAll) {

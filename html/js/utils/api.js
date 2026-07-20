@@ -12,7 +12,11 @@ export async function apiFetch(endpoint, method = 'GET', body = null) {
     const options = {
         method,
         headers: { 'Content-Type': 'application/json' },
-        credentials: 'include'
+        credentials: 'include',
+        // Plan- und Statusdaten dürfen nicht aus dem HTTP-Cache stammen.
+        // Insbesondere nach serverseitigen Berechnungsänderungen muss ein
+        // erneuter GET immer den aktuellen Datenbankstand liefern.
+        cache: method === 'GET' ? 'no-store' : 'default'
     };
     if (body) {
         options.body = JSON.stringify(body);

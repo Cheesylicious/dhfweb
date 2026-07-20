@@ -9,6 +9,10 @@ import { PlanRenderer } from './schichtplan_renderer.js';
  */
 export const PlanBanner = {
 
+    // Verhindert, dass ein langsamer älterer Abruf einen neueren Bannerstand
+    // nachträglich wieder überschreibt.
+    _renderVersion: 0,
+
     /**
      * Rendert das kombinierte Benachrichtigungs-Banner (Systemnachrichten + Aufgaben).
      * NEU: Integriert sich in den #notification-container von shared_notifications.js.
@@ -16,6 +20,8 @@ export const PlanBanner = {
     async renderUnifiedBanner() {
         // Nur für Admins / Planschreiber / Hundeführer relevant
         if (!PlanState.isAdmin && !PlanState.isPlanschreiber && !PlanState.isHundefuehrer) return;
+
+        const renderVersion = ++this._renderVersion;
 
         try {
             // 1. ZIEL-CONTAINER FINDEN (Shared Container)
@@ -36,9 +42,6 @@ export const PlanBanner = {
                 slot.className = 'notification-slot';
                 mainContainer.appendChild(slot);
             }
-
-            // Slot leeren
-            slot.innerHTML = '';
 
             // 3. SERVER-BANNER KAPERN (System Message)
             let serverMessage = null;
@@ -74,30 +77,55 @@ export const PlanBanner = {
             const countSick = otherReqs.length;
             const countMarket = marketOffers.length;
 
-            // --- NEU: Trainings-Warnungen (Admin only) ---
-            const countTraining = PlanState.trainingWarnings ? PlanState.trainingWarnings.length : 0;
+            // Ausbildungs- und Schießfälligkeiten liegen bereits als einzelne
+            // Einträge vor. Für eine bessere Übersicht werden sie weiter unten
+            // nicht mehr zu einem Sammelbanner zusammengefasst.
+            const trainingWarnings = Array.isArray(PlanState.trainingWarnings)
+                ? [...PlanState.trainingWarnings]
+                : [];
+            const countTraining = trainingWarnings.length;
 
+            // Falls inzwischen bereits ein neuerer Abruf läuft, darf dieses
+            // Ergebnis die aktuelle Ansicht nicht mehr verändern.
+            if (renderVersion !== this._renderVersion) return;
 
-            if (!serverMessage && countTrade === 0 && countSick === 0 && countMarket === 0 && countTraining === 0) return;
+            if (!serverMessage && countTrade === 0 && countSick === 0 && countMarket === 0 && countTraining === 0) {
+                slot.replaceChildren();
+                return;
+            }
 
             // 5. BANNER RENDERN
 
+            // Alle Banner zunächst außerhalb des sichtbaren DOM aufbauen.
+            // So bleibt die bisherige Leistenhöhe während der API-Abfragen
+            // unverändert und der Schichtplan springt nicht hoch und runter.
+            const nextTiles = document.createDocumentFragment();
+
             // Helper
-            const addTile = (text, colorClass, iconClass, onClick) => {
+            const addTile = (text, colorClass, iconClass, onClick, title = '') => {
                 const div = document.createElement('div');
                 div.className = `notification-banner`;
                 div.style.backgroundColor = colorClass;
+                if (title) div.title = title;
 
-                div.innerHTML = `
-                    <div class="banner-link">
-                        <div class="notification-content">
-                            <i class="fas ${iconClass}" style="margin-right:8px;"></i>
-                            <span>${text}</span>
-                        </div>
-                    </div>
-                `;
+                const link = document.createElement('div');
+                link.className = 'banner-link';
+
+                const content = document.createElement('div');
+                content.className = 'notification-content';
+
+                const icon = document.createElement('i');
+                icon.className = `fas ${iconClass}`;
+                icon.style.marginRight = '8px';
+
+                const label = document.createElement('span');
+                label.textContent = text;
+
+                content.append(icon, label);
+                link.appendChild(content);
+                div.appendChild(link);
                 if (onClick) div.onclick = onClick;
-                slot.appendChild(div);
+                nextTiles.appendChild(div);
             };
 
             // Kachel 1: System Nachricht (Rot)
@@ -115,32 +143,89 @@ export const PlanBanner = {
                 addTile(`${countTrade} Schicht(en) wurde getauscht`, '#2980b9', 'fa-exchange-alt', () => window.location.href='anfragen.html');
             }
 
-            // --- NEU: Kachel 4: Trainings-Warnungen (Rot-Orange) ---
+            // Kachel 4: Ausbildung und Schießen erhalten jeweils einen eigenen
+            // Sammelbanner. Durch den gemeinsamen Flex-Container teilen sich
+            // beide den Platz wie alle übrigen Banner.
             if (countTraining > 0 && PlanState.isAdmin) {
-                // Wir nutzen hier das Orakel-Modal für die Details
-                addTile(`${countTraining} Ausbildung/Schießen fällig`, '#d35400', 'fa-crosshairs', () => {
-                    let msg = "<strong>Folgende Hundeführer müssen noch eingeplant werden:</strong><br><br>";
-                    msg += "<ul style='text-align:left; font-size:13px;'>";
-                    PlanState.trainingWarnings.forEach(w => {
-                        const icon = w.type === 'QA' ? '🎓' : '🔫';
-                        const color = w.status === 'Überfällig' ? '#e74c3c' : '#f1c40f';
-                        msg += `<li style="margin-bottom:5px;">${icon} <strong>${w.name}</strong>: ${w.type}<br><span style="color:${color}; font-size:0.9em;">${w.message}</span></li>`;
-                    });
-                    msg += "</ul>";
-                    msg += "<br><em>Tipp: Trage die entsprechende Schicht (QA oder S) im Plan ein, um diese Meldung zu entfernen.</em>";
+                const escapeHTML = (value) => String(value || '').replace(/[&<>"']/g, char => ({
+                    '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+                })[char]);
 
-                    if (window.dhfAlert) {
-                        window.dhfAlert("Fälligkeiten", msg, "warning");
-                    } else {
-                        alert("Details siehe Hundeführer-Liste.");
-                    }
+                const dueDateValue = (value) => {
+                    const [day, month, year] = String(value || '').split('.').map(Number);
+                    return year && month && day ? new Date(year, month - 1, day).getTime() : Number.MAX_SAFE_INTEGER;
+                };
+
+                // Innerhalb der beiden Listen: Überfälliges zuerst, danach die
+                // früheste Frist und der Name.
+                const sortWarnings = (warnings) => warnings.sort((a, b) => {
+                    const aOverdue = String(a.status || '').startsWith('Überfällig') ? 0 : 1;
+                    const bOverdue = String(b.status || '').startsWith('Überfällig') ? 0 : 1;
+                    return aOverdue - bOverdue
+                        || dueDateValue(a.due_date) - dueDateValue(b.due_date)
+                        || String(a.name || '').localeCompare(String(b.name || ''), 'de');
                 });
+
+                const addWarningGroup = (warnings, config) => {
+                    if (warnings.length === 0) return;
+                    sortWarnings(warnings);
+
+                    const count = warnings.length;
+                    const bannerText = `${count} ${config.label} fällig`;
+                    const tooltip = `${count} offene ${config.label}-Fälligkeit${count === 1 ? '' : 'en'}`;
+
+                    addTile(bannerText, config.color, config.iconClass, () => {
+                        if (window.dhfAlert) {
+                            const listItems = warnings.map(warning => {
+                                const isOverdue = String(warning.status || '').startsWith('Überfällig');
+                                const detailColor = isOverdue ? '#e74c3c' : '#f1c40f';
+                                return `
+                                    <li style="margin-bottom:10px;">
+                                        <strong>${escapeHTML(warning.name)}</strong><br>
+                                        <span style="color:${detailColor}; font-size:0.9em; font-weight:700;">${escapeHTML(warning.status || 'Fällig')}</span><br>
+                                        <span style="font-size:0.9em;">${escapeHTML(warning.message || '')}</span>
+                                    </li>`;
+                            }).join('');
+
+                            const message = `
+                                <div style="text-align:left;">
+                                    <strong>${config.detailIcon} Folgende Hundeführer müssen noch eingeplant werden:</strong><br><br>
+                                    <ul style="padding-left:20px; margin:0;">${listItems}</ul>
+                                    <br><em>Trage die entsprechende Schicht (${config.shiftAbbreviation}) im Plan ein, um die jeweilige Meldung zu erledigen.</em>
+                                </div>`;
+                            window.dhfAlert(`${config.label} fällig`, message, 'warning');
+                        } else {
+                            alert(`${count} ${config.label}-Fälligkeit${count === 1 ? '' : 'en'}`);
+                        }
+                    }, tooltip);
+                };
+
+                addWarningGroup(
+                    trainingWarnings.filter(warning => warning.type === 'QA'),
+                    {
+                        label: 'Ausbildung', color: '#b9770e',
+                        iconClass: 'fa-graduation-cap', detailIcon: '🎓',
+                        shiftAbbreviation: 'QA'
+                    }
+                );
+                addWarningGroup(
+                    trainingWarnings.filter(warning => warning.type === 'S'),
+                    {
+                        label: 'Schießen', color: '#d35400',
+                        iconClass: 'fa-crosshairs', detailIcon: '🔫',
+                        shiftAbbreviation: 'S'
+                    }
+                );
             }
 
             // Kachel 5: Markt-Angebote (Grün)
             if (countMarket > 0 && PlanState.isHundefuehrer) {
                 addTile(`${countMarket} Schicht(en) zum Tausch`, '#27ae60', 'fa-tags', () => window.location.href='market.html');
             }
+
+            // Ein einziger DOM-Austausch statt sichtbarem Leeren und späterem
+            // Wiederbefüllen. Das hält die Zeile unter dem Mauszeiger stabil.
+            slot.replaceChildren(nextTiles);
 
         } catch (e) {
             console.warn("Banner Render Error:", e);

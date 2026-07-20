@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Status-Board - DHF-Planer</title>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700&display=swap');
+
+        :root {
+            --purple: #8e44ad;
+            --purple-light: #a569bd;
+            --blue: #3498db;
+            --green: #2ecc71;
+            --orange: #f39c12;
+            --red: #e74c3c;
+            --muted: #aeb9c3;
+        }
+
+        * { box-sizing: border-box; }
+        body {
+            margin: 0; min-height: 100vh; color: white;
+            background: #15181d; font-family: 'Poppins', sans-serif;
+        }
+        #particle-canvas { position: fixed; inset: 0; width: 100%; height: 100%; z-index: -1; }
+
+        header {
+            position: relative; z-index: 20; padding: 15px 30px;
+            display: flex; align-items: center; justify-content: space-between; gap: 20px;
+            background: rgba(255,255,255,0.055); border-bottom: 1px solid rgba(255,255,255,0.1);
+            backdrop-filter: blur(12px);
+        }
+        header h1 { margin: 0; font-size: 24px; white-space: nowrap; }
+        header nav { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; }
+        header nav a {
+            display: inline-flex; color: #bdc3c7; text-decoration: none;
+            padding: 9px 10px; border-radius: 6px; transition: 0.2s;
+        }
+        header nav a:hover { color: white; background: rgba(255,255,255,0.1); }
+        .nav-badge { display: none; }
+        #user-info { display: flex; align-items: center; gap: 10px; white-space: nowrap; }
+        #logout-btn, .report-btn {
+            color: white; border: 0; border-radius: 6px; padding: 10px 14px;
+            cursor: pointer; font-size: 14px;
+        }
+        .report-btn { background: var(--blue); }
+        #logout-btn { background: var(--red); }
+
+        main { width: min(1180px, calc(100% - 32px)); margin: 42px auto 70px; }
+        .hero {
+            padding: 30px; border-radius: 16px;
+            background: linear-gradient(135deg, rgba(142,68,173,0.25), rgba(52,152,219,0.13));
+            border: 1px solid rgba(165,105,189,0.42); box-shadow: 0 15px 45px rgba(0,0,0,0.28);
+        }
+        .hero-top { display: flex; justify-content: space-between; gap: 25px; align-items: flex-start; }
+        .hero h2 { margin: 0 0 8px; font-size: clamp(1.65rem, 4vw, 2.35rem); }
+        .hero p { margin: 0; max-width: 760px; color: #c6d0d8; line-height: 1.7; }
+        .hero-icon { font-size: 54px; filter: drop-shadow(0 0 15px rgba(165,105,189,0.55)); }
+
+        .summary-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-top: 26px; }
+        .summary-card {
+            padding: 14px 16px; border-radius: 10px; background: rgba(0,0,0,0.22);
+            border: 1px solid rgba(255,255,255,0.1);
+        }
+        .summary-card strong { display: block; font-size: 1.55rem; }
+        .summary-card span { color: var(--muted); font-size: 0.82rem; }
+
+        .toolbar {
+            margin: 24px 0 18px; display: flex; justify-content: space-between;
+            align-items: center; gap: 15px; flex-wrap: wrap;
+        }
+        .filters { display: flex; gap: 8px; flex-wrap: wrap; }
+        .filter-btn {
+            border: 1px solid #586673; background: rgba(0,0,0,0.25); color: #c8d0d7;
+            border-radius: 999px; padding: 8px 15px; cursor: pointer; transition: 0.2s;
+        }
+        .filter-btn.active, .filter-btn:hover { border-color: var(--purple-light); background: var(--purple); color: white; }
+        #board-search {
+            min-width: min(320px, 100%); padding: 10px 13px; border-radius: 8px;
+            border: 1px solid #586673; background: rgba(0,0,0,0.3); color: white; font: inherit;
+        }
+
+        #board-list { display: grid; gap: 18px; }
+        .board-item {
+            position: relative; overflow: hidden; border-radius: 14px;
+            background: rgba(31,37,45,0.9); border: 1px solid rgba(255,255,255,0.11);
+            box-shadow: 0 10px 28px rgba(0,0,0,0.23); transition: transform 0.2s, border-color 0.2s;
+        }
+        .board-item:hover { transform: translateY(-2px); border-color: rgba(165,105,189,0.55); }
+        .board-item::before { content: ''; position: absolute; inset: 0 auto 0 0; width: 5px; background: var(--status-color, var(--purple)); }
+        .board-item-inner { padding: 22px 24px 20px 28px; }
+        .item-top { display: flex; justify-content: space-between; gap: 18px; align-items: flex-start; }
+        .item-title { margin: 0 0 9px; font-size: 1.18rem; color: white; }
+        .badges { display: flex; gap: 7px; flex-wrap: wrap; }
+        .badge { border-radius: 999px; padding: 4px 9px; font-size: 0.72rem; font-weight: 600; }
+        .badge.type { background: rgba(52,152,219,0.17); color: #74b9ff; }
+        .badge.category { background: rgba(255,255,255,0.08); color: #c8d0d7; }
+        .badge.own { background: rgba(46,204,113,0.17); color: #55efc4; }
+        .status-badge { background: rgba(255,255,255,0.08); color: var(--status-color); border: 1px solid var(--status-color); }
+        .item-description { margin: 17px 0; color: #d4dbe1; line-height: 1.65; white-space: pre-wrap; word-break: break-word; }
+        .progress-head { display: flex; justify-content: space-between; color: #b8c2ca; font-size: 0.82rem; margin-bottom: 7px; }
+        .progress-track { height: 8px; border-radius: 999px; background: rgba(0,0,0,0.38); overflow: hidden; }
+        .progress-fill { height: 100%; border-radius: inherit; width: 0; background: linear-gradient(90deg, var(--purple), var(--status-color)); }
+        .status-note {
+            margin-top: 16px; padding: 13px 15px; border-radius: 8px;
+            background: rgba(0,0,0,0.22); border-left: 3px solid var(--status-color);
+            color: #c9d3da; white-space: pre-wrap; word-break: break-word;
+        }
+        .status-note strong { color: white; display: block; margin-bottom: 4px; }
+        .item-footer { margin-top: 15px; display: flex; justify-content: space-between; align-items: center; gap: 12px; color: #8f9ca6; font-size: 0.78rem; }
+        .admin-actions { display: flex; gap: 8px; }
+        .admin-actions button { border: 0; border-radius: 6px; padding: 7px 11px; cursor: pointer; color: white; }
+        .btn-edit { background: var(--purple); }
+        .btn-remove { background: #59636d; }
+
+        .empty-state, .loading-state {
+            text-align: center; padding: 55px 25px; border-radius: 14px;
+            background: rgba(255,255,255,0.045); border: 1px dashed rgba(255,255,255,0.17); color: #b8c2ca;
+        }
+        .empty-state .big-icon { font-size: 46px; }
+        .empty-state button { margin-top: 14px; }
+
+        .board-modal {
+            display: none; position: fixed; z-index: 210000; inset: 0; overflow-y: auto;
+            padding: 30px 15px; background: rgba(0,0,0,0.75); backdrop-filter: blur(6px);
+        }
+        .board-modal-content {
+            width: min(680px, 100%); margin: 0 auto; border-radius: 14px; overflow: hidden;
+            background: linear-gradient(145deg, #20232a, #293746); border: 1px solid rgba(155,89,182,0.8);
+            box-shadow: 0 0 45px rgba(142,68,173,0.38);
+        }
+        .modal-header, .modal-footer { padding: 18px 24px; display: flex; align-items: center; gap: 12px; }
+        .modal-header { justify-content: space-between; border-bottom: 1px solid rgba(255,255,255,0.1); }
+        .modal-footer { justify-content: flex-end; border-top: 1px solid rgba(255,255,255,0.1); }
+        .modal-header h3 { margin: 0; }
+        .modal-close { font-size: 28px; color: #bdc3c7; cursor: pointer; }
+        .modal-body { padding: 24px; }
+        .form-row { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+        .form-group { margin-bottom: 17px; }
+        .form-group label { display: block; margin-bottom: 7px; color: #bdc3c7; }
+        .form-group input, .form-group select, .form-group textarea {
+            width: 100%; padding: 11px 12px; border-radius: 6px; border: 1px solid #657786;
+            background: rgba(0,0,0,0.28); color: white; font: inherit;
+        }
+        .form-group textarea { min-height: 120px; resize: vertical; }
+        .progress-input { display: flex; gap: 12px; align-items: center; }
+        .progress-input input { flex: 1; accent-color: var(--purple); }
+        #edit-progress-value { min-width: 48px; font-weight: 600; }
+        .modal-btn { border: 0; border-radius: 7px; padding: 10px 17px; color: white; cursor: pointer; font-weight: 600; }
+        .modal-btn.cancel { background: #5d6d7e; }
+        .modal-btn.save { background: var(--purple); }
+        #edit-error { margin-right: auto; color: #ff7675; font-size: 13px; }
+
+        .status-aufgenommen { --status-color: #f39c12; }
+        .status-geplant { --status-color: #3498db; }
+        .status-in_arbeit { --status-color: #9b59b6; }
+        .status-testphase { --status-color: #1abc9c; }
+        .status-erledigt { --status-color: #2ecc71; }
+        .status-zurueckgestellt { --status-color: #95a5a6; }
+        .status-nicht_umgesetzt { --status-color: #e74c3c; }
+
+        @media (max-width: 900px) {
+            header { align-items: flex-start; flex-wrap: wrap; padding: 14px 18px; }
+            header nav { order: 3; width: 100%; }
+            .summary-grid { grid-template-columns: repeat(2, 1fr); }
+        }
+        @media (max-width: 650px) {
+            main { width: min(100% - 20px, 1180px); margin-top: 20px; }
+            .hero { padding: 22px; }
+            .hero-icon { display: none; }
+            .item-top, .item-footer { flex-direction: column; align-items: flex-start; }
+            .form-row { grid-template-columns: 1fr; gap: 0; }
+            #user-info { flex-wrap: wrap; }
+        }
+    </style>
+</head>
+<body>
+    <canvas id="particle-canvas"></canvas>
+
+    <header>
+        <h1>DHF-Planer</h1>
+        <nav id="main-nav">
+            <a href="dashboard.html" id="nav-dashboard" style="display:none;">Dashboard</a>
+            <a href="users.html" id="nav-users" style="display:none;">Benutzerverwaltung</a>
+            <a href="emails.html" id="nav-emails" style="display:none;">E-Mails</a>
+            <a href="logs.html" id="nav-logs" style="display:none;">Logs</a>
+            <a href="feedback.html" id="nav-feedback" style="display:none;">Meldungen <span id="feedback-badge" class="nav-badge">0</span></a>
+            <a href="statistik.html" id="nav-statistik" style="display:none;">Statistik</a>
+            <a href="schichtplan.html">Schichtplan</a>
+        </nav>
+        <div id="user-info">
+            <span id="welcome-user"></span>
+            <button class="report-btn" id="global-report-btn">🐞 Problem melden</button>
+            <button id="logout-btn">Abmelden</button>
+        </div>
+    </header>
+
+    <main>
+        <section class="hero">
+            <div class="hero-top">
+                <div>
+                    <h2>Status-Board</h2>
+                    <p>Hier seht ihr, welche gemeldeten Fehler, Ideen und Verbesserungen angekommen sind, woran gerade gearbeitet wird und wie weit die Umsetzung ist.</p>
+                </div>
+                <div class="hero-icon">🛠️</div>
+            </div>
+            <div class="summary-grid">
+                <div class="summary-card"><strong id="count-all">0</strong><span>Einträge insgesamt</span></div>
+                <div class="summary-card"><strong id="count-active">0</strong><span>Aktiv bearbeitet</span></div>
+                <div class="summary-card"><strong id="count-testing">0</strong><span>In der Testphase</span></div>
+                <div class="summary-card"><strong id="count-done">0</strong><span>Erledigt</span></div>
+            </div>
+        </section>
+
+        <section class="toolbar" aria-label="Status-Board filtern">
+            <div class="filters" id="board-filters">
+                <button class="filter-btn active" data-filter="all">Alle</button>
+                <button class="filter-btn" data-filter="offen">Offen</button>
+                <button class="filter-btn" data-filter="in_arbeit">In Bearbeitung</button>
+                <button class="filter-btn" data-filter="testphase">Testphase</button>
+                <button class="filter-btn" data-filter="erledigt">Erledigt</button>
+            </div>
+            <input id="board-search" type="search" placeholder="Titel, Beschreibung oder Kategorie suchen...">
+        </section>
+
+        <section id="board-list" aria-live="polite">
+            <div class="loading-state">Status-Board wird geladen...</div>
+        </section>
+    </main>
+
+    <div id="edit-modal" class="board-modal" aria-hidden="true">
+        <div class="board-modal-content" role="dialog" aria-modal="true" aria-labelledby="edit-modal-title">
+            <div class="modal-header">
+                <h3 id="edit-modal-title">Status-Board-Eintrag bearbeiten</h3>
+                <span class="modal-close" id="edit-close" aria-label="Schließen">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label for="edit-title">Öffentlicher Titel</label>
+                    <input id="edit-title" type="text" maxlength="160">
+                </div>
+                <div class="form-group">
+                    <label for="edit-description">Ausführliche Beschreibung</label>
+                    <textarea id="edit-description"></textarea>
+                </div>
+                <div class="form-row">
+                    <div class="form-group">
+                        <label for="edit-status">Bearbeitungsstatus</label>
+                        <select id="edit-status">
+                            <option value="aufgenommen">Aufgenommen</option>
+                            <option value="geplant">Geplant</option>
+                            <option value="in_arbeit">In Bearbeitung</option>
+                            <option value="testphase">Testphase</option>
+                            <option value="erledigt">Erledigt</option>
+                            <option value="zurueckgestellt">Zurückgestellt</option>
+                            <option value="nicht_umgesetzt">Nicht umgesetzt</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="edit-progress">Fortschritt</label>
+                        <div class="progress-input">
+                            <input id="edit-progress" type="range" min="0" max="100" step="5">
+                            <span id="edit-progress-value">0 %</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="form-group">
+                    <label for="edit-status-note">Aktueller Stand / nächster Schritt</label>
+                    <textarea id="edit-status-note"></textarea>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <span id="edit-error"></span>
+                <button id="edit-cancel" class="modal-btn cancel" type="button">Abbrechen</button>
+                <button id="edit-save" class="modal-btn save" type="button">Änderungen speichern</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('particle-canvas');
+        const ctx = canvas.getContext('2d');
+        let particles = [];
+        function resizeCanvas() { canvas.width = window.innerWidth; canvas.height = window.innerHeight; }
+        function resetParticles() {
+            particles = Array.from({length: Math.min(80, Math.floor((canvas.width * canvas.height) / 14000))}, () => ({
+                x: Math.random() * canvas.width, y: Math.random() * canvas.height,
+                vx: (Math.random() - 0.5) * 0.35, vy: (Math.random() - 0.5) * 0.35,
+                size: 1 + Math.random() * 1.6
+            }));
+        }
+        function animateParticles() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            particles.forEach(p => {
+                p.x += p.vx; p.y += p.vy;
+                if (p.x < 0 || p.x > canvas.width) p.vx *= -1;
+                if (p.y < 0 || p.y > canvas.height) p.vy *= -1;
+                ctx.beginPath(); ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+                ctx.fillStyle = 'rgba(165,105,189,0.5)'; ctx.fill();
+            });
+            requestAnimationFrame(animateParticles);
+        }
+        resizeCanvas(); resetParticles(); animateParticles();
+        window.addEventListener('resize', () => { resizeCanvas(); resetParticles(); });
+    </script>
+    <script src="js/sw_register.js" defer></script>
+    <script type="module" src="shared_feedback.js" defer></script>
+    <script type="module" src="shared_notifications.js" defer></script>
+    <script type="module" src="status_board.js" defer></script>
+</body>
+</html>

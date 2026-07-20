@@ -24,7 +24,136 @@ import { PlanSocket } from '../modules/schichtplan_socket.js';
 import { initImpersonation } from '../modules/admin_impersonation.js';
 
 
-// --- NEU: Filter-Logik für die Besetzungstabelle (Serverseitig gespeichert) ---
+// --- MONATSBEZOGENE ANZEIGE- UND DRUCKFILTER ---
+
+const PLAN_DISPLAY_FILTER_STORAGE_KEY = 'dhf_plan_display_filters_v1';
+
+function getPlanDisplayFilterKey() {
+    const userId = PlanState.loggedInUser?.id || 'anonymous';
+    const variant = PlanState.currentVariantId === null ? 'main' : `variant-${PlanState.currentVariantId}`;
+    return `${userId}:${PlanState.currentYear}-${String(PlanState.currentMonth).padStart(2, '0')}:${variant}`;
+}
+
+function readPlanDisplayFilterStates() {
+    try {
+        const stored = JSON.parse(localStorage.getItem(PLAN_DISPLAY_FILTER_STORAGE_KEY) || '{}');
+        return stored && typeof stored === 'object' ? stored : {};
+    } catch (error) {
+        console.warn('Gespeicherte Darstellungsfilter konnten nicht gelesen werden:', error);
+        return {};
+    }
+}
+
+function savePlanDisplayFilterState() {
+    const hideWishMarkers = document.getElementById('hide-wish-markers');
+    const hideXShifts = document.getElementById('hide-x-shifts');
+    if (!hideWishMarkers || !hideXShifts) return;
+
+    try {
+        const allStates = readPlanDisplayFilterStates();
+        const filterKey = getPlanDisplayFilterKey();
+        const previousState = allStates[filterKey] || {};
+        allStates[filterKey] = {
+            ...previousState,
+            hideWishMarkers: hideWishMarkers.checked,
+            hideXShifts: hideXShifts.checked
+        };
+        localStorage.setItem(PLAN_DISPLAY_FILTER_STORAGE_KEY, JSON.stringify(allStates));
+    } catch (error) {
+        console.warn('Darstellungsfilter konnten nicht gespeichert werden:', error);
+    }
+}
+
+function getDogAlertStorageKey(alert) {
+    return JSON.stringify([
+        String(alert.dog_id ?? ''),
+        String(alert.event_type ?? ''),
+        String(alert.due_date ?? ''),
+        String(alert.details ?? '')
+    ]);
+}
+
+function getHiddenDogAlertKeys() {
+    const state = readPlanDisplayFilterStates()[getPlanDisplayFilterKey()] || {};
+    return new Set(Array.isArray(state.hiddenDogAlerts) ? state.hiddenDogAlerts : []);
+}
+
+function setDogAlertHidden(alertKey, hidden) {
+    try {
+        const allStates = readPlanDisplayFilterStates();
+        const filterKey = getPlanDisplayFilterKey();
+        const currentState = allStates[filterKey] || {};
+        const hiddenAlerts = new Set(
+            Array.isArray(currentState.hiddenDogAlerts) ? currentState.hiddenDogAlerts : []
+        );
+
+        if (hidden) hiddenAlerts.add(alertKey);
+        else hiddenAlerts.delete(alertKey);
+
+        allStates[filterKey] = {
+            ...currentState,
+            hiddenDogAlerts: [...hiddenAlerts]
+        };
+        localStorage.setItem(PLAN_DISPLAY_FILTER_STORAGE_KEY, JSON.stringify(allStates));
+    } catch (error) {
+        console.warn('Ausgeblendete Hundeinfos konnten nicht gespeichert werden:', error);
+    }
+}
+
+function loadPlanDisplayFilterState() {
+    const hideWishMarkers = document.getElementById('hide-wish-markers');
+    const hideXShifts = document.getElementById('hide-x-shifts');
+    if (!hideWishMarkers || !hideXShifts) return;
+
+    const state = readPlanDisplayFilterStates()[getPlanDisplayFilterKey()] || {};
+    hideWishMarkers.checked = state.hideWishMarkers === true;
+    hideXShifts.checked = state.hideXShifts === true;
+    applyPlanDisplayFilters();
+}
+
+function updatePlanFilterSummary() {
+    const filter24er = document.getElementById('filter-24er');
+    const filter12er = document.getElementById('filter-12er');
+    const hideWishMarkers = document.getElementById('hide-wish-markers');
+    const hideXShifts = document.getElementById('hide-x-shifts');
+    const badge = document.getElementById('plan-filter-active-count');
+    if (!filter24er || !filter12er || !hideWishMarkers || !hideXShifts || !badge) return;
+
+    const changedCount = Number(!filter24er.checked)
+        + Number(!filter12er.checked)
+        + Number(hideWishMarkers.checked)
+        + Number(hideXShifts.checked);
+
+    badge.textContent = String(changedCount);
+    badge.style.display = changedCount > 0 ? 'inline-flex' : 'none';
+}
+
+function initializePlanFilterMenu() {
+    const container = document.getElementById('shift-filter-container');
+    const button = document.getElementById('plan-filter-menu-button');
+    const menu = document.getElementById('plan-filter-menu');
+    if (!container || !button || !menu) return;
+
+    const closeMenu = () => {
+        menu.classList.remove('open');
+        button.setAttribute('aria-expanded', 'false');
+    };
+
+    button.addEventListener('click', event => {
+        event.stopPropagation();
+        const shouldOpen = !menu.classList.contains('open');
+        menu.classList.toggle('open', shouldOpen);
+        button.setAttribute('aria-expanded', String(shouldOpen));
+    });
+
+    menu.addEventListener('click', event => event.stopPropagation());
+    document.addEventListener('click', event => {
+        if (!event.target.closest('#shift-filter-container')) closeMenu();
+    });
+    document.addEventListener('keydown', event => {
+        if (event.key === 'Escape') closeMenu();
+    });
+}
 
 async function saveFilterState() {
     const filter24er = document.getElementById('filter-24er');
@@ -70,6 +199,9 @@ function loadFilterState() {
         filter24er.checked = true;
         filter12er.checked = true;
     }
+
+    loadPlanDisplayFilterState();
+    updatePlanFilterSummary();
 }
 
 function applyStaffingFilters() {
@@ -108,6 +240,57 @@ function applyStaffingFilters() {
 function handleFilterChange() {
     applyStaffingFilters(); // UI sofort umbauen, damit es flüssig wirkt
     saveFilterState();      // Daten asynchron an den Server senden
+    updatePlanFilterSummary();
+}
+
+// Reine Darstellungsfilter für eine aufgeräumte Druckansicht. Sie verändern
+// weder Schichten noch Wunschdaten und werden daher nicht auf dem Server
+// gespeichert.
+function applyPlanDisplayFilters() {
+    const hideWishMarkers = document.getElementById('hide-wish-markers');
+    const hideXShifts = document.getElementById('hide-x-shifts');
+
+    document.body.classList.toggle(
+        'hide-wish-markers',
+        Boolean(hideWishMarkers && hideWishMarkers.checked)
+    );
+    document.body.classList.toggle(
+        'hide-x-shifts',
+        Boolean(hideXShifts && hideXShifts.checked)
+    );
+}
+
+function handlePlanDisplayFilterChange() {
+    applyPlanDisplayFilters();
+    savePlanDisplayFilterState();
+    updatePlanFilterSummary();
+}
+
+function initializeResponsivePlanResize() {
+    let lastWidth = window.innerWidth;
+    let lastCompactState = window.matchMedia(
+        '(orientation: landscape) and (max-height: 650px) and (pointer: coarse) and (hover: none)'
+    ).matches;
+    let resizeTimer = null;
+
+    window.addEventListener('resize', () => {
+        const compactState = window.matchMedia(
+            '(orientation: landscape) and (max-height: 650px) and (pointer: coarse) and (hover: none)'
+        ).matches;
+        const widthChanged = Math.abs(window.innerWidth - lastWidth) >= 40;
+        const modeChanged = compactState !== lastCompactState;
+
+        // Änderungen durch ein- und ausblendende Browserleisten auf dem Handy
+        // lösen keinen kompletten Neuaufbau des Plans aus.
+        if (!widthChanged && !modeChanged) return;
+
+        lastWidth = window.innerWidth;
+        lastCompactState = compactState;
+        clearTimeout(resizeTimer);
+        resizeTimer = setTimeout(() => {
+            if (PlanState.allUsers.length > 0) renderGrid(true);
+        }, 180);
+    });
 }
 // --------------------------------------------------------------------------------
 
@@ -168,6 +351,7 @@ async function initialize() {
             renderGrid,
             PlanUIHelper.updatePlanStatusUI.bind(PlanUIHelper)
         );
+        initializeResponsivePlanResize();
 
         // --- NEU: Admin-Prüfung für Filter-Container ---
         const filterContainer = document.getElementById('shift-filter-container');
@@ -189,6 +373,12 @@ async function initialize() {
         const filter12er = document.getElementById('filter-12er');
         if(filter24er) filter24er.addEventListener('change', handleFilterChange);
         if(filter12er) filter12er.addEventListener('change', handleFilterChange);
+
+        const hideWishMarkers = document.getElementById('hide-wish-markers');
+        const hideXShifts = document.getElementById('hide-x-shifts');
+        if (hideWishMarkers) hideWishMarkers.addEventListener('change', handlePlanDisplayFilterChange);
+        if (hideXShifts) hideXShifts.addEventListener('change', handlePlanDisplayFilterChange);
+        initializePlanFilterMenu();
 
 
         // --- 4. DATEN LADEN ---
@@ -282,6 +472,7 @@ async function renderGrid(isSilent = false) {
 
         // Users & Shifts ins State-Objekt mappen
         PlanState.allUsers = shiftPayload.users;
+        PlanState.approvedWishes = shiftPayload.approved_wishes || {};
         PlanState.currentShifts = {};
         shiftPayload.shifts.forEach(s => {
             const key = `${s.user_id}-${s.date}`;
@@ -437,13 +628,25 @@ function renderDogAlerts(alerts) {
     const container = document.getElementById('dog-alerts-container');
     if (!container) return;
     
-    container.innerHTML = ''; 
+    container.innerHTML = '';
+    container.classList.remove('all-dog-alerts-hidden');
     
     if (!alerts || alerts.length === 0) return;
+
+    const hiddenAlertKeys = getHiddenDogAlertKeys();
+    container.classList.toggle(
+        'all-dog-alerts-hidden',
+        alerts.every(alert => hiddenAlertKeys.has(getDogAlertStorageKey(alert)))
+    );
+    const escapeHTML = value => String(value ?? '').replace(/[&<>"']/g, character => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    })[character]);
 
     alerts.forEach(alert => {
         const dueObj = new Date(alert.due_date);
         const dueStr = dueObj.toLocaleDateString('de-DE');
+        const alertKey = getDogAlertStorageKey(alert);
+        const isHidden = hiddenAlertKeys.has(alertKey);
         
         const isOverdue = alert.days_left < 0;
         const isToday = alert.days_left === 0;
@@ -471,21 +674,45 @@ function renderDogAlerts(alerts) {
 
         const banner = document.createElement('div');
         banner.className = 'dog-alert-banner';
-        banner.style.background = bgColor;
-        banner.title = "Klicken, um die Diensthunde-Akte zu öffnen";
-        
-        banner.innerHTML = `
-            <i class="fas ${icon}"></i>
-            <div class="alert-content">
-                <span style="font-size: 16px;"><strong>${alert.dog_name}:</strong> ${typeDisplay} - ${dueStr}</span><br>
-                <small style="opacity: 0.9;">${statusText}</small>
-            </div>
-            <div class="alert-action">Akte öffnen &raquo;</div>
-        `;
-        
-        banner.onclick = () => {
-            window.location.href = `dogs.html?open_dog=${alert.dog_id}&tab=akte`;
-        };
+
+        if (isHidden) {
+            banner.classList.add('dog-alert-banner-collapsed');
+            banner.innerHTML = `
+                <div class="alert-actions">
+                    <button type="button" class="alert-action alert-show-action">
+                        <i class="fas fa-eye"></i> Wieder einblenden
+                    </button>
+                </div>
+            `;
+
+            banner.querySelector('.alert-show-action').addEventListener('click', () => {
+                setDogAlertHidden(alertKey, false);
+                renderDogAlerts(alerts);
+            });
+        } else {
+            banner.style.background = bgColor;
+            banner.innerHTML = `
+                <i class="fas ${icon}"></i>
+                <div class="alert-content">
+                    <span style="font-size: 16px;"><strong>${escapeHTML(alert.dog_name)}:</strong> ${escapeHTML(typeDisplay)} - ${escapeHTML(dueStr)}</span><br>
+                    <small style="opacity: 0.9;">${escapeHTML(statusText)}</small>
+                </div>
+                <div class="alert-actions">
+                    <button type="button" class="alert-action alert-hide-action">
+                        <i class="fas fa-eye-slash"></i> Ausblenden
+                    </button>
+                    <button type="button" class="alert-action alert-open-action">Akte öffnen &raquo;</button>
+                </div>
+            `;
+
+            banner.querySelector('.alert-hide-action').addEventListener('click', () => {
+                setDogAlertHidden(alertKey, true);
+                renderDogAlerts(alerts);
+            });
+            banner.querySelector('.alert-open-action').addEventListener('click', () => {
+                window.location.href = `dogs.html?open_dog=${alert.dog_id}&tab=akte`;
+            });
+        }
         
         container.appendChild(banner);
     });

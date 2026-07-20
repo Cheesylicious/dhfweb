@@ -2,7 +2,6 @@
 
 import { PlanState } from './schichtplan_state.js';
 import { PlanApi } from './schichtplan_api.js';
-import { COL_WIDTH_UEBERTRAG, COL_WIDTH_DAY, COL_WIDTH_TOTAL } from '../utils/constants.js';
 
 /**
  * Modul für die Besetzungs-Ansicht (Soll/Ist-Vergleich).
@@ -144,7 +143,10 @@ export const StaffingModule = {
         staffingGridContainer.style.display = 'block';
         staffingGrid.innerHTML = '';
 
-        const gridTemplateColumns = `${PlanState.computedColWidthName} ${PlanState.computedColWidthDetails} ${COL_WIDTH_UEBERTRAG} repeat(${daysInMonth}, ${COL_WIDTH_DAY}) ${COL_WIDTH_TOTAL}`;
+        const gridTemplateColumns = `${PlanState.computedColWidthName} ${PlanState.computedColWidthDetails} `
+            + `${PlanState.computedColWidthUebertrag} `
+            + `repeat(${daysInMonth}, ${PlanState.computedColWidthDay}) `
+            + `${PlanState.computedColWidthTotal}`;
 
         const dayKeyMap = [
             'min_staff_so', 'min_staff_mo', 'min_staff_di', 'min_staff_mi',

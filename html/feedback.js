@@ -48,6 +48,19 @@ try {
 const feedbackList = document.getElementById('feedback-list');
 const filterButtonsContainer = document.querySelector('.filter-buttons');
 let currentFilter = ""; // (Startet mit "Alle")
+let reportsCache = [];
+
+const trackerModal = document.getElementById('tracker-publish-modal');
+const trackerSource = document.getElementById('tracker-source');
+const trackerTitle = document.getElementById('tracker-title');
+const trackerDescription = document.getElementById('tracker-description');
+const trackerStatus = document.getElementById('tracker-status');
+const trackerProgress = document.getElementById('tracker-progress');
+const trackerProgressValue = document.getElementById('tracker-progress-value');
+const trackerStatusNote = document.getElementById('tracker-status-note');
+const trackerModalError = document.getElementById('tracker-modal-error');
+const trackerModalSave = document.getElementById('tracker-modal-save');
+let currentPublishReport = null;
 
 async function loadReports() {
     if (!feedbackList) return;
@@ -55,6 +68,7 @@ async function loadReports() {
 
     try {
         const reports = await apiFetch(`/api/feedback?status=${currentFilter}`);
+        reportsCache = reports || [];
         renderReports(reports);
     } catch (error) {
         feedbackList.innerHTML = `<li style="color: var(--status-neu); padding: 20px;">Fehler beim Laden: ${error.message}</li>`;
@@ -92,11 +106,16 @@ function renderReports(reports) {
         if (report.status !== 'neu') {
              actionButtons += `<button class="btn-new" data-action="neu">Zurück auf 'Neu'</button>`;
         }
+        if (report.public_item) {
+            actionButtons += `<a class="btn-board-link" href="status_board.html?edit=${report.public_item.id}">📋 Im Status-Board bearbeiten</a>`;
+        } else {
+            actionButtons += `<button class="btn-board" data-action="publish">📋 Ins Status-Board aufnehmen</button>`;
+        }
 
         li.innerHTML = `
             <div class="item-header" data-action="toggle-body">
-                <span>Von: <strong>${report.user_name}</strong></span>
-                <span>Kategorie: <strong>${report.category} (${report.report_type})</strong></span>
+                <span>Von: <strong>${escapeHTML(report.user_name)}</strong></span>
+                <span>Kategorie: <strong>${escapeHTML(report.category)} (${escapeHTML(report.report_type)})</strong></span>
                 <span>Gemeldet am: <strong>${reportDate} Uhr</strong></span>
                 <span class="item-status" data-status="${report.status}">${report.status}</span>
             </div>
@@ -166,6 +185,94 @@ async function handleDelete(id) {
     }
 }
 
+function updateTrackerProgressLabel() {
+    if (trackerProgressValue && trackerProgress) {
+        trackerProgressValue.textContent = `${trackerProgress.value} %`;
+    }
+}
+
+function closeTrackerModal() {
+    if (!trackerModal) return;
+    trackerModal.style.display = 'none';
+    trackerModal.setAttribute('aria-hidden', 'true');
+    currentPublishReport = null;
+}
+
+function openTrackerModal(report) {
+    if (!trackerModal || !report) return;
+    currentPublishReport = report;
+
+    const firstLine = (report.message || '').trim().split(/\r?\n/)[0];
+    const suggestedTitle = firstLine.length > 150
+        ? `${firstLine.substring(0, 147)}...`
+        : firstLine;
+
+    trackerSource.textContent = `Originalmeldung von ${report.user_name}:\n${report.message}`;
+    trackerTitle.value = suggestedTitle || `${report.category}: Neue Meldung`;
+    trackerDescription.value = report.message || '';
+    trackerStatus.value = 'aufgenommen';
+    trackerProgress.value = '0';
+    trackerStatusNote.value = 'Die Meldung wurde aufgenommen und wird geprüft.';
+    trackerModalError.textContent = '';
+    trackerModalSave.disabled = false;
+    trackerModalSave.textContent = 'Veröffentlichen';
+    updateTrackerProgressLabel();
+
+    trackerModal.style.display = 'block';
+    trackerModal.setAttribute('aria-hidden', 'false');
+    setTimeout(() => trackerTitle.focus(), 50);
+}
+
+async function publishCurrentReport() {
+    if (!currentPublishReport) return;
+
+    const payload = {
+        title: trackerTitle.value.trim(),
+        description: trackerDescription.value.trim(),
+        public_status: trackerStatus.value,
+        progress: Number(trackerProgress.value),
+        status_note: trackerStatusNote.value.trim()
+    };
+
+    if (!payload.title || !payload.description) {
+        trackerModalError.textContent = 'Titel und Beschreibung sind erforderlich.';
+        return;
+    }
+
+    trackerModalSave.disabled = true;
+    trackerModalSave.textContent = 'Veröffentliche...';
+    trackerModalError.textContent = '';
+
+    try {
+        await apiFetch(`/api/feedback/${currentPublishReport.id}/publish`, 'POST', payload);
+        closeTrackerModal();
+        await loadReports();
+        window.dispatchEvent(new CustomEvent('dhf:notification_update'));
+    } catch (error) {
+        trackerModalError.textContent = error.message;
+        trackerModalSave.disabled = false;
+        trackerModalSave.textContent = 'Veröffentlichen';
+    }
+}
+
+if (trackerProgress) trackerProgress.addEventListener('input', updateTrackerProgressLabel);
+if (trackerStatus) {
+    trackerStatus.addEventListener('change', () => {
+        if (trackerStatus.value === 'erledigt') {
+            trackerProgress.value = '100';
+            updateTrackerProgressLabel();
+        }
+    });
+}
+if (trackerModalSave) trackerModalSave.addEventListener('click', publishCurrentReport);
+document.getElementById('tracker-modal-close')?.addEventListener('click', closeTrackerModal);
+document.getElementById('tracker-modal-cancel')?.addEventListener('click', closeTrackerModal);
+if (trackerModal) {
+    trackerModal.addEventListener('click', (event) => {
+        if (event.target === trackerModal) closeTrackerModal();
+    });
+}
+
 if (filterButtonsContainer) {
     filterButtonsContainer.addEventListener('click', (e) => {
         if (e.target.tagName === 'BUTTON') {
@@ -190,6 +297,9 @@ if (feedbackList) {
 
             if (action === 'delete') {
                 handleDelete(id);
+            } else if (action === 'publish') {
+                const report = reportsCache.find(item => String(item.id) === String(id));
+                openTrackerModal(report);
             } else if (action === 'neu' || action === 'gesehen' || action === 'archiviert') {
                 handleUpdateStatus(id, action);
             }

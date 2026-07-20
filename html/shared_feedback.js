@@ -53,6 +53,14 @@ import { initAuthCheck } from './js/utils/auth.js';
         .feedback-btn-primary { background: #007bff; color: white; padding: 10px 15px; border: none; border-radius: 5px; cursor: pointer; font-size: 15px; transition: opacity 0.3s; }
         .feedback-btn-primary:hover { opacity: 0.8; }
         .feedback-btn-primary:disabled { background: #555; opacity: 0.7; cursor: not-allowed; }
+        .status-board-btn {
+            background: #8e44ad; color: white; padding: 10px 15px;
+            border: none; border-radius: 5px; cursor: pointer; font-size: 15px;
+            transition: background-color 0.3s, transform 0.2s; margin-right: 15px;
+            white-space: nowrap;
+        }
+        .status-board-btn:hover { background: #71368a; transform: translateY(-1px); }
+        .status-board-btn.active { box-shadow: 0 0 0 2px rgba(255,255,255,0.55); }
         @keyframes blink-animation { 0%, 100% { background-color: #e74c3c; transform: scale(1); } 50% { background-color: #f1c40f; transform: scale(1.1); } }
         .nav-badge.blinking { animation: blink-animation 1.5s infinite; display: inline-flex !important; transform-origin: center center; }
     `;
@@ -170,6 +178,25 @@ import { initAuthCheck } from './js/utils/auth.js';
     const submitBtn = document.getElementById('feedback-submit-btn');
     const statusEl = document.getElementById('feedback-modal-status');
     const navBadge = document.getElementById('feedback-badge');
+
+    // Das Status-Board ist für alle Benutzer genauso direkt erreichbar wie
+    // die eigentliche Problem-Meldung. Die Schaltfläche wird zentral auf jeder
+    // Seite ergänzt, die dieses gemeinsame Modul verwendet.
+    if (openBtn && !document.getElementById('global-status-board-btn')) {
+        const statusBoardBtn = document.createElement('button');
+        statusBoardBtn.id = 'global-status-board-btn';
+        statusBoardBtn.className = 'status-board-btn';
+        statusBoardBtn.type = 'button';
+        statusBoardBtn.textContent = '📋 Status-Board';
+        statusBoardBtn.title = 'Bearbeitungsstand gemeldeter Fehler und Vorschläge';
+        if (window.location.pathname.endsWith('/status_board.html')) {
+            statusBoardBtn.classList.add('active');
+        }
+        statusBoardBtn.onclick = () => {
+            window.location.href = 'status_board.html';
+        };
+        openBtn.insertAdjacentElement('afterend', statusBoardBtn);
+    }
 
     // Badge Update Funktion
     async function updateFeedbackCount() {

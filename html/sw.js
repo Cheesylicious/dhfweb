@@ -1,11 +1,14 @@
 // sw.js
-const CACHE_NAME = 'dhf-planer-v5'; // Wieder erhöht, damit das Logout-Update sofort greift!
+const CACHE_NAME = 'dhf-planer-v6';
 
 const ASSETS_TO_CACHE = [
     './',
     './index.html',
     './schichtplan.html',
     './dashboard.html',
+    './status_board.html',
+    './status_board.js',
+    './shared_feedback.js',
     './css/themes.css',
     // Wichtige Skripte
     './js/pages/schichtplan.js',

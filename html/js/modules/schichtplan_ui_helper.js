@@ -206,6 +206,16 @@ export const PlanUIHelper = {
             }
             .oracle-input:focus { outline: none; box-shadow: 0 0 10px rgba(155, 89, 182, 0.5); }
 
+            .oracle-checkbox-wrap {
+                display: none; align-items: flex-start; gap: 10px; text-align: left;
+                margin: 0 0 22px; padding: 13px 14px;
+                border: 1px solid rgba(243, 156, 18, 0.5); border-radius: 8px;
+                background: rgba(243, 156, 18, 0.08); color: #ecf0f1;
+                font-size: 0.92rem; line-height: 1.4; cursor: pointer;
+            }
+            .oracle-checkbox-wrap input { margin-top: 3px; accent-color: #e67e22; cursor: pointer; }
+            .oracle-checkbox-wrap.disabled { opacity: 0.55; cursor: not-allowed; }
+
             .oracle-buttons { display: flex; gap: 15px; justify-content: center; }
             .oracle-btn {
                 border: none; padding: 12px 24px; border-radius: 8px; font-weight: 600; cursor: pointer;
@@ -245,6 +255,10 @@ export const PlanUIHelper = {
                     <div id="dhf-oracle-title" class="oracle-title">Hinweis</div>
                     <div id="dhf-oracle-text" class="oracle-text">...</div>
                     <input type="text" id="dhf-oracle-input" class="oracle-input" placeholder="Eingabe...">
+                    <label id="dhf-oracle-checkbox-wrap" class="oracle-checkbox-wrap">
+                        <input type="checkbox" id="dhf-oracle-checkbox">
+                        <span id="dhf-oracle-checkbox-label">Person per E-Mail informieren</span>
+                    </label>
                     <div id="dhf-oracle-buttons" class="oracle-buttons">
                         <button class="oracle-btn" id="dhf-oracle-ok">OK</button>
                     </div>
@@ -258,6 +272,8 @@ export const PlanUIHelper = {
         window.dhfConfirm = (title, text, onYes) => this.openModal(title, text, 'warning', onYes);
         // NEU: Prompt Funktion
         window.dhfPrompt = (title, text, defaultValue, onYes) => this.openModal(title, text, 'prompt', onYes, defaultValue);
+        window.dhfWishOverrideConfirm = (title, text, options, onYes) =>
+            this.openWishOverrideModal(title, text, options, onYes);
 
         // Klick außerhalb schließt Modal (User Request)
         const overlay = document.getElementById('dhf-oracle-modal');
@@ -275,9 +291,17 @@ export const PlanUIHelper = {
         const textEl = document.getElementById('dhf-oracle-text');
         const iconEl = document.getElementById('dhf-oracle-icon');
         const inputEl = document.getElementById('dhf-oracle-input');
+        const checkboxWrap = document.getElementById('dhf-oracle-checkbox-wrap');
+        const checkbox = document.getElementById('dhf-oracle-checkbox');
         const btnContainer = document.getElementById('dhf-oracle-buttons');
 
         if (!overlay) return;
+
+        if (checkboxWrap) checkboxWrap.style.display = 'none';
+        if (checkbox) {
+            checkbox.checked = false;
+            checkbox.disabled = false;
+        }
 
         // Reset Styles
         content.classList.remove('type-info', 'type-success', 'type-error', 'type-warning');
@@ -350,6 +374,63 @@ export const PlanUIHelper = {
             btnContainer.appendChild(btnOk);
         }
 
+        overlay.classList.add('active');
+    },
+
+    /**
+     * Bestätigung für das Überschreiben einer genehmigten Wunschschicht.
+     * Das Kontrollkästchen wird getrennt von normalen Bestätigungen behandelt,
+     * damit kein Zustand in andere Orakel-Modals durchsickert.
+     */
+    openWishOverrideModal(title, text, options = {}, callback) {
+        const overlay = document.getElementById('dhf-oracle-modal');
+        const content = document.getElementById('dhf-oracle-content');
+        const titleEl = document.getElementById('dhf-oracle-title');
+        const textEl = document.getElementById('dhf-oracle-text');
+        const iconEl = document.getElementById('dhf-oracle-icon');
+        const inputEl = document.getElementById('dhf-oracle-input');
+        const checkboxWrap = document.getElementById('dhf-oracle-checkbox-wrap');
+        const checkbox = document.getElementById('dhf-oracle-checkbox');
+        const checkboxLabel = document.getElementById('dhf-oracle-checkbox-label');
+        const btnContainer = document.getElementById('dhf-oracle-buttons');
+
+        if (!overlay || !content || !checkboxWrap || !checkbox || !btnContainer) return;
+
+        content.classList.remove('type-info', 'type-success', 'type-error', 'type-warning');
+        content.classList.add('type-warning');
+        iconEl.innerHTML = '<i class="fas fa-hat-wizard"></i>';
+        titleEl.textContent = title;
+        textEl.textContent = text;
+        inputEl.style.display = 'none';
+        inputEl.value = '';
+
+        const canNotify = options.canNotify !== false;
+        checkboxWrap.style.display = 'flex';
+        checkboxWrap.classList.toggle('disabled', !canNotify);
+        checkbox.checked = false;
+        checkbox.disabled = !canNotify;
+        checkboxLabel.textContent = canNotify
+            ? 'Person per E-Mail über die geänderte Wunschschicht informieren'
+            : 'Keine E-Mail-Adresse hinterlegt – Benachrichtigung nicht möglich';
+
+        btnContainer.innerHTML = '';
+
+        const btnNo = document.createElement('button');
+        btnNo.className = 'oracle-btn cancel';
+        btnNo.textContent = 'Abbrechen';
+        btnNo.onclick = () => this.closeModal();
+
+        const btnYes = document.createElement('button');
+        btnYes.className = 'oracle-btn confirm';
+        btnYes.textContent = 'Trotzdem überschreiben';
+        btnYes.onclick = () => {
+            const shouldNotify = canNotify && checkbox.checked;
+            this.closeModal();
+            if (callback) callback(shouldNotify);
+        };
+
+        btnContainer.appendChild(btnNo);
+        btnContainer.appendChild(btnYes);
         overlay.classList.add('active');
     },
 
@@ -426,6 +507,53 @@ export const PlanUIHelper = {
                 cursor: help;
                 z-index: 22;
                 filter: drop-shadow(0 0 2px rgba(0,0,0,0.5));
+            }
+            /* --- OPTIONALE DRUCK-/DARSTELLUNGSFILTER --- */
+            body.hide-wish-markers .icon-approved-wunsch {
+                display: none !important;
+            }
+            body.hide-x-shifts .shift-x:not(.keep-x-after-eu) {
+                background-color: transparent !important;
+                color: transparent !important;
+                font-size: 0 !important;
+                text-shadow: none !important;
+            }
+            body.hide-x-shifts .grid-cell.shift-x:not(.keep-x-after-eu).base-day-current {
+                background-color: rgba(52, 152, 219, 0.08) !important;
+            }
+            body.hide-x-shifts .grid-cell.shift-x:not(.keep-x-after-eu).base-day-weekend {
+                background-color: var(--weekend-bg-color, #fff8f8) !important;
+            }
+            body.hide-x-shifts .grid-cell.shift-x:not(.keep-x-after-eu).base-day-holiday {
+                background-color: var(--holiday-bg-color, #ffddaa) !important;
+            }
+            body.hide-x-shifts .grid-user-uebertrag.shift-x:not(.keep-x-after-eu) {
+                background-color: #fff3e6 !important;
+            }
+            body.hide-x-shifts .grid-user-uebertrag.current-user-row.shift-x:not(.keep-x-after-eu) {
+                background-color: #eaf2ff !important;
+            }
+            body.hide-x-shifts .shift-x:not(.keep-x-after-eu) > * {
+                display: none !important;
+            }
+
+            /* Der Druckfilter entfernt Sperrkennzeichnungen im gesamten Plan,
+               nicht nur bei X-Schichten. */
+            body.hide-x-shifts .grid-cell.locked-shift {
+                box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.2) !important;
+            }
+            body.hide-x-shifts .grid-cell.locked-shift.current-day-highlight {
+                box-shadow: inset 2px 0 0 0 #3498db, inset -2px 0 0 0 #3498db !important;
+            }
+            body.hide-x-shifts .grid-cell.locked-shift.day-border-dpo {
+                box-shadow: inset 0 0 0 3px var(--dpo-border-color, #ff0000) !important;
+            }
+            body.hide-x-shifts .grid-cell.locked-shift.violation {
+                box-shadow: inset 0 0 0 3px #e74c3c !important;
+            }
+            body.hide-x-shifts .grid-cell.locked-shift::after {
+                content: none !important;
+                display: none !important;
             }
             /* ---------------------------------- */
 

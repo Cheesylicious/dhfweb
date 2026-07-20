@@ -331,15 +331,5 @@
     <script type="module" src="shared_feedback.js"></script>
     <script type="module" src="shared_notifications.js"></script>
 
-    <script>
-        if ('serviceWorker' in navigator) {
-            window.addEventListener('load', () => {
-                navigator.serviceWorker.register('./sw.js')
-                    .then(registration => { console.log('SW registriert:', registration.scope); })
-                    .catch(err => { console.log('SW Fehler:', err); });
-            });
-        }
-    </script>
-
 </body>
 </html>
