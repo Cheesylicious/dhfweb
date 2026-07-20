@@ -348,9 +348,15 @@ class FeedbackReport(db.Model):
     page_context = db.Column(db.String(255), nullable=True)
     status = db.Column(db.String(50), nullable=False, default='neu', index=True)
     created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    public_item = db.relationship(
+        'PublicFeedbackItem',
+        back_populates='feedback_report',
+        uselist=False,
+        foreign_keys='PublicFeedbackItem.feedback_report_id'
+    )
 
     def to_dict(self):
-        return {
+        data = {
             "id": self.id,
             "user_id": self.user_id,
             "user_name": f"{self.user.vorname} {self.user.name}" if self.user else "Unbekannt",
@@ -360,6 +366,98 @@ class FeedbackReport(db.Model):
             "page_context": self.page_context,
             "status": self.status,
             "created_at": self.created_at.isoformat()
+        }
+
+        public_item = getattr(self, 'public_item', None)
+        data["public_item"] = public_item.to_admin_summary() if public_item else None
+        return data
+
+
+class PublicFeedbackItem(db.Model):
+    """
+    Öffentlich sichtbarer Bearbeitungsstand zu einer internen Meldung.
+
+    Der Inhalt wird beim Veröffentlichen bewusst kopiert. Dadurch bleibt der
+    Status-Board-Eintrag bestehen, wenn die ursprüngliche Meldung später
+    archiviert oder gelöscht wird.
+    """
+    __tablename__ = 'public_feedback_item'
+
+    id = db.Column(db.Integer, primary_key=True)
+    feedback_report_id = db.Column(
+        db.Integer,
+        db.ForeignKey('feedback_report.id', ondelete='SET NULL'),
+        unique=True,
+        nullable=True,
+        index=True
+    )
+    feedback_report = db.relationship(
+        'FeedbackReport',
+        back_populates='public_item',
+        foreign_keys=[feedback_report_id]
+    )
+
+    reporter_user_id = db.Column(
+        db.Integer,
+        db.ForeignKey('user.id', ondelete='SET NULL'),
+        nullable=True,
+        index=True
+    )
+    reporter = db.relationship('User', foreign_keys=[reporter_user_id])
+
+    title = db.Column(db.String(160), nullable=False)
+    description = db.Column(db.Text, nullable=False)
+    public_status = db.Column(db.String(50), nullable=False, default='aufgenommen', index=True)
+    progress = db.Column(db.Integer, nullable=False, default=0)
+    status_note = db.Column(db.Text, nullable=True)
+
+    report_type = db.Column(db.String(50), nullable=False)
+    category = db.Column(db.String(100), nullable=False)
+    original_message = db.Column(db.Text, nullable=False)
+    reporter_name = db.Column(db.String(220), nullable=True)
+
+    created_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow)
+    updated_at = db.Column(db.DateTime, nullable=False, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    def _base_dict(self):
+        return {
+            "id": self.id,
+            "title": self.title,
+            "description": self.description,
+            "public_status": self.public_status,
+            "progress": self.progress,
+            "status_note": self.status_note,
+            "report_type": self.report_type,
+            "category": self.category,
+            "created_at": self.created_at.isoformat(),
+            "updated_at": self.updated_at.isoformat()
+        }
+
+    def to_public_dict(self, viewer_user_id=None, status_label=None):
+        data = self._base_dict()
+        data["status_label"] = status_label or self.public_status
+        data["is_own_report"] = bool(
+            viewer_user_id and self.reporter_user_id == viewer_user_id
+        )
+        return data
+
+    def to_admin_dict(self, status_label=None):
+        data = self._base_dict()
+        data.update({
+            "status_label": status_label or self.public_status,
+            "feedback_report_id": self.feedback_report_id,
+            "reporter_name": self.reporter_name,
+            "original_message": self.original_message
+        })
+        return data
+
+    def to_admin_summary(self):
+        return {
+            "id": self.id,
+            "title": self.title,
+            "public_status": self.public_status,
+            "progress": self.progress,
+            "updated_at": self.updated_at.isoformat()
         }
 
 

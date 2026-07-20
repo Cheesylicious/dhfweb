@@ -22,6 +22,29 @@ from .plan_renderer import generate_roster_image_bytes
 shifts_bp = Blueprint('shifts', __name__, url_prefix='/api')
 
 
+def _extract_wish_abbreviation(query):
+    """Liest die gewünschte Schicht aus einer Wunsch-Anfrage."""
+    if not query or not query.message or ':' not in query.message:
+        return ""
+    return query.message.split(':', 1)[1].strip().replace('?', '')
+
+
+def _approved_wish_query(user_id, shift_date):
+    """
+    Liefert den zuletzt genehmigten Wunsch einer Zelle.
+
+    ``ignoriert`` wird aus Kompatibilitätsgründen mit berücksichtigt: ältere
+    Versionen haben den Wunsch beim ersten Überschreiben so markiert. Die
+    Information bleibt dadurch auch für bereits betroffene Einträge erhalten.
+    """
+    return ShiftQuery.query.filter(
+        ShiftQuery.target_user_id == user_id,
+        ShiftQuery.shift_date == shift_date,
+        ShiftQuery.status.in_(['erledigt', 'ignoriert']),
+        ShiftQuery.message.like('Anfrage für:%')
+    ).order_by(ShiftQuery.created_at.desc(), ShiftQuery.id.desc()).first()
+
+
 def _log_update_event(area, description):
     new_log = UpdateLog(area=area, description=description, updated_at=datetime.utcnow())
     db.session.add(new_log)
@@ -59,9 +82,22 @@ def get_latest_shift_date(user_id, abbreviation, limit_date):
     return last_shift.date if last_shift else None
 
 
+def has_planned_shift_between(user_id, abbreviation, start_date, end_date):
+    """Prüft monats- und variantenübergreifend, ob die Schicht bereits geplant ist."""
+    return db.session.query(Shift.id).join(ShiftType).filter(
+        Shift.user_id == user_id,
+        ShiftType.abbreviation == abbreviation,
+        Shift.date >= start_date,
+        Shift.date <= end_date
+    ).first() is not None
+
+
 def calculate_training_warnings(users, shifts_current_month, year, month):
     """
-    Prüft Fälligkeiten basierend auf DB-Einträgen UND tatsächlichen Schichten.
+    Prüft Fälligkeiten basierend auf DB-Einträgen und tatsächlichen Schichten.
+
+    Bereits geplante Termine in kommenden Monaten werden berücksichtigt:
+    QA bis zum Ende des betrachteten Quartals, S für die kommenden 90 Tage.
     """
     warnings = []
 
@@ -73,14 +109,6 @@ def calculate_training_warnings(users, shifts_current_month, year, month):
     # Quartalsgrenzen für den Planungsmonat
     q_start, q_end = get_quarter_dates(year, month)
 
-    # Bereits geplante Schichten im aktuellen Monat (um Warnung auszublenden, wenn schon geplant)
-    existing_shift_types = set()
-    for s in shifts_current_month:
-        if s.shift_type:
-            existing_shift_types.add((s.user_id, s.shift_type.abbreviation))
-
-    today = date.today()
-
     for user in users:
         # Check: Ist User Hundeführer?
         is_hf = (user.role and user.role.name == 'Hundeführer') or user.is_manual_dog_handler
@@ -90,8 +118,14 @@ def calculate_training_warnings(users, shifts_current_month, year, month):
 
         # --- A. Quartalsausbildung (QA) ---
         # 1. Letztes Datum ermitteln (DB Profil ODER letzte Schicht)
-        # Wir schauen bis zum Ende des aktuellen Planungsmonats
+        # Vergangene QA für den Status sowie unabhängig davon jede bereits
+        # geplante QA bis zum Quartalsende ermitteln. Die getrennte Prüfung
+        # verhindert, dass ein manuelles Profildatum einen Zukunftstermin
+        # versehentlich überlagert.
         last_qa_shift = get_latest_shift_date(user.id, 'QA', plan_view_end)
+        qa_already_planned = has_planned_shift_between(
+            user.id, 'QA', q_start, q_end
+        )
         last_qa_manual = user.last_training_qa
 
         last_qa_real = None
@@ -103,34 +137,32 @@ def calculate_training_warnings(users, shifts_current_month, year, month):
             last_qa_real = last_qa_manual
 
         # 2. Prüfen: Wurde im aktuellen Quartal (des Plans) schon eine QA gemacht?
-        qa_done_in_quarter = False
-        if last_qa_real:
-            if q_start <= last_qa_real <= q_end:
-                qa_done_in_quarter = True
+        qa_done_in_quarter = qa_already_planned or bool(
+            last_qa_manual and q_start <= last_qa_manual <= q_end
+        )
 
-        # 3. Warnung generieren, wenn NICHT erledigt und NICHT im aktuellen Plan eingeplant
+        # 3. Warnung generieren, wenn im Quartal noch keine QA vorhanden ist
         if not qa_done_in_quarter:
-            if (user.id, 'QA') not in existing_shift_types:
-                # Frist ist IMMER das Ende des Quartals
-                due_date_str = q_end.strftime('%d.%m.%Y')
+            # Frist ist IMMER das Ende des Quartals
+            due_date_str = q_end.strftime('%d.%m.%Y')
 
-                status = "Fällig"
-                # Wenn wir im letzten Monat des Quartals sind, wird es dringend
-                if month % 3 == 0:
-                    status = "Dringend fällig"
+            status = "Fällig"
+            # Wenn wir im letzten Monat des Quartals sind, wird es dringend
+            if month % 3 == 0:
+                status = "Dringend fällig"
 
-                # Wenn gar kein Datum da ist -> Überfällig (seit Ewigkeiten)
-                if not last_qa_real:
-                    status = "Überfällig (Nie absolviert)"
+            # Wenn gar kein Datum da ist -> Überfällig (seit Ewigkeiten)
+            if not last_qa_real:
+                status = "Überfällig (Nie absolviert)"
 
-                warnings.append({
-                    "user_id": user.id,
-                    "name": f"{user.vorname} {user.name}",
-                    "type": "QA",
-                    "due_date": due_date_str,
-                    "status": status,
-                    "message": f"Muss zur Quartalsausbildung (Frist: {due_date_str})"
-                })
+            warnings.append({
+                "user_id": user.id,
+                "name": f"{user.vorname} {user.name}",
+                "type": "QA",
+                "due_date": due_date_str,
+                "status": status,
+                "message": f"Muss zur Quartalsausbildung (Frist: {due_date_str})"
+            })
 
         # --- B. Schießen (S) - 90 Tage ---
         # 1. Letztes Datum ermitteln
@@ -154,10 +186,19 @@ def calculate_training_warnings(users, shifts_current_month, year, month):
             s_due_date = last_s_real + timedelta(days=90)
             is_overdue = s_due_date < plan_view_date
 
-        # 3. Warnung wenn Fälligkeit in diesem Monat (oder davor) liegt
-        # UND nicht schon eingeplant ist
+        # Eine bereits eingetragene S-Schicht in einem kommenden Monat muss
+        # auch in der früheren Monatsansicht als eingeplant gelten. Der
+        # 90-Tage-Horizont entspricht dem regulären Schießintervall und
+        # verhindert, dass beliebig weit entfernte Einträge Warnungen löschen.
+        shooting_lookahead_end = plan_view_end + timedelta(days=90)
+        shooting_already_planned = has_planned_shift_between(
+            user.id, 'S', plan_view_date, shooting_lookahead_end
+        )
+
+        # 3. Warnung, wenn die Fälligkeit in diesem Monat (oder davor) liegt
+        # und noch kein Schießtermin im sinnvollen Planungshorizont existiert.
         if s_due_date <= plan_view_end:
-            if (user.id, 'S') not in existing_shift_types:
+            if not shooting_already_planned:
                 due_str = s_due_date.strftime('%d.%m.%Y')
                 status = "Überfällig" if is_overdue else "Fällig"
 
@@ -371,25 +412,26 @@ def get_shifts():
         approved_queries = ShiftQuery.query.filter(
             extract('year', ShiftQuery.shift_date) == year,
             extract('month', ShiftQuery.shift_date) == month,
-            ShiftQuery.status == 'erledigt',
+            ShiftQuery.status.in_(['erledigt', 'ignoriert']),
             ShiftQuery.message.like('Anfrage für:%')
-        ).all()
+        ).order_by(ShiftQuery.created_at.asc(), ShiftQuery.id.asc()).all()
         
         for q in approved_queries:
             if q.target_user_id and q.shift_date:
                 d_str = q.shift_date.isoformat() if hasattr(q.shift_date, 'isoformat') else str(q.shift_date)
-                try:
-                    abbr = q.message.split(":")[1].strip().replace('?', '')
-                except:
-                    abbr = ""
+                abbr = _extract_wish_abbreviation(q)
                 key = f"{q.target_user_id}-{d_str}"
                 approved_wishes_dict[key] = abbr
                 
         # Für Fallback, binden wir es auch an die Shifts
         for s_dict in shifts_data:
             s_key = f"{s_dict['user_id']}-{s_dict['date']}"
-            if s_key in approved_wishes_dict:
-                s_dict['is_approved_wunsch'] = True
+            requested_abbr = approved_wishes_dict.get(s_key)
+            if requested_abbr:
+                s_dict['approved_wunsch_abbr'] = requested_abbr
+                s_dict['is_approved_wunsch'] = (
+                    s_dict.get('shifttype_abbreviation') == requested_abbr
+                )
     except Exception as e:
         current_app.logger.error(f"Fehler bei Wunschanfragen-Prüfung: {e}")
     # -----------------------------------------------
@@ -487,7 +529,7 @@ def get_shifts():
     if current_user.role and current_user.role.name == 'admin':
         training_warnings = calculate_training_warnings(users, shifts_current_month, year, month)
 
-    return jsonify({
+    response = jsonify({
         "shifts": shifts_data,
         "users": users_data,
         "totals": totals_dict,
@@ -498,7 +540,10 @@ def get_shifts():
         "current_variant_id": variant_id,
         "approved_wishes": approved_wishes_dict,
         "training_warnings": training_warnings
-    }), 200
+    })
+    response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+    response.headers['Pragma'] = 'no-cache'
+    return response, 200
 
 
 def _parse_date_from_payload(data):
@@ -668,6 +713,33 @@ def save_shift():
             st = ShiftType.query.get(existing_shift.shifttype_id)
             if st: old_val = st.abbreviation
 
+        new_val = "FREI"
+        if not is_free and shifttype_id:
+            st_new = ShiftType.query.get(shifttype_id)
+            if not st_new:
+                return jsonify({"message": "Schichtart nicht gefunden."}), 404
+            new_val = st_new.abbreviation
+
+        # Ein genehmigter Wunsch bleibt als Referenz erhalten. Das Backend
+        # verhindert ein stilles Überschreiben auch dann, wenn ein veralteter
+        # Client das Bestätigungs-Modal nicht anzeigt.
+        w_query = _approved_wish_query(user_id, shift_date)
+        requested_abbr = _extract_wish_abbreviation(w_query)
+        is_wish_override = bool(
+            requested_abbr and new_val != requested_abbr and new_val != old_val
+        )
+
+        if is_wish_override and data.get('confirm_wish_override') is not True:
+            return jsonify({
+                "message": (
+                    f'Hier war eigentlich ein Wunscheintrag mit der Schicht '
+                    f'"{requested_abbr}". Bitte bestätige das Überschreiben.'
+                ),
+                "wish_conflict": True,
+                "approved_wunsch_abbr": requested_abbr,
+                "new_shift_abbr": new_val
+            }), 409
+
         saved_shift_id = None
         if existing_shift:
             saved_shift_id = existing_shift.id
@@ -684,35 +756,38 @@ def save_shift():
 
         db.session.commit()
 
-        new_val = "FREI"
-        if shifttype_id:
-            st_new = ShiftType.query.get(shifttype_id)
-            if st_new: new_val = st_new.abbreviation
+        response_data = {
+            'is_approved_wunsch': bool(requested_abbr and new_val == requested_abbr),
+            'approved_wunsch_abbr': requested_abbr or None
+        }
 
-        # --- NEU: WUNSCH-KONFLIKT PRÜFUNG & CLEANUP ---
-        w_query = ShiftQuery.query.filter(
-            ShiftQuery.target_user_id == user_id,
-            ShiftQuery.shift_date == shift_date,
-            ShiftQuery.status == 'erledigt',
-            ShiftQuery.message.like('Anfrage für:%')
-        ).first()
-        
-        response_data = {}
-        if w_query:
-            try:
-                requested_abbr = w_query.message.split(":")[1].strip().replace('?', '')
-            except IndexError:
-                requested_abbr = ""
-                
-            if new_val != requested_abbr:
-                w_query.status = 'ignoriert'
-                db.session.commit()
-                response_data['is_approved_wunsch'] = False
-                response_data['approved_wunsch_abbr'] = None
-            else:
-                response_data['is_approved_wunsch'] = True
-                response_data['approved_wunsch_abbr'] = requested_abbr
-        # ----------------------------------------------------------------------------
+        # Optionaler Hinweis an die betroffene Person. Der Versand erfolgt erst
+        # nach erfolgreichem Speichern der Schicht.
+        notification_requested = bool(
+            is_wish_override and data.get('notify_wish_change') is True
+        )
+        notification_sent = False
+        target_user = User.query.get(user_id)
+        if notification_requested and target_user and target_user.email:
+            send_template_email(
+                template_key="wish_shift_changed",
+                recipient_email=target_user.email,
+                context={
+                    "vorname": target_user.vorname,
+                    "name": target_user.name,
+                    "datum": shift_date.strftime('%d.%m.%Y'),
+                    "wunschschicht": requested_abbr,
+                    "neue_schicht": new_val
+                }
+            )
+            notification_sent = True
+
+        response_data['wish_notification_requested'] = notification_requested
+        response_data['wish_notification_sent'] = notification_sent
+        if notification_requested and not notification_sent:
+            response_data['wish_notification_warning'] = (
+                "Die Schicht wurde geändert, aber für die Person ist keine E-Mail-Adresse hinterlegt."
+            )
 
         if old_val != new_val:
             action = "SHIFT_UPDATE"
@@ -721,7 +796,6 @@ def save_shift():
             elif new_val == "FREI":
                 action = "SHIFT_DELETE"
 
-            target_user = User.query.get(user_id)
             target_name = f"{target_user.vorname} {target_user.name}" if target_user else f"User {user_id}"
 
             log_audit(
@@ -750,7 +824,6 @@ def save_shift():
                 Shift.variant_id == None
             ).scalar()
 
-            target_user = User.query.get(user_id)
             total_budget = (target_user.urlaub_gesamt or 0) + (target_user.urlaub_rest or 0)
             response_data['new_vacation_remaining'] = total_budget - used_count
 
