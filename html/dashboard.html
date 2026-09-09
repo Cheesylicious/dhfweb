@@ -150,6 +150,9 @@
         }
         .btn-secondary:hover { opacity: 0.8; }
 
+        .update-log-tools { display: flex; justify-content: flex-end; margin-top: 10px; }
+        #refresh-log-btn:disabled { opacity: 0.6; cursor: wait; }
+
         #update-log-list {
             list-style: none; padding: 0; margin: 15px 0 0 0; max-height: 400px; overflow-y: auto;
         }
@@ -486,6 +489,10 @@
                 <div id="update-log-header">
                     <h2>Letzte System-Updates</h2>
                     <button class="btn-secondary hidden" id="manual-log-btn">Update protokollieren</button>
+                </div>
+                <div class="update-log-tools">
+                    <button class="btn-secondary" id="refresh-log-btn" type="button"
+                            aria-controls="update-log-list" disabled>↻ Aktualisieren</button>
                 </div>
                 <ul id="update-log-list">
                     <li>Lade Update-Historie...</li>

@@ -13,6 +13,7 @@ let isAdmin = false;
 
 // --- DOM-Elemente (Standard) ---
 const manualLogBtn = document.getElementById('manual-log-btn');
+const refreshLogBtn = document.getElementById('refresh-log-btn');
 const logList = document.getElementById('update-log-list');
 const manualModal = document.getElementById('manual-update-modal');
 const closeManualModalBtn = document.getElementById('close-manual-log-modal');
@@ -1133,6 +1134,27 @@ async function loadUpdateLog() {
     } catch (error) {
         logList.innerHTML = `<li style="color: #e74c3c; padding: 10px 0;">Fehler beim Laden der Updates: ${error.message}</li>`;
     }
+}
+
+async function refreshUpdateLog() {
+    if (!refreshLogBtn || refreshLogBtn.disabled) return;
+
+    refreshLogBtn.disabled = true;
+    refreshLogBtn.setAttribute('aria-busy', 'true');
+    const originalLabel = refreshLogBtn.textContent;
+    refreshLogBtn.textContent = '↻ Lädt...';
+    try {
+        await loadUpdateLog();
+    } finally {
+        refreshLogBtn.disabled = false;
+        refreshLogBtn.removeAttribute('aria-busy');
+        refreshLogBtn.textContent = originalLabel;
+    }
+}
+
+if (refreshLogBtn) {
+    refreshLogBtn.addEventListener('click', refreshUpdateLog);
+    refreshLogBtn.disabled = false;
 }
 
 async function deleteLogEntry(logId, listItem) {
