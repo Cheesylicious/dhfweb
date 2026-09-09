@@ -1,0 +1,30 @@
+name: Server-Dateivergleich (nur lesen)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dhf-server-preview
+  cancel-in-progress: false
+
+jobs:
+  preview:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    environment: production-preview
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - name: Test preview safeguards
+        run: python3 -m unittest discover -s tests -p 'test_server_preview.py' -v
+      - name: Compare repository files with the server
+        env:
+          DHF_SSH_HOST: ${{ secrets.DHF_SSH_HOST }}
+          DHF_SSH_USER: ${{ secrets.DHF_SSH_USER }}
+          DHF_SSH_KEY: ${{ secrets.DHF_SSH_KEY }}
+          DHF_SSH_KNOWN_HOSTS: ${{ secrets.DHF_SSH_KNOWN_HOSTS }}
+        run: bash scripts/server-preview.sh
