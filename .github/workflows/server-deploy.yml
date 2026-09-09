@@ -1,0 +1,54 @@
+name: Server-Upload (manuell)
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Erst Vorschau prüfen; apply verändert den Server
+        required: true
+        default: preview
+        type: choice
+        options:
+          - preview
+          - apply
+      confirm_sha:
+        description: Für apply die vollständige Commit-SHA des gewählten main-Stands eingeben
+        type: string
+        required: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: dhf-production-deploy
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    environment: production-deploy
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - name: Verify deployment selection
+        env:
+          DEPLOY_MODE: ${{ inputs.mode }}
+          CONFIRM_SHA: ${{ inputs.confirm_sha }}
+        run: |
+          if [[ "$DEPLOY_MODE" == apply && "$CONFIRM_SHA" != "$GITHUB_SHA" ]]; then
+            echo 'Apply requires the full SHA of this workflow commit.' >&2
+            exit 1
+          fi
+      - name: Test receiver safeguards
+        run: python3 -m unittest discover -s scripts/deploy -p test_receiver.py -v
+      - name: Preview or apply application files
+        env:
+          DEPLOY_MODE: ${{ inputs.mode }}
+          DHF_SSH_HOST: ${{ secrets.DHF_SSH_HOST }}
+          DHF_SSH_USER: ${{ secrets.DHF_SSH_USER }}
+          DHF_SSH_KEY: ${{ secrets.DHF_SSH_KEY }}
+          DHF_SSH_KNOWN_HOSTS: ${{ secrets.DHF_SSH_KNOWN_HOSTS }}
+        run: python3 scripts/deploy/client.py "$DEPLOY_MODE"
