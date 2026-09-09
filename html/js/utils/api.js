@@ -1,5 +1,5 @@
 // js/utils/api.js
-import { logout } from './auth.js';
+import { redirectToLogin } from './auth.js';
 
 /**
  * Zentrale Fetch-Funktion mit Authentifizierung und Fehlerbehandlung.
@@ -27,7 +27,7 @@ export async function apiFetch(endpoint, method = 'GET', body = null) {
 
     if (response.status === 401 || response.status === 403) {
         if (response.status === 401) {
-            logout(); // Nur bei 401 (Unauthorized) ausloggen
+            redirectToLogin('session-expired');
         }
 
         // Versuche, die JSON-Fehlermeldung zu lesen (z.B. "Aktion blockiert")

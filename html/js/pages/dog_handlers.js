@@ -8,7 +8,7 @@ let handlersData = [];
 
 // --- 1. Authentifizierung & Zugriffsschutz ---
 try {
-    const authData = initAuthCheck();
+    const authData = await initAuthCheck();
     if (!authData.isAdmin) {
         document.getElementById('content-wrapper').innerHTML = `
             <div class="restricted-view">

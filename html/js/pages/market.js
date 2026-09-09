@@ -22,7 +22,7 @@ let modalTimerInterval = null;
 
 // --- 1. Initialisierung ---
 try {
-    const authData = initAuthCheck();
+    const authData = await initAuthCheck();
     user = authData.user;
     isAdmin = authData.isAdmin;
 

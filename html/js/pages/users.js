@@ -13,7 +13,7 @@ let isAdmin = false;
 
 // --- 1. Authentifizierung & Zugriffsschutz ---
 try {
-    const authData = initAuthCheck();
+    const authData = await initAuthCheck();
     user = authData.user;
     isAdmin = authData.isAdmin;
 

@@ -126,7 +126,7 @@ window.previewTheme = function(themeKey) {
 
 // --- 1. Authentifizierung & Init ---
 try {
-    const authData = initAuthCheck();
+    const authData = await initAuthCheck();
     user = authData.user;
     isAdmin = authData.isAdmin;
 

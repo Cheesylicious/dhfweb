@@ -1,10 +1,11 @@
 import { API_URL } from '../utils/constants.js';
+import { initAuthCheck, logout } from '../utils/auth.js';
 
 // --- TEST: DIESES POPUP MUSS ERSCHEINEN ---
 // alert("Datei pw_logic.js wurde geladen!");
 console.log(">>> PW_LOGIC.JS GELADEN - KEINE WEITERLEITUNG <<<");
 
-document.addEventListener('DOMContentLoaded', () => {
+document.addEventListener('DOMContentLoaded', async () => {
     let user;
 
     // UI Elemente
@@ -17,25 +18,10 @@ document.addEventListener('DOMContentLoaded', () => {
     const statusEl = document.getElementById('status');
     const logoutLink = document.getElementById('logout-link');
 
-    // Logout
-    async function performLogout() {
-        try {
-            await fetch(API_URL + '/api/logout', { method: 'POST', credentials: 'include' });
-        } catch (e) { console.error(e); }
-        finally {
-            localStorage.removeItem('dhf_user');
-            window.location.href = 'index.html?logout=true';
-        }
-    }
-
     // Auth & Logik
     try {
-        const userStr = localStorage.getItem('dhf_user');
-        if (!userStr) {
-            window.location.href = 'index.html'; // Nur zum Login zurück, wenn gar kein User da ist
-            return;
-        }
-        user = JSON.parse(userStr);
+        const authData = await initAuthCheck();
+        user = authData.user;
 
         console.log("User force flag:", user.force_password_change);
 
@@ -47,7 +33,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
             if (logoutLink) {
                 logoutLink.textContent = "Abmelden";
-                logoutLink.onclick = (e) => { e.preventDefault(); performLogout(); };
+                logoutLink.onclick = (e) => { e.preventDefault(); logout(); };
             }
         } else {
             // FREIWILLIG (Profil) - KEIN REDIRECT HIER!

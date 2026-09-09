@@ -423,7 +423,7 @@ if (saveEventBtn) {
 
 // --- START ---
 try {
-    initAuthCheck();
+    await initAuthCheck();
     initializePage();
 } catch (e) {
     console.log("Nicht eingeloggt oder Fehler bei Init:", e);

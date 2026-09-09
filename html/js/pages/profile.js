@@ -26,7 +26,7 @@ const newPw2Field = document.getElementById('new-password-2');
 
 // 1. Auth Check
 try {
-    const authData = initAuthCheck();
+    const authData = await initAuthCheck();
     user = authData.user;
     // Profilseite ist für ALLE sichtbar
     loadProfileData();

@@ -1,7 +1,7 @@
 // html/js/pages/emails.js
 
-import { apiFetch } from '../../js/utils/api.js';
-import { initAuthCheck } from '../../js/utils/auth.js';
+import { apiFetch } from './js/utils/api.js';
+import { initAuthCheck } from './js/utils/auth.js';
 
 let user;
 let isAdmin = false;
@@ -22,7 +22,7 @@ const testBtn = document.getElementById('send-test-btn');
 
 // 1. Auth
 try {
-    const authData = initAuthCheck();
+    const authData = await initAuthCheck();
     user = authData.user;
     isAdmin = authData.isAdmin;
 
