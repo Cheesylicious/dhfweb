@@ -1,8 +1,7 @@
-// html/js/pages/statistik.js
+// html/statistik.js
 
-// KORREKTUR: Pfade angepasst (../utils statt ./js/utils)
-import { apiFetch } from '../utils/api.js';
-import { initAuthCheck } from '../utils/auth.js';
+import { apiFetch } from './js/utils/api.js';
+import { initAuthCheck } from './js/utils/auth.js';
 
 // --- Globales Setup ---
 let user;
@@ -25,14 +24,16 @@ const detailTotalHours = document.getElementById('detail-total-hours');
 
 // --- 1. Authentifizierung ---
 try {
-    const authData = await initAuthCheck();
+    const authData = initAuthCheck();
     user = authData.user;
     isAdmin = authData.isAdmin;
 
+    // --- NEU: Erweiterter Zugriffsschutz ---
     // Admin ODER explizit freigeschaltet
     const hasAccess = isAdmin || (user.can_see_statistics === true);
 
     if (!hasAccess) {
+        // Zugriff verweigern
         document.getElementById('content-wrapper').innerHTML = `
             <div class="restricted-view">
                 <h2 style="color: #e74c3c;">Zugriff verweigert</h2>
@@ -40,21 +41,19 @@ try {
                 <p>Bitte nutzen Sie den Link zum <a href="schichtplan.html" style="color: #3498db;">Schichtplan</a>.</p>
             </div>
         `;
+        // Verstecke Filterleiste falls vorhanden
         const filterBar = document.querySelector('.filter-bar');
         if(filterBar) filterBar.style.display = 'none';
 
         throw new Error("Keine Rechte für Statistik.");
     }
+    // --- ENDE NEU ---
 
-    // Wenn Auth OK: Initialisierung starten
+    // Initialisierung starten
     initializePage();
 
 } catch (e) {
-    console.error("Statistik Init Error:", e);
-    // Falls Container existiert, Fehler anzeigen (hilft beim Debuggen)
-    if(statsGrid) {
-        statsGrid.innerHTML = `<div style="grid-column: 1/-1; text-align: center; color: #e74c3c;">Initialisierungsfehler: ${e.message}</div>`;
-    }
+    console.error("Initialisierung gestoppt:", e.message);
 }
 
 // --- 2. Initialisierung ---
@@ -62,23 +61,20 @@ function initializePage() {
     populateYearDropdown();
 
     // Event Listener
-    if(refreshBtn) refreshBtn.onclick = loadStats;
+    refreshBtn.onclick = loadStats;
 
     // Modal schließen
-    if(closeModalBtn) closeModalBtn.onclick = () => detailModal.style.display = 'none';
-
+    closeModalBtn.onclick = () => detailModal.style.display = 'none';
     window.onclick = (event) => {
         if (event.target == detailModal) detailModal.style.display = 'none';
     };
 
-    // Erstes Laden sofort ausführen
+    // Erstes Laden
     loadStats();
 }
 
 function populateYearDropdown() {
-    if(!yearSelect) return;
     const currentYear = new Date().getFullYear();
-    yearSelect.innerHTML = ''; // Reset
     // Zeige aktuelles Jahr, 1 Jahr Zukunft, 5 Jahre Vergangenheit
     for (let y = currentYear + 1; y >= currentYear - 5; y--) {
         const option = document.createElement('option');
@@ -91,19 +87,12 @@ function populateYearDropdown() {
 
 // --- 3. Daten laden & Rendern ---
 async function loadStats() {
-    if(!yearSelect || !monthSelect) return;
-
     const year = yearSelect.value;
     const month = monthSelect.value;
 
-    if(refreshBtn) {
-        refreshBtn.disabled = true;
-        refreshBtn.textContent = 'Lade...';
-    }
-
-    if(statsGrid) {
-        statsGrid.innerHTML = '<div style="grid-column: 1/-1; text-align: center; color: #bdc3c7;">Lade Daten...</div>';
-    }
+    refreshBtn.disabled = true;
+    refreshBtn.textContent = 'Lade...';
+    statsGrid.innerHTML = '<div style="grid-column: 1/-1; text-align: center; color: #bdc3c7;">Lade Daten...</div>';
 
     try {
         const url = `/api/statistics/rankings?year=${year}&month=${month}`;
@@ -112,23 +101,14 @@ async function loadStats() {
         renderRankings(response.data);
 
     } catch (error) {
-        console.error("Ladefehler:", error);
-        if(statsGrid) {
-            statsGrid.innerHTML = `<div style="grid-column: 1/-1; text-align: center; color: #e74c3c;">
-                Fehler beim Laden: ${error.message}<br>
-                <small>Prüfen Sie die Konsole (F12) für Details.</small>
-            </div>`;
-        }
+        statsGrid.innerHTML = `<div style="grid-column: 1/-1; text-align: center; color: #e74c3c;">Fehler: ${error.message}</div>`;
     } finally {
-        if(refreshBtn) {
-            refreshBtn.disabled = false;
-            refreshBtn.textContent = 'Anzeigen';
-        }
+        refreshBtn.disabled = false;
+        refreshBtn.textContent = 'Anzeigen';
     }
 }
 
 function renderRankings(data) {
-    if(!statsGrid) return;
     statsGrid.innerHTML = '';
 
     const keys = Object.keys(data);
@@ -137,7 +117,9 @@ function renderRankings(data) {
         return;
     }
 
-    // Durch alle Schichtarten iterieren
+    // Sortiere die Karten nach Abkürzung oder Name (optional)
+    // Hier nehmen wir die Reihenfolge, wie sie vom Backend kommt (bereits sortiert nach staffing_sort_order)
+
     keys.forEach(abbr => {
         const category = data[abbr];
         const meta = category.meta;
@@ -147,7 +129,8 @@ function renderRankings(data) {
         const card = document.createElement('div');
         card.className = 'stat-card';
 
-        // Header
+        // Header mit Schichtfarbe (als kleiner Strich oder Hintergrund)
+        // Wir nutzen border-bottom Farbe oder ein kleines Icon
         const headerHtml = `
             <div class="stat-header" style="border-left: 5px solid ${meta.color || '#fff'};">
                 <span>${meta.name} (${abbr})</span>
@@ -158,6 +141,7 @@ function renderRankings(data) {
         // Body: Liste der User
         let listHtml = '<ul class="ranking-list">';
 
+        // Zeige max Top 10 (oder alle, wenn gewünscht. Hier alle mit Scrollbar falls nötig)
         rankings.forEach((user, index) => {
             const rank = index + 1;
             let rankClass = '';
@@ -165,9 +149,8 @@ function renderRankings(data) {
             else if (rank === 2) rankClass = 'rank-2';
             else if (rank === 3) rankClass = 'rank-3';
 
-            // WICHTIG: data-userid Attribut korrekt setzen
             listHtml += `
-                <li class="ranking-item ${rankClass}" data-userid="${user.user_id}" data-username="${user.name}">
+                <li class="ranking-item ${rankClass}" data-userid="${user.user_id}" onclick="openUserDetail(${user.user_id}, '${user.name}')">
                     <span class="rank-pos">${rank}.</span>
                     <span class="rank-name">${user.name}</span>
                     <span class="rank-count">${user.count}</span>
@@ -182,30 +165,29 @@ function renderRankings(data) {
         listHtml += '</ul>';
 
         card.innerHTML = headerHtml + `<div class="stat-body">${listHtml}</div>`;
+
+        // Event Delegation für Klicks wird nicht benötigt, da onclick im HTML String sitzt,
+        // ABER: Inline-Onclick in Modulen ist tricky. Besser: Event Listener nach dem Einfügen.
+
         statsGrid.appendChild(card);
     });
 
     // Event Listener für die dynamisch erstellten Items hinzufügen
-    // (Verhindert Inline-JS Probleme in Modulen)
+    // (Da onclick="..." im HTML-String in Modulen oft Scope-Probleme hat)
     document.querySelectorAll('.ranking-item').forEach(item => {
-        item.addEventListener('click', (e) => {
-            // Falls keine Einträge ("Keine Einträge"), nichts tun
-            if (!item.dataset.userid) return;
-
+        item.addEventListener('click', () => {
             const uid = item.dataset.userid;
-            const uname = item.dataset.username;
-            openUserDetail(uid, uname);
+            const uname = item.querySelector('.rank-name').textContent;
+            if(uid) openUserDetail(uid, uname);
         });
     });
 }
 
 // --- 4. Detail-Ansicht ---
 async function openUserDetail(userId, userName) {
-    if(!detailModal) return;
-
     modalUserName.textContent = userName;
     const year = yearSelect.value;
-    modalSubtitle.textContent = `Statistik für das Jahr ${year}`;
+    modalSubtitle.textContent = `Statistik für das Jahr ${year}`; // Details immer für das Jahr laden? Oder Kontext beachten? Backend Route ist per Year.
 
     detailTableBody.innerHTML = '<tr><td colspan="3" style="text-align:center;">Lade Details...</td></tr>';
     detailTotalCount.textContent = '-';
@@ -215,7 +197,9 @@ async function openUserDetail(userId, userName) {
 
     try {
         const response = await apiFetch(`/api/statistics/user_details/${userId}?year=${year}`);
+
         renderUserDetailTable(response);
+
     } catch (error) {
         detailTableBody.innerHTML = `<tr><td colspan="3" style="text-align:center; color: #e74c3c;">Fehler: ${error.message}</td></tr>`;
     }
@@ -233,8 +217,7 @@ function renderUserDetailTable(data) {
     }
 
     let totalC = 0;
-    // Gesamthours kommen vom Backend, oder wir summieren hier
-    let totalH = data.total_hours !== undefined ? data.total_hours : 0;
+    let totalH = data.total_hours || 0;
 
     breakdown.forEach(row => {
         totalC += row.count;

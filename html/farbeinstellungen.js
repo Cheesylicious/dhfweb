@@ -1,43 +1,10 @@
+import { apiFetch } from './js/utils/api.js';
+import { initAuthCheck, logout } from './js/utils/auth.js';
+
 // --- Globales Setup (Auth, API) ---
-const API_URL = 'http://46.224.63.203:5000';
 const STORAGE_KEY = 'dhf_color_settings';
 let user;
 let isAdmin = false;
-
-// Helper: Auth Logout
-async function logout() {
-    try { await fetch(API_URL + '/api/logout', { method: 'POST' }); }
-    catch (e) { console.error(e); }
-    finally { localStorage.removeItem('dhf_user'); window.location.href = 'index.html?logout=true'; }
-}
-
-// Helper: API Fetcher
-async function apiFetch(endpoint, method = 'GET', body = null) {
-    const options = {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include'
-    };
-    if (body) { options.body = JSON.stringify(body); }
-
-    const response = await fetch(API_URL + endpoint, options);
-
-    if (response.status === 401 || response.status === 403) {
-        if (response.status === 401) logout();
-        throw new Error('Zugriff verweigert oder Sitzung abgelaufen.');
-    }
-
-    const contentType = response.headers.get("content-type");
-    if (contentType && contentType.includes("application/json")) {
-        const json = await response.json();
-        if (!response.ok) throw new Error(json.message || 'API Fehler');
-        return json;
-    } else {
-        const text = await response.text();
-        if (!response.ok) throw new Error(text || 'API Fehler');
-        return { message: text };
-    }
-}
 
 // Defaults
 const DEFAULT_COLORS = {
@@ -53,22 +20,15 @@ const DEFAULT_COLORS = {
 document.addEventListener('DOMContentLoaded', async () => {
     // 1. User Check
     try {
-        const userStr = localStorage.getItem('dhf_user');
-        if (!userStr) throw new Error("Kein Login gefunden");
-        user = JSON.parse(userStr);
-        if (!user || !user.role) throw new Error("Ungültige User-Daten");
-
-        isAdmin = (user.role.name === 'admin');
-        const welcomeEl = document.getElementById('welcome-user');
-        if(welcomeEl) welcomeEl.textContent = `Willkommen, ${user.vorname}!`;
+        const authData = await initAuthCheck();
+        user = authData.user;
+        isAdmin = authData.isAdmin;
 
         // UI Anpassung
-        const isVisitor = (user.role.name === 'Besucher');
+        const isVisitor = authData.isVisitor;
         const isUser = (user.role.name === 'user');
-        // --- START: NEU ---
-        const isPlanschreiber = (user.role.name === 'Planschreiber');
-        const isHundefuehrer = (user.role.name === 'Hundeführer');
-        // --- ENDE: NEU ---
+        const isPlanschreiber = authData.isPlanschreiber;
+        const isHundefuehrer = authData.isHundefuehrer;
 
 
         const navDashboard = document.getElementById('nav-dashboard');
@@ -112,7 +72,6 @@ document.addEventListener('DOMContentLoaded', async () => {
 
     } catch (e) {
         console.error("Auth Fehler:", e);
-        logout();
         return;
     }
 

@@ -10,7 +10,7 @@ let isAdmin = false;
 
 // 1. Auth Check
 try {
-    const authData = initAuthCheck();
+    const authData = await initAuthCheck();
     user = authData.user;
     isAdmin = authData.isAdmin;
 

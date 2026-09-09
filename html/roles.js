@@ -1,29 +1,20 @@
 // html/js/pages/roles.js
 
+import { apiFetch } from './js/utils/api.js';
+import { initAuthCheck, logout } from './js/utils/auth.js';
+
 // --- Globales Setup ---
-const API_URL = ''; // <-- GEÄNDERT: Leer lassen, damit relative Pfade über HTTPS genutzt werden!
 let user;
 let isAdmin = false;
 
-async function logout() {
-    try { await apiFetch('/api/logout', 'POST'); }
-    catch (e) { console.error(e); }
-    finally {
-        localStorage.removeItem('dhf_user');
-        window.location.href = 'index.html?logout=true';
-    }
-}
-
 try {
-    user = JSON.parse(localStorage.getItem('dhf_user'));
-    if (!user || !user.vorname || !user.role) { throw new Error("Kein User oder fehlende Rolle"); }
-    document.getElementById('welcome-user').textContent = `Willkommen, ${user.vorname}!`;
+    const authData = await initAuthCheck();
+    user = authData.user;
 
     // Rollenprüfung
-    isAdmin = user.role.name === 'admin';
-    const isVisitor = user.role.name === 'Besucher';
-    const isPlanschreiber = user.role.name === 'Planschreiber';
-    const isHundefuehrer = user.role.name === 'Hundeführer';
+    isAdmin = authData.isAdmin;
+    const isVisitor = authData.isVisitor;
+    const isPlanschreiber = authData.isPlanschreiber;
 
     // 1. Haupt-Navigationsanpassung
     const navDashboard = document.getElementById('nav-dashboard');
@@ -62,37 +53,11 @@ try {
 
 } catch (e) {
     if (!e.message.includes("Admin-Rechte")) {
-         logout();
+         console.error("Rollenverwaltung konnte nicht initialisiert werden:", e);
     }
 }
 
 document.getElementById('logout-btn').onclick = logout;
-
-// --- Globale API-Funktion ---
-async function apiFetch(endpoint, method = 'GET', body = null) {
-    const options = {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include'
-    };
-    if (body) { options.body = JSON.stringify(body); }
-    const response = await fetch(API_URL + endpoint, options);
-    if (response.status === 401 || response.status === 403) {
-        if (response.status === 401) { logout(); }
-        throw new Error('Sitzung ungültig oder fehlende Rechte.');
-    }
-    const contentType = response.headers.get("content-type");
-    let data;
-    if (contentType && contentType.indexOf("application/json") !== -1) {
-        data = await response.json();
-    } else {
-        data = { message: await response.text() };
-    }
-    if (!response.ok) {
-        throw new Error(data.message || 'API-Fehler');
-    }
-    return data;
-}
 
 // --- Elemente & Modal-Logik ---
 const roleTableBody = document.getElementById('role-table-body');

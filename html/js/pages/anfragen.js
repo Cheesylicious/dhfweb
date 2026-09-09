@@ -19,7 +19,7 @@ const planUpdateChannel = new BroadcastChannel('dhf_plan_update');
 
 // --- 1. Authentifizierung & Zugriffsschutz ---
 try {
-    const authData = initAuthCheck();
+    const authData = await initAuthCheck();
     user = authData.user;
     isAdmin = authData.isAdmin;
     isScheduler = authData.isPlanschreiber;

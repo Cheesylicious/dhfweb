@@ -120,7 +120,7 @@ if (saveBtn) {
 
 // --- 4. Initialisierung (Am Ende!) ---
 try {
-    const authData = initAuthCheck();
+    const authData = await initAuthCheck();
     user = authData.user;
     isAdmin = authData.isAdmin;
 

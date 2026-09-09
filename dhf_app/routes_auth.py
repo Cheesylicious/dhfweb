@@ -67,6 +67,7 @@ def login():
     # Passwort prüfen
     if bcrypt.check_password_hash(user.passwort_hash, passwort):
         # Erfolg: Login durchführen
+        session.permanent = True
         login_user(user, remember=True)
 
         # Zähler für Fehlversuche zurücksetzen

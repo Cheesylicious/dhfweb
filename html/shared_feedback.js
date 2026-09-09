@@ -7,7 +7,7 @@
 import { apiFetch } from './js/utils/api.js';
 import { initAuthCheck } from './js/utils/auth.js';
 
-(function() {
+(async function() {
     // Verhindert doppeltes Laden des Skripts
     if (document.getElementById('feedback-modal-styles')) {
         return;
@@ -22,7 +22,7 @@ import { initAuthCheck } from './js/utils/auth.js';
 
     // 1. Auth-Check
     try {
-        const authData = initAuthCheck();
+        const authData = await initAuthCheck();
         user = authData.user;
         isAdmin = authData.isAdmin;
     } catch (e) {

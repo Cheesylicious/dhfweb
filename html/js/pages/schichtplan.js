@@ -303,7 +303,7 @@ async function initialize() {
         PlanUIHelper.injectWarningStyles();
 
         // 2. Auth & User State
-        const authData = initAuthCheck();
+        const authData = await initAuthCheck();
         PlanState.loggedInUser = authData.user;
         PlanState.isAdmin = authData.isAdmin;
         PlanState.isVisitor = authData.isVisitor;

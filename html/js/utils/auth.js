@@ -4,6 +4,7 @@ import { API_URL } from './constants.js';
 // --- Auto-Logout Timer Logik ---
 const LOGOUT_TIMEOUT_MS = 5 * 60 * 1000; // 5 Minuten
 let inactivityTimer;
+let sessionCheckPromise;
 
 /**
  * Führt den eigentlichen Auto-Logout durch.
@@ -40,6 +41,68 @@ function initializeInactivityTimer() {
     resetInactivityTimer();
 }
 
+function hasValidUserShape(user) {
+    return Boolean(user && user.vorname && user.role && user.role.name);
+}
+
+function getCachedUser() {
+    try {
+        const user = JSON.parse(localStorage.getItem('dhf_user'));
+        return hasValidUserShape(user) ? user : null;
+    } catch (error) {
+        console.warn("Lokal gespeicherte Benutzerdaten sind ungültig:", error);
+        return null;
+    }
+}
+
+async function loadUserFromSession() {
+    if (!sessionCheckPromise) {
+        sessionCheckPromise = fetch(API_URL + '/api/check_session', {
+            method: 'GET',
+            credentials: 'include',
+            cache: 'no-store',
+            headers: { 'Accept': 'application/json' }
+        }).then(async response => {
+            if (!response.ok) {
+                const error = new Error(
+                    response.status === 401
+                        ? "Sitzung abgelaufen"
+                        : "Sitzung konnte nicht geprüft werden"
+                );
+                error.status = response.status;
+                throw error;
+            }
+
+            const data = await response.json();
+            if (!hasValidUserShape(data.user)) {
+                throw new Error("Server hat keine gültigen Benutzerdaten geliefert");
+            }
+
+            localStorage.setItem('dhf_user', JSON.stringify(data.user));
+            return data.user;
+        });
+    }
+
+    return sessionCheckPromise;
+}
+
+/**
+ * Entfernt ausschließlich den lokalen Auth-Status und zeigt den Login-Screen.
+ * Ein fehlgeschlagener Session-Check darf nicht zusätzlich /api/logout aufrufen,
+ * da sonst eine noch gültige Remember-Me-Sitzung aktiv beendet würde.
+ */
+export function redirectToLogin(reason = 'session-expired') {
+    localStorage.removeItem('dhf_user');
+
+    if (!window.location.pathname.endsWith('index.html')) {
+        const params = new URLSearchParams({
+            logout: 'true',
+            reason
+        });
+        window.location.replace(`index.html?${params.toString()}`);
+    }
+}
+
 /**
  * Führt einen Logout durch (API-Call und LocalStorage-Clear).
  */
@@ -52,23 +115,34 @@ export async function logout() {
     } catch (e) {
         console.error("Fehler beim Server-Logout, fahre fort:", e);
     } finally {
-        localStorage.removeItem('dhf_user');
-        window.location.href = 'index.html?logout=true';
+        redirectToLogin('manual');
     }
 }
 
 /**
  * Führt den initialen Authentifizierungs-Check aus.
  * Passt die Navigation an (inkl. Link-Korrektur für Planschreiber) und gibt die User-Daten zurück.
- * @returns {{user: object, isAdmin: boolean, isVisitor: boolean, isPlanschreiber: boolean, isHundefuehrer: boolean}}
+ * @returns {Promise<{user: object, isAdmin: boolean, isVisitor: boolean, isPlanschreiber: boolean, isHundefuehrer: boolean}>}
  */
-export function initAuthCheck() {
+export async function initAuthCheck() {
     let user, isAdmin = false, isVisitor = false, isPlanschreiber = false, isHundefuehrer = false;
 
     try {
-        user = JSON.parse(localStorage.getItem('dhf_user'));
-        if (!user || !user.vorname || !user.role) {
-            throw new Error("Kein User oder fehlende Rolle");
+        try {
+            // Die Flask-/Remember-Me-Session ist die maßgebliche Auth-Quelle.
+            // Dadurch wird dhf_user auch nach Reload, Cache-Wechsel oder neuem Tab
+            // zuverlässig wiederhergestellt.
+            user = await loadUserFromSession();
+        } catch (sessionError) {
+            // Bei einem reinen Netzwerkfehler darf ein bereits geladener Benutzer
+            // weiterarbeiten. Explizite 401/403-Antworten sind dagegen verbindlich.
+            if (!sessionError.status) {
+                user = getCachedUser();
+            }
+            if (!user) {
+                throw sessionError;
+            }
+            console.warn("Session-Prüfung nicht erreichbar, verwende lokalen Auth-Status:", sessionError);
         }
 
         // --- Begrüßungstext durch Profil-Link ersetzen ---
@@ -190,9 +264,7 @@ export function initAuthCheck() {
 
     } catch (e) {
         console.error("Authentifizierungsfehler:", e.message);
-        if (!window.location.pathname.endsWith('index.html')) {
-            logout();
-        }
+        redirectToLogin(e.status === 401 ? 'session-expired' : 'auth-required');
         throw e;
     }
 

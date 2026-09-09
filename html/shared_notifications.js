@@ -1,10 +1,11 @@
 // html/shared_notifications.js
+import { initAuthCheck } from './js/utils/auth.js';
 
 /**
  * DHF-Planer - Geteiltes Benachrichtigungs-Modul
  * V7: Kooperativer Modus (Slots für Global & Plan)
  */
-(function() {
+(async function() {
     // Alte Styles aufräumen
     const oldIds = ['notification-styles', 'notification-styles-v2', 'notification-styles-v3', 'notification-styles-v4', 'notification-styles-v5', 'notification-styles-v6'];
     oldIds.forEach(id => {
@@ -21,11 +22,11 @@
     let user, isAdmin = false, isScheduler = false, isHundefuehrer = false;
 
     try {
-        user = JSON.parse(localStorage.getItem('dhf_user'));
-        if (!user || !user.role) return;
-        isAdmin = user.role.name === 'admin';
-        isScheduler = user.role.name === 'Planschreiber';
-        isHundefuehrer = user.role.name === 'Hundeführer';
+        const authData = await initAuthCheck();
+        user = authData.user;
+        isAdmin = authData.isAdmin;
+        isScheduler = authData.isPlanschreiber;
+        isHundefuehrer = authData.isHundefuehrer;
     } catch (e) { return; }
 
     if (!isAdmin && !isScheduler && !isHundefuehrer) return;

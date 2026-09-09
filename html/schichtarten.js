@@ -1,58 +1,20 @@
 // html/schichtarten.js
 
-// --- NOTFALL CACHE KILLER ---
-if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.getRegistrations().then(r => r.forEach(reg => reg.unregister()));
-    caches.keys().then(k => k.forEach(key => caches.delete(key)));
-}
-
-// --- INLINED API FETCH (Umgeht Modul-Import-Abstürze) ---
-function logout() {
-    localStorage.removeItem('dhf_user');
-    window.location.href = 'index.html';
-}
-
-async function apiFetch(endpoint, method = 'GET', body = null) {
-    const options = {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include'
-    };
-    if (body) {
-        options.body = JSON.stringify(body);
-    }
-    const response = await fetch(endpoint, options);
-    if (response.status === 401 || response.status === 403) {
-        if (response.status === 401) logout();
-        throw new Error('Sitzung ungültig oder fehlende Rechte.');
-    }
-    const contentType = response.headers.get("content-type");
-    let data;
-    if (contentType && contentType.indexOf("application/json") !== -1) {
-        data = await response.json();
-    } else {
-        data = { message: await response.text() };
-    }
-    if (!response.ok) throw new Error(data.message || 'API-Fehler');
-    return data;
-}
+import { apiFetch } from './js/utils/api.js';
+import { initAuthCheck, logout } from './js/utils/auth.js';
 
 // --- Globales Setup ---
 let user;
 let isAdmin = false;
 
 try {
-    user = JSON.parse(localStorage.getItem('dhf_user'));
-    if (!user || !user.vorname || !user.role) { throw new Error("Kein User oder fehlende Rolle"); }
-    
-    const welcomeUserEl = document.getElementById('welcome-user');
-    if (welcomeUserEl) welcomeUserEl.textContent = `Willkommen, ${user.vorname}!`;
-
-    isAdmin = user.role.name === 'admin';
-    const isVisitor = user.role.name === 'Besucher';
+    const authData = await initAuthCheck();
+    user = authData.user;
+    isAdmin = authData.isAdmin;
+    const isVisitor = authData.isVisitor;
     const isUser = user.role.name === 'user';
-    const isPlanschreiber = user.role.name === 'Planschreiber';
-    const isHundefuehrer = user.role.name === 'Hundeführer';
+    const isPlanschreiber = authData.isPlanschreiber;
+    const isHundefuehrer = authData.isHundefuehrer;
     
     const navDashboard = document.getElementById('nav-dashboard');
     if (navDashboard) navDashboard.style.display = isVisitor ? 'none' : 'block';
@@ -94,8 +56,8 @@ try {
     }
 } catch (e) {
      if (!e.message.includes("Admin-Rechte")) {
-         logout();
-    }
+         console.error("Schichtarten konnten nicht initialisiert werden:", e);
+     }
 }
 
 const logoutBtn = document.getElementById('logout-btn');

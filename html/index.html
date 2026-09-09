@@ -205,10 +205,20 @@
         (async function checkUserSession() {
             loginBox.style.display = 'none';
 
-            if (window.location.search.includes('logout=true')) {
+            const query = new URLSearchParams(window.location.search);
+            if (query.get('logout') === 'true') {
                 localStorage.removeItem('dhf_user');
-                statusEl.textContent = 'Erfolgreich abgemeldet.';
-                statusEl.style.color = '#2ecc71';
+                const reason = query.get('reason');
+                if (reason === 'session-expired') {
+                    statusEl.textContent = 'Die Sitzung ist abgelaufen. Bitte erneut anmelden.';
+                    statusEl.style.color = '#f1c40f';
+                } else if (reason === 'inactivity') {
+                    statusEl.textContent = 'Wegen Inaktivität abgemeldet.';
+                    statusEl.style.color = '#f1c40f';
+                } else {
+                    statusEl.textContent = 'Erfolgreich abgemeldet.';
+                    statusEl.style.color = '#2ecc71';
+                }
                 loginBox.style.display = 'block';
                 return;
             }

@@ -1,18 +1,9 @@
 // html/js/pages/dogs.js
 
-// --- NOTFALL CACHE KILLER ---
-if ('serviceWorker' in navigator) {
-    navigator.serviceWorker.getRegistrations().then(r => r.forEach(reg => reg.unregister()));
-    caches.keys().then(k => k.forEach(key => caches.delete(key)));
-}
-
-import { apiFetch } from '../utils/api.js?v=nocache';
+import { apiFetch } from '../utils/api.js';
+import { initAuthCheck, logout } from '../utils/auth.js';
 
 // --- AUTHENTIFIZIERUNG & NAVIGATION UI ---
-function logout() {
-    localStorage.removeItem('dhf_user');
-    window.location.href = 'index.html';
-}
 document.getElementById('logout-btn').onclick = logout;
 
 let isAdmin = false;
@@ -20,13 +11,11 @@ let isHundefuehrer = false;
 let currentUser = null;
 
 try {
-    currentUser = JSON.parse(localStorage.getItem('dhf_user'));
-    if (!currentUser || !currentUser.role) throw new Error("Nicht eingeloggt");
-    document.getElementById('welcome-user').textContent = `Willkommen, ${currentUser.vorname}!`;
-
-    isAdmin = currentUser.role.name === 'admin';
-    const isPlanschreiber = currentUser.role.name === 'Planschreiber';
-    isHundefuehrer = currentUser.role.name === 'Hundeführer';
+    const authData = await initAuthCheck();
+    currentUser = authData.user;
+    isAdmin = authData.isAdmin;
+    const isPlanschreiber = authData.isPlanschreiber;
+    isHundefuehrer = authData.isHundefuehrer;
     
     if (!isAdmin && !isPlanschreiber && !isHundefuehrer && currentUser.role.name !== 'user') {
         document.getElementById('nav-dashboard').style.display = 'none';
@@ -53,7 +42,9 @@ try {
     }
 
 } catch (e) {
-    if (!e.message.includes("Keine Rechte")) logout();
+    if (!e.message.includes("Keine Rechte")) {
+        console.error("Diensthunde-Initialisierung fehlgeschlagen:", e);
+    }
 }
 
 

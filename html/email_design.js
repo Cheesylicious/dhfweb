@@ -1,40 +1,8 @@
+import { apiFetch } from './js/utils/api.js';
+import { initAuthCheck, logout } from './js/utils/auth.js';
+
 // --- Globales Setup ---
-const API_URL = 'http://46.224.63.203:5000';
 const STORAGE_KEY = 'dhf_email_design_settings'; // Eigener Key, um Konflikte zu vermeiden
-
-// Helper: Auth Logout
-async function logout() {
-    try { await fetch(API_URL + '/api/logout', { method: 'POST' }); }
-    catch (e) { console.error(e); }
-    finally { localStorage.removeItem('dhf_user'); window.location.href = 'index.html?logout=true'; }
-}
-
-// Helper: API Fetcher
-async function apiFetch(endpoint, method = 'GET', body = null) {
-    const options = {
-        method,
-        headers: { 'Content-Type': 'application/json' },
-        credentials: 'include'
-    };
-    if (body) { options.body = JSON.stringify(body); }
-
-    const response = await fetch(API_URL + endpoint, options);
-
-    if (response.status === 401 || response.status === 403) {
-        logout();
-        throw new Error('Sitzung abgelaufen.');
-    }
-
-    // Versuche JSON, sonst Text
-    const contentType = response.headers.get("content-type");
-    if (contentType && contentType.includes("application/json")) {
-        const json = await response.json();
-        if (!response.ok) throw new Error(json.message || 'API Fehler');
-        return json;
-    } else {
-        return {}; // Fallback bei leeren Antworten
-    }
-}
 
 // Default Werte für Email Design (Fallback)
 const EMAIL_DEFAULTS = {
@@ -52,17 +20,15 @@ const EMAIL_DEFAULTS = {
 document.addEventListener('DOMContentLoaded', async () => {
     // 1. Auth Check (Admin Only)
     try {
-        const userStr = localStorage.getItem('dhf_user');
-        if (!userStr) throw new Error("Kein Login");
-        const user = JSON.parse(userStr);
-        if (user.role.name !== 'admin') {
+        const authData = await initAuthCheck();
+        if (!authData.isAdmin) {
             document.body.innerHTML = '<h2 style="color:white;text-align:center;margin-top:50px;">Zugriff verweigert</h2>';
             return;
         }
         const logoutBtn = document.getElementById('logout-btn');
         if(logoutBtn) logoutBtn.onclick = logout;
     } catch (e) {
-        logout();
+        console.error("E-Mail-Design konnte nicht initialisiert werden:", e);
         return;
     }
 

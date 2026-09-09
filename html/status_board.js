@@ -214,7 +214,7 @@ async function removeItem(itemId) {
 
 async function initialize() {
     try {
-        const authData = initAuthCheck();
+        const authData = await initAuthCheck();
         currentUser = authData.user;
         isAdmin = authData.isAdmin;
     } catch (error) {
