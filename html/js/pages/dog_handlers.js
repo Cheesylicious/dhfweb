@@ -5,11 +5,19 @@ import { initAuthCheck } from '../utils/auth.js';
 
 // --- Globales Setup ---
 let handlersData = [];
+let isAdmin = false;
+
+function escapeHtml(value) {
+    return String(value ?? '').replace(/[&<>"']/g, c => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    }[c]));
+}
 
 // --- 1. Authentifizierung & Zugriffsschutz ---
 try {
     const authData = await initAuthCheck();
-    if (!authData.isAdmin) {
+    isAdmin = authData.isAdmin;
+    if (!isAdmin) {
         document.getElementById('content-wrapper').innerHTML = `
             <div class="restricted-view">
                 <h2>Zugriff verweigert</h2>
@@ -22,6 +30,8 @@ try {
     console.error(e);
 }
 
+if (isAdmin) {
+    document.getElementById('sub-nav-roles-container').style.display = 'flex';
 // --- 2. DOM Elemente ---
 const tableBody = document.getElementById('dog-handlers-table-body');
 const searchInput = document.getElementById('search-input');
@@ -150,7 +160,7 @@ async function loadData() {
         handlersData = await apiFetch('/api/dog_handlers');
         renderTable(handlersData);
     } catch (e) {
-        tableBody.innerHTML = `<tr><td colspan="7" style="color:red">Fehler: ${e.message}</td></tr>`;
+        tableBody.innerHTML = `<tr><td colspan="7" style="color:red">Fehler: ${escapeHtml(e.message)}</td></tr>`;
     }
 }
 
@@ -200,10 +210,10 @@ function renderTable(data) {
 
         row.innerHTML = `
             <td>
-                <div style="font-weight:600; color:#fff;">${u.vorname} ${u.name} ${hiddenBadge}</div>
-                <div style="font-size:11px; color:#7f8c8d;">${u.role ? u.role.name : 'Unbekannt'}</div>
+                <div style="font-weight:600; color:#fff;">${escapeHtml(u.vorname)} ${escapeHtml(u.name)} ${hiddenBadge}</div>
+                <div style="font-size:11px; color:#7f8c8d;">${escapeHtml(u.role ? u.role.name : 'Unbekannt')}</div>
             </td>
-            <td>${u.diensthund || '---'}</td>
+            <td>${escapeHtml(u.diensthund || '---')}</td>
 
             <td>${formatDateDE(u.last_training_qa)}</td>
             <td>
@@ -258,7 +268,6 @@ saveBtn.onclick = async () => {
     if (!id) return;
 
     const payload = {
-        diensthund: editDiensthundField ? editDiensthundField.value : '', // NEU: Diensthund mitsenden
         last_training_qa: editLastQaField.value || '', // Leerer String wird im Backend zu NULL
         last_training_shooting: editLastShootingField.value || '',
         is_manual_dog_handler: editIsManualField ? editIsManualField.checked : false,
@@ -300,3 +309,5 @@ if(showHiddenFilter) {
 
 // Start
 loadData();
+
+}
