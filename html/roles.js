@@ -57,6 +57,8 @@ try {
     }
 }
 
+if (isAdmin) {
+    document.getElementById('sub-nav-roles-container').style.display = 'flex';
 document.getElementById('logout-btn').onclick = logout;
 
 // --- Elemente & Modal-Logik ---
@@ -163,4 +165,6 @@ window.deleteRole = async function(id) {
 // --- Initialisierung ---
 if (isAdmin) {
     loadRoles();
+}
+
 }

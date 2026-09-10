@@ -429,6 +429,25 @@
         
         .event-table th { font-size: 11px; padding: 10px; }
         .event-table td { font-size: 13px; padding: 10px; }
+    
+        /* Verwaltung: Navigation bleibt auch auf schmalen Bildschirmen erreichbar. */
+        header { flex-wrap: wrap; gap: 16px; }
+        header nav { flex-wrap: wrap; min-width: 0; gap: 8px; }
+        #user-info { flex-wrap: wrap; min-width: 0; }
+        .sub-nav { flex-wrap: wrap; }
+        @media (max-width: 768px) {
+            header { padding: 16px; }
+            header nav { width: 100%; }
+            header nav a { padding: 8px; }
+            #user-info { width: 100%; gap: 10px; }
+            .sub-nav { padding: 0 8px; }
+            .sub-nav a { padding: 12px 10px; }
+            main { padding: 12px; }
+            .card { padding: 12px; min-width: 0; }
+            .card-header, .controls { flex-wrap: wrap; gap: 10px; }
+            #search-input { max-width: 100%; box-sizing: border-box; }
+            .modal-content { width: calc(100% - 24px); max-width: 600px; box-sizing: border-box; }
+        }
     </style>
 </head>
 <body>
@@ -461,12 +480,11 @@
         </div>
     </header>
 
-    <div class="sub-nav" id="sub-nav-roles-container">
-        <a href="users.html" id="sub-nav-users-link" class="active">Benutzer</a>
+    <nav class="sub-nav" id="sub-nav-roles-container" aria-label="Benutzerverwaltung" style="display: none;">
+        <a href="users.html" class="active" aria-current="page">Benutzer</a>
         <a href="dog_handlers.html">Hundeführer</a>
         <a href="roles.html">Rollen</a>
-        <a href="dogs.html">Diensthunde</a>
-    </div>
+    </nav>
 
     <main>
         <div id="content-wrapper">

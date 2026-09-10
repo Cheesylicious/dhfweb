@@ -31,7 +31,7 @@ try {
                 </div>
             `;
         }
-        const subNavUsers = document.getElementById('sub-nav-users');
+        const subNavUsers = document.getElementById('sub-nav-roles-container');
         if (subNavUsers) subNavUsers.style.display = 'none';
 
         throw new Error("Nicht-Admin darf Benutzerverwaltung nicht sehen.");
@@ -40,6 +40,8 @@ try {
     // catch block empty, auth handles redirect if needed
 }
 
+if (isAdmin) {
+    document.getElementById('sub-nav-roles-container').style.display = 'flex';
 // --- GLOBALE ELEMENTE ---
 const modal = document.getElementById('user-modal');
 const closeModalBtn = document.getElementById('close-user-modal');
@@ -600,4 +602,6 @@ window.addEventListener('click', (event) => {
 if (isAdmin) {
     loadUsers();
     applyColumnPreferences();
+}
+
 }
