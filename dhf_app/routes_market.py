@@ -20,7 +20,7 @@ def _is_allowed():
     """
     if not current_user.is_authenticated:
         return False
-    if current_user.role.name in ['admin', 'Hundeführer']:
+    if current_user.role and current_user.role.name in ['admin', 'Hundeführer']:
         return True
     return False
 
@@ -301,7 +301,11 @@ def get_offer_responses(offer_id):
 @market_bp.route('/offer/<int:offer_id>/select_candidate', methods=['POST'])
 @login_required
 def select_candidate(offer_id):
-    data = request.get_json()
+    if not _is_allowed():
+        return jsonify({"message": "Zugriff verweigert."}), 403
+    data = request.get_json(silent=True)
+    if not isinstance(data, dict):
+        return jsonify({"message": "Ungültige Auswahl."}), 400
     candidate_id = data.get('candidate_id')
 
     offer = db.session.get(ShiftMarketOffer, offer_id)
@@ -324,7 +328,8 @@ def select_candidate(offer_id):
         requester_id=offer.offering_user_id,
         replacement_user_id=candidate_id,
         note=f"Marktplatz Match: {offer.offering_user.name} -> {candidate.name}. Notiz: {offer.note}",
-        reason_type='trade'
+        reason_type='trade',
+        market_offer_id=offer.id
     )
 
     if code not in [200, 201]:

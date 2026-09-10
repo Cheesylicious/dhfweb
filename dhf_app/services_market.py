@@ -127,13 +127,17 @@ class MarketService:
                     offer.accepted_by_id = candidate.id
                     offer.accepted_at = now
 
-                    ShiftChangeService.create_request(
+                    result, code = ShiftChangeService.create_request(
                         shift_id=offer.shift_id,
                         requester_id=offer.offering_user_id,
                         replacement_user_id=candidate.id,
                         note=f"🤖 AUTO-MATCH (24h Timer abgelaufen): {offer.offering_user.name} -> {candidate.name}",
-                        reason_type='trade'
+                        reason_type='trade',
+                        market_offer_id=offer.id
                     )
+                    if code != 200:
+                        db.session.rollback()
+                        print(f"[Market] Auto-Match abgelehnt für Angebot {offer.id}: {code}")
                 else:
                     offer.auto_accept_deadline = None
 

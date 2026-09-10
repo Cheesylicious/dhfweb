@@ -12,7 +12,9 @@ shift_change_bp = Blueprint('shift_change_bp', __name__)
 @login_required
 def create_shift_change_request():
     try:
-        data = request.get_json()
+        data = request.get_json(silent=True)
+        if not isinstance(data, dict):
+            return jsonify({"error": "Ungültige Antragsdaten."}), 400
         shift_id = data.get('shift_id')
         replacement_user_id = data.get('replacement_user_id')
         note = data.get('note')
@@ -20,6 +22,9 @@ def create_shift_change_request():
         # WICHTIG: Fallback auf 'sickness', damit alte Krankmeldungen weiterhin funktionieren.
         # Der Marktplatz sendet hier explizit 'trade'.
         reason_type = data.get('reason_type', 'sickness')
+
+        if reason_type != 'sickness':
+            return jsonify({"error": "Tausche bitte über den Marktplatz abschließen."}), 403
 
         if not shift_id:
             return jsonify({"error": "Schicht-ID fehlt"}), 400
@@ -50,8 +55,7 @@ def create_shift_change_request():
 
                     # Wenn erfolgreich, geben wir direkt das Approval-Ergebnis zurück,
                     # damit das Frontend sofort Bescheid weiß (und Sockets feuern).
-                    if approve_code == 200:
-                        return jsonify(approve_res), 200
+                    return jsonify(approve_res), approve_code
 
         # Falls keine Auto-Genehmigung (normaler User) oder Fehler dabei, geben wir das normale Ergebnis zurück
         return jsonify(result), status_code
@@ -87,7 +91,7 @@ def get_pending_requests():
 @login_required
 def approve_request(request_id):
     # Nur Admins oder Planschreiber
-    if current_user.role.name not in ['admin', 'Planschreiber']:
+    if not current_user.role or current_user.role.name not in ['admin', 'Planschreiber']:
         return jsonify({"error": "Keine Berechtigung"}), 403
 
     # Der Service führt die Logik aus (Krank->K, Tausch->Löschen) und sendet Sockets
@@ -99,7 +103,7 @@ def approve_request(request_id):
 @shift_change_bp.route('/<int:request_id>/reject', methods=['POST'])
 @login_required
 def reject_request(request_id):
-    if current_user.role.name not in ['admin', 'Planschreiber']:
+    if not current_user.role or current_user.role.name not in ['admin', 'Planschreiber']:
         return jsonify({"error": "Keine Berechtigung"}), 403
 
     # Der Service prüft nun, ob es 'pending' (Ablehnen) oder 'approved' (Rollback) ist
@@ -111,7 +115,7 @@ def reject_request(request_id):
 @shift_change_bp.route('/<int:request_id>', methods=['DELETE'])
 @login_required
 def delete_request(request_id):
-    if current_user.role.name not in ['admin', 'Planschreiber']:
+    if not current_user.role or current_user.role.name not in ['admin', 'Planschreiber']:
         return jsonify({"error": "Keine Berechtigung"}), 403
 
     result, status_code = ShiftChangeService.delete_request(request_id)

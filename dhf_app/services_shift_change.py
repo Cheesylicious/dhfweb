@@ -6,13 +6,49 @@ import json
 from .extensions import db, socketio
 from .models_shift_change import ShiftChangeRequest
 from .models import Shift, User, ShiftType
-from .models_market import ShiftMarketOffer
+from .models_market import ShiftMarketOffer, ShiftMarketResponse
 
 
 class ShiftChangeService:
 
     @staticmethod
-    def create_request(shift_id, requester_id, replacement_user_id=None, note=None, reason_type='sickness'):
+    def validate_request(shift, requester_id, replacement_user_id, reason_type, market_offer_id=None):
+        """Check the actor and persisted consent before any plan changes."""
+        actor = db.session.get(User, requester_id)
+        role = actor.role.name if actor and actor.role else None
+        if reason_type not in ('sickness', 'trade'):
+            return {"error": "Ungültiger Änderungsgrund."}, 400
+        if role not in ('admin', 'Planschreiber', 'Hundeführer'):
+            return {"error": "Keine Berechtigung."}, 403
+        if reason_type == 'sickness':
+            if role not in ('admin', 'Planschreiber') and shift.user_id != requester_id:
+                return {"error": "Fremde Schichten dürfen nicht krankgemeldet werden."}, 403
+        else:
+            if role not in ('admin', 'Hundeführer') or shift.user_id != requester_id:
+                return {"error": "Nur der Schichtbesitzer darf einen Tausch anbieten."}, 403
+            if not market_offer_id or not replacement_user_id:
+                return {"error": "Tausch nur über ein bestätigtes Marktplatzangebot."}, 403
+            offer = db.session.get(ShiftMarketOffer, market_offer_id)
+            if (not offer or offer.status != 'pending' or
+                    offer.shift_id != shift.id or offer.offering_user_id != requester_id or
+                    offer.accepted_by_id != replacement_user_id or shift.variant_id is not None):
+                return {"error": "Das Marktplatzangebot passt nicht zum Tausch."}, 409
+            consent = ShiftMarketResponse.query.filter_by(
+                offer_id=offer.id, user_id=replacement_user_id, response_type='interested'
+            ).first()
+            if not consent:
+                return {"error": "Die Ersatzperson hat der Übernahme nicht zugestimmt."}, 409
+        if replacement_user_id is not None:
+            replacement = db.session.get(User, replacement_user_id)
+            if not replacement or replacement_user_id == shift.user_id:
+                return {"error": "Ungültige Ersatzperson."}, 400
+            if reason_type == 'trade' and (not replacement.role or
+                    replacement.role.name not in ('admin', 'Hundeführer')):
+                return {"error": "Die Ersatzperson darf den Marktplatz nicht nutzen."}, 403
+        return None
+
+    @staticmethod
+    def create_request(shift_id, requester_id, replacement_user_id=None, note=None, reason_type='sickness', *, market_offer_id=None):
         """
         Erstellt einen neuen Änderungsantrag.
         WICHTIG: Bei 'trade' (Tausch) wird dieser sofort genehmigt (Auto-Approve).
@@ -20,6 +56,12 @@ class ShiftChangeService:
         shift = db.session.get(Shift, shift_id)
         if not shift:
             return {"error": "Schicht nicht gefunden"}, 404
+
+        error = ShiftChangeService.validate_request(
+            shift, requester_id, replacement_user_id, reason_type, market_offer_id
+        )
+        if error:
+            return error
 
         existing = ShiftChangeRequest.query.filter_by(
             original_shift_id=shift_id,
@@ -45,12 +87,18 @@ class ShiftChangeService:
         )
 
         db.session.add(new_request)
-        db.session.commit()
+        if reason_type == 'trade':
+            db.session.flush()
+        else:
+            db.session.commit()
 
         # --- AUTO-APPROVE FÜR TAUSCH ---
         if reason_type == 'trade':
             print(f"[ShiftChange] Auto-Approve für Tausch-Request {new_request.id}")
-            return ShiftChangeService.approve_request(new_request.id, admin_user_id=None)
+            result = ShiftChangeService.approve_request(new_request.id, admin_user_id=None)
+            if result[1] != 200:
+                db.session.rollback()
+            return result
 
         return {"status": "success", "request": new_request.to_dict()}, 201
 
@@ -66,6 +114,20 @@ class ShiftChangeService:
             return {"error": "Antrag nicht gefunden oder bereits bearbeitet"}, 400
 
         original_shift = req.original_shift
+
+        if original_shift:
+            offer = None
+            if req.reason_type == 'trade':
+                offer = ShiftMarketOffer.query.filter_by(
+                    shift_id=original_shift.id, offering_user_id=req.requester_id,
+                    accepted_by_id=req.replacement_user_id, status='pending'
+                ).first()
+            error = ShiftChangeService.validate_request(
+                original_shift, req.requester_id, req.replacement_user_id,
+                req.reason_type, offer.id if offer else None
+            )
+            if error:
+                return error
 
         if not original_shift:
             print("[ShiftChange] Originalschicht nicht gefunden! Breche ab.")
